@@ -54,7 +54,9 @@ Start-Process -FilePath $chrome -ArgumentList $args -Wait -NoNewWindow
 2. **页面上写一句"样式镜像页（假数据），不是真机截图"**，截图自证来源，免得日后被当成真机证据。
 
 镜像页**只能证几何**（这套数值在真实引擎 + 真实字体下长什么样），不能证组件逻辑正确——
-那部分仍旧靠 typecheck / 单测 / 读代码。检查页是一次性的，验完删掉（放 `.research/`，已 gitignore）。
+那部分仍旧靠 typecheck / 单测 / 读代码。检查页不是产品的一部分，放 `.research/ui-check/`
+（已 gitignore，删掉不影响任何东西）；留着是为了下轮少写一遍骨架，但**它不会自己跟着代码走**，
+复用前先把里面的样式值跟当轮的 `src/client/index.tsx` 逐条对齐，否则量到的是上一轮的界面。
 
 ## 2026-09-19 量到的基线（改这些数值时可对照）
 
