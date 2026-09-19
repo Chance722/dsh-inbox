@@ -38,6 +38,8 @@ import {
   INBOX_ENDPOINT_PURGE,
   INBOX_ENDPOINT_RESTORE,
   INBOX_ENDPOINT_UPDATE,
+  INBOX_ENDPOINT_WEBDAV,
+  INBOX_ENDPOINT_PULL,
   INBOX_IMAGE_TYPES,
   LIST_LIMIT,
   MAX_ATTACHMENTS_PER_SUBMISSION,
@@ -61,6 +63,15 @@ import {
 } from '../shared/panel-wire.js'
 import { CATEGORIES, KINDS, STATUSES, type Category } from '../shared/vocabulary.js'
 import { capture, type CapturedAttachment } from './capture.js'
+import {
+  describeWebdav,
+  readSettings,
+  saveWebdav,
+  type WebdavPatch,
+  type WebdavStatus,
+} from './webdav/config.js'
+import { runPull } from './webdav/run.js'
+import type { PullResult } from './webdav/pull.js'
 import type { Attachment, Item } from './vault/spec.js'
 import type { Vault } from './vault/vault.js'
 
@@ -403,6 +414,49 @@ async function handlePurge(vault: Vault | undefined): Promise<InboxRpcResult<unk
   return { ok: true, value }
 }
 
+/** Read or change the WebDAV configuration. */
+async function handleWebdav(
+  ctx: Context,
+  vault: Vault | undefined,
+  payload: unknown,
+): Promise<InboxRpcResult<unknown>> {
+  const request = (payload ?? {}) as {
+    action?: unknown
+    baseUrl?: unknown
+    directory?: unknown
+    username?: unknown
+    password?: unknown
+  }
+  const action = request.action === 'save' ? 'save' : 'read'
+
+  if (action === 'save') {
+    const patch: WebdavPatch = {}
+    if (typeof request.baseUrl === 'string') patch.baseUrl = request.baseUrl
+    if (typeof request.directory === 'string') patch.directory = request.directory
+    if (typeof request.username === 'string') patch.username = request.username
+    if (typeof request.password === 'string') patch.password = request.password
+    const saved = await saveWebdav(ctx, vault, readSettings(ctx), patch)
+    if (!saved.ok) return failure('inbox/webdav-unsaved', saved.reason ?? '存不进去')
+  }
+
+  const status: WebdavStatus = await describeWebdav(ctx)
+  return { ok: true, value: status }
+}
+
+/** Run one pull now, for the panel's button. */
+async function handlePull(
+  ctx: Context,
+  vault: Vault | undefined,
+  attachments: AttachmentStore,
+): Promise<InboxRpcResult<unknown>> {
+  if (vault === undefined) {
+    return failure('inbox/vault-closed', 'inbox 仓库还没打开（或打开失败），稍后再试')
+  }
+  const settings = readSettings(ctx)
+  const result: PullResult = await runPull(ctx, vault, attachments)
+  return { ok: true, value: result }
+}
+
 /** Rebuild the store's reference from the metadata we keep. */
 function imageRef(record: Attachment): ImageAttachmentRef {
   return {
@@ -528,6 +582,12 @@ export function registerInboxRpc(ctx: Context, vault: () => Vault | undefined): 
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_PURGE}`, () =>
         serialise(() => handlePurge(vault())),
+      ),
+      endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_WEBDAV}`, (payload) =>
+        serialise(() => handleWebdav(scoped, vault(), payload)),
+      ),
+      endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_PULL}`, () =>
+        serialise(() => handlePull(scoped, vault(), attachments)),
       ),
       {
         path: `${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}`,

@@ -40,6 +40,22 @@ export const INBOX_ENDPOINT_PURGE = 'purge'
 /** Stream one attachment's bytes back to the panel. */
 export const INBOX_ENDPOINT_ATTACHMENT = 'attachment'
 
+/** Read or change the WebDAV configuration (the panel's ⚙ form). */
+export const INBOX_ENDPOINT_WEBDAV = 'webdav'
+
+/** Pull the remote folder right now, without waiting for the next start. */
+export const INBOX_ENDPOINT_PULL = 'pull'
+
+/** What the panel sends to `webdav`: read the status, or save a patch. */
+export interface WebdavRequest {
+  action: 'read' | 'save'
+  baseUrl?: string
+  directory?: string
+  username?: string
+  /** Empty string clears the stored password; absent leaves it alone. */
+  password?: string
+}
+
 /** Raster formats dsh's own attachment store accepts, and we therefore pass through. */
 export const INBOX_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const
 export type InboxImageType = (typeof INBOX_IMAGE_TYPES)[number]

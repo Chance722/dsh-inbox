@@ -6,6 +6,7 @@ import { registerInboxCommand } from './command.js'
 import { registerInboxRpc } from './rpc.js'
 import { registerInboxTools } from './tools.js'
 import { Vault } from './vault/vault.js'
+import { runPull } from './webdav/run.js'
 
 /** Stable Cordis plugin name for the host half. */
 export const name = 'dsh-inbox'
@@ -35,6 +36,12 @@ export function apply(ctx: Context): void {
           return
         }
         vault = opened
+        // One pull per start, in the background: whatever the phone dropped
+        // should be waiting by the time the panel opens, and a broken WebDAV
+        // server must never delay or fail the boot.
+        ctx.inject(['attachments'], (scoped) => {
+          void runPull(scoped, opened, scoped.attachments).catch(() => undefined)
+        })
       },
       (error: unknown) => {
         openError = error instanceof Error ? error.message : String(error)

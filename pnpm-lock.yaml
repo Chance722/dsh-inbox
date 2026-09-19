@@ -36,6 +36,9 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: ^0.1.5-rc.2
         version: 0.1.5-rc.2(7f9e302786cf21e030eafe960666842c)
+      '@deepseek-ai/schemastery':
+        specifier: 3.18.2
+        version: 3.18.2
       '@types/node':
         specifier: ^22.10.0
         version: 22.20.3
