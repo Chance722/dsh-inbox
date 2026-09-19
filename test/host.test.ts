@@ -13,14 +13,17 @@ function fakeContext() {
   const register = vi.fn()
   const registerCommand = vi.fn()
   const effect = vi.fn(() => () => {})
+  const inject = vi.fn()
   return {
     register,
     registerCommand,
     effect,
+    inject,
     ctx: {
       tools: { register },
       commands: { register: registerCommand },
       effect,
+      inject,
       storageDomain: { open: vi.fn() },
     } as never,
   }

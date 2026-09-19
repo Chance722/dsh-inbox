@@ -149,6 +149,36 @@ pnpm 11 在跑任何脚本前会先做依赖状态检查，一看到「ignored b
 
 单测用假 id（`att-1`）时不会暴露这个问题，只有跑真实的附件引用才会炸。
 
+## M2 实测补充：浏览器半边怎么调宿主半边
+
+这是整个项目最贵的一个答案。**结论：走 Connection 的具名 Fetch 路由，浏览器侧用普通 `fetch` 即可，客户端不需要任何服务。**
+
+### 宿主侧注册一个端点
+
+```ts
+ctx.inject(['connection', 'attachments'], (scoped) => {
+  scoped.effect(() => scoped.connection.fetch.register({ path, methods, requestBody, fetch }), label)
+})
+```
+
+- `ConnectionFetchRoute`：`{ path, methods: ('GET'|'HEAD'|'POST')[], requestBody: 'buffered'|'streaming', fetch(request): Promise<Response> }`；`register` 返回**异步** disposer（证据：`dsh-client-connection/lib/types/rpc.d.ts`）。
+- 路由挂在共享 `/api` 通道上，**在物理载体已经做完信任与鉴权之后**才被调用——原话是 "Handle one request after the physical carrier has applied its trust and authentication policy"。
+
+### 浏览器侧为什么不用做任何事
+
+页面用带 token 的根 URL 打开时，`BrowserAuth.authorizeIndex` 会用启动 token**铸一个签名的浏览器 cookie**（`browser-auth.d.ts`：`authenticatedUrl` → `authorizeIndex` → `isAuthenticated` 校验 Host+Cookie）。之后同源的 `fetch` 自动带上这个 cookie，所以面板里一句 `fetch('/api/inbox/capture', {method:'POST', ...})` 就够了，**不需要注入任何客户端服务**。
+
+### 上传字节走官方入口
+
+`@deepseek-ai/dsh-attachment` 提供 `admitEncodedImages(store, images)` / `admitEncodedFile(store, file)`，官方注释写着"The shared entry for every RPC endpoint accepting browser uploads"。它们强制**规范 base64**（非规范直接抛 `AttachmentError`），再交给 `ctx.attachments.saveImages/saveFile` 落盘并返回 `sha256:<hex>` 形状的引用。图片的字节**不进我们的域**，域里只存引用和元数据。
+
+### 两条被否掉的路（子代理调研得出，未独立复现）
+
+- `ctx.connection.rpc.handle`：0.1.5-rc.2 里它解析 HTTP 路由用的是 Connection 服务自己的 context，而那个 context 只声明了 `credentials`，于是抛 `cannot get property "webServer" without inject`。
+- `ctx.connection.rpc.intercept('/api', …)`：那条通道已经有一个拦截器（Typert gateway），只允许一个。
+
+如果将来要放弃 Fetch 路由改用 RPC，**先复现这两条**再定。
+
 ### 在单测里跑真实存储栈
 
 不用起 dsh，直接在 vitest 里组一个 Cordis 应用即可（实测可行）：
