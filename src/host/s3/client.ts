@@ -49,6 +49,33 @@ export type S3FetchLike = (
   init: { method: string; headers: Record<string, string> },
 ) => Promise<S3ResponseLike>
 
+/**
+ * Turn a refused response into something an operator can act on.
+ *
+ * S3 explains itself in the body (`<Error><Code>SignatureDoesNotMatch</Code>…`)
+ * and, for 401, in `WWW-Authenticate`; a bare status code hides the one fact
+ * that matters — whether the credential is wrong or the *signature version* is.
+ *
+ * @param response - the refused response.
+ * @param what - which operation failed, in Chinese.
+ * @returns the error to throw.
+ */
+async function refused(response: S3ResponseLike, what: string): Promise<Error> {
+  let body = ''
+  try {
+    body = (await response.text()).trim().slice(0, 300)
+  } catch {
+    // A body we cannot read must not replace the status we can.
+  }
+  const challenge = response.headers?.get('www-authenticate') ?? ''
+  const hints = [body, challenge.length === 0 ? '' : `WWW-Authenticate: ${challenge}`].filter(
+    (part) => part.length > 0,
+  )
+  return new Error(
+    `${what}失败：HTTP ${String(response.status)}${hints.length === 0 ? '' : ` — ${hints.join(' ')}`}`,
+  )
+}
+
 /** Everything a call needs besides the configuration. */
 export interface S3Deps {
   fetch: S3FetchLike
@@ -212,7 +239,7 @@ export async function listPrefix(
 ): Promise<RemoteObject[]> {
   const signed = signRequest(config, deps, 'GET', '', { 'list-type': '2', prefix })
   const response = await deps.fetch(signed.url, { method: 'GET', headers: signed.headers })
-  if (!response.ok) throw new Error(`列对象失败：HTTP ${String(response.status)}`)
+  if (!response.ok) throw await refused(response, '列对象')
   return parseListing(await response.text())
 }
 
@@ -224,7 +251,7 @@ export async function readObject(
 ): Promise<{ bytes: Uint8Array; contentType: string }> {
   const signed = signRequest(config, deps, 'GET', key)
   const response = await deps.fetch(signed.url, { method: 'GET', headers: signed.headers })
-  if (!response.ok) throw new Error(`取对象失败：HTTP ${String(response.status)}`)
+  if (!response.ok) throw await refused(response, '取对象')
   const bytes = new Uint8Array(await response.arrayBuffer())
   const declared = response.headers?.get('content-type') ?? 'application/octet-stream'
   return { bytes, contentType: declared.split(';')[0] ?? 'application/octet-stream' }

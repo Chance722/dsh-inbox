@@ -125,13 +125,19 @@ describe('listing', () => {
 
   it('reports a refused listing instead of throwing something opaque', async () => {
     await expect(
-      listPrefix(CONFIG, 'inbox/', deps(async () => ({
-        ok: false,
-        status: 403,
-        text: async () => '',
-        arrayBuffer: async () => new ArrayBuffer(0),
-      }))),
-    ).rejects.toThrow('列对象失败：HTTP 403')
+      listPrefix(
+        CONFIG,
+        'inbox/',
+        deps(async () => ({
+          ok: false,
+          status: 401,
+          text: async () =>
+            '<Error><Code>SignatureDoesNotMatch</Code><Message>check your secret</Message></Error>',
+          arrayBuffer: async () => new ArrayBuffer(0),
+          headers: { get: (name) => (name === 'www-authenticate' ? 'AWS4-HMAC-SHA256' : null) },
+        })),
+      ),
+    ).rejects.toThrow(/HTTP 401.*SignatureDoesNotMatch.*WWW-Authenticate/)
   })
 
   it('reads one object with its content type', async () => {
