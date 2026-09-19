@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-> **Status: pre-alpha — M0–M4 done.** File things two ways, browse and manage them in the panel, and now **ask for them in conversation**. Automatic classification and sync are still ahead. One known gap: the conversation shows tool results in dsh's built-in card, not our own (the tool-view slot is session-scoped — see the development bus). Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
+> **Status: pre-alpha — M0–M4 done.** File things two ways, browse and manage them in the panel, and **ask for them in conversation** — results come back as our own cards, with image thumbnails rendered locally. Automatic classification and sync are still ahead. Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
 
 A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`): paste links, images, text and credentials into one local vault, get them classified, browse them from the sidebar, and pull them back through conversation.
 
@@ -18,7 +18,8 @@ A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/de
 | ✅ Storage and merging | Records persist through dsh's own storage stack; a repeat paste merges into the record you already have |
 | ✅ Ask in conversation | `inbox_search` finds records by words, category, tag, status or kind; `inbox_get` opens one by id (text up to 1000 characters, links, notes, tags, attachment facts) |
 | 🔒 Two hard refusals | A credential record never returns its text, and image bytes never enter the conversation — images come back as markers the UI renders locally |
-| ❌ Not yet | Automatic classification (M5), sync (M6), our own conversation card (see the gap above) |
+| ✅ Own conversation card | Tool results render as dsh-inbox cards: links become clickable, and image markers become thumbnails drawn on this machine |
+| ❌ Not yet | Automatic classification (M5), sync (M6) |
 
 ### Where your data lives
 
