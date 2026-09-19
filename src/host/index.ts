@@ -7,6 +7,7 @@ import { registerInboxRpc } from './rpc.js'
 import { registerInboxTools } from './tools.js'
 import { Vault } from './vault/vault.js'
 import { runPull } from './webdav/run.js'
+import { installWebdavSettings } from './webdav/config.js'
 
 /** Stable Cordis plugin name for the host half. */
 export const name = 'dsh-inbox'
@@ -24,6 +25,10 @@ export const inject = ['tools', 'commands', 'storageDomain']
  * @param ctx - host plugin context carrying the tool registry and storage.
  */
 export function apply(ctx: Context): void {
+  // Declare the configuration namespace before anything reads it: an
+  // unregistered namespace answers "no value", which reads as "user configured
+  // nothing" and would let a save overwrite stored settings with defaults.
+  installWebdavSettings(ctx)
   let vault: Vault | undefined
   let openError: string | undefined
 

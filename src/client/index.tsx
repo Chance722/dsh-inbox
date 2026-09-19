@@ -776,8 +776,8 @@ function WebdavSettings({
           {status === undefined
             ? '读取中…'
             : `${status.settingsAvailable ? '设置服务在' : '没有设置服务'} · ${
-                status.passwordSet ? '密码已存' : '还没存密码'
-              }`}
+                status.passwordSet ? 'WebDAV 密码已存' : '还没存 WebDAV 密码'
+              } · ${status.secretSet ? 'S3 密钥已存' : '还没存 S3 密钥'}`}
         </span>
         <button type="button" style={{ ...buttonStyle, marginLeft: 'auto' }} onClick={onClose}>
           关闭

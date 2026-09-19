@@ -20,6 +20,7 @@ function fakeContext() {
     effect,
     inject,
     ctx: {
+      get: () => undefined,
       tools: { register },
       commands: { register: registerCommand },
       effect,

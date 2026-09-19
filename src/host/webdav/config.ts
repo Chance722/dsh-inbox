@@ -85,6 +85,28 @@ export function readSettings(ctx: Context): WebdavSettings {
   return settings.get(SETTINGS_NAMESPACE) ?? DEFAULT_SETTINGS
 }
 
+/**
+ * Declare the namespace once, at plugin load.
+ *
+ * Registering lazily on the first save looked harmless and was not: before that
+ * first save, `get()` answers undefined for an unregistered namespace, so the
+ * panel loaded *defaults* instead of the stored overrides — and the next save
+ * wrote those defaults back over the user's real values. Declaring up front is
+ * the whole point of a settings namespace.
+ *
+ * @param ctx - host context.
+ * @param base - composed defaults for this deployment.
+ */
+export function installWebdavSettings(ctx: Context, base: WebdavSettings = DEFAULT_SETTINGS): void {
+  const settings = ctx.get('settings') as SettingsLike | undefined
+  if (settings === undefined) return
+  try {
+    settings.register(SETTINGS_NAMESPACE, WebdavSettingsSchema, { base })
+  } catch {
+    // Another activation of this plugin already declared it in this process.
+  }
+}
+
 /** Read the password, or undefined when none is stored. */
 export async function readPassword(ctx: Context): Promise<string | undefined> {
   const credentials = ctx.get('credentials') as CredentialsLike | undefined
@@ -199,18 +221,10 @@ export async function saveWebdav(
     if (settings === undefined) {
       return { ok: false, reason: '这个组合里没有设置服务，改不了地址' }
     }
-    // Declare the namespace if this process has not yet, then write through the
-    // *namespace* form. Two reasons for this shape: `register` throws when a
-    // namespace is already registered (a second save used to fail on exactly
-    // that), and the service hands out a fresh wrapper per `ctx.get`, so caching
-    // the returned scope by object identity does not work.
-    try {
-      settings.register(SETTINGS_NAMESPACE, WebdavSettingsSchema, { base })
-    } catch {
-      // Already declared — which is the normal case from the second save on.
-    }
-    // `update()` merges into the *user* layer and persists; the composed base
-    // stays the deployment's, which is what makes a shipped default work.
+    // The namespace is declared at load time; here we only write. `update()`
+    // merges into the *user* layer and persists, leaving the composed base the
+    // deployment's — which is what makes a shipped default work.
+    installWebdavSettings(ctx, base)
     settings.update(SETTINGS_NAMESPACE, config)
   }
 
