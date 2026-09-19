@@ -290,6 +290,12 @@ export function parseListing(xml: string): RemoteObject[] {
 /**
  * List objects under a prefix.
  *
+ * Tries ListObjects **V2** first and falls back to **V1** when the server
+ * refuses it. Both answer with the same `<Contents>` shape, so the parser does
+ * not care; what differs is that plenty of gateways implement only V1 and
+ * answer a `list-type=2` request with a server error rather than an S3 error —
+ * which is exactly the shape of a 500 that says "unknown runtime exception".
+ *
  * @param config - endpoint, bucket, region.
  * @param prefix - key prefix, e.g. `inbox/`.
  * @param deps - credentials, fetch, clock.
@@ -300,10 +306,24 @@ export async function listPrefix(
   prefix: string,
   deps: S3Deps,
 ): Promise<RemoteObject[]> {
-  const signed = signer(config)(config, deps, 'GET', '', { 'list-type': '2', prefix })
-  const response = await deps.fetch(signed.url, { method: 'GET', headers: signed.headers })
-  if (!response.ok) throw await refused(response, '列对象')
-  return parseListing(await response.text())
+  const sign = signer(config)
+
+  const v2 = sign(config, deps, 'GET', '', { 'list-type': '2', prefix })
+  const first = await deps.fetch(v2.url, { method: 'GET', headers: v2.headers })
+  if (first.ok) return parseListing(await first.text())
+
+  // Only a server-side failure justifies the fallback; a 4xx is an answer
+  // (wrong key, missing permission) and asking again would just repeat it.
+  const refusal = await refused(first, '列对象')
+  if (first.status < 500) throw refusal
+
+  const v1 = sign(config, deps, 'GET', '', { prefix })
+  const second = await deps.fetch(v1.url, { method: 'GET', headers: v1.headers })
+  if (!second.ok) {
+    // Report both: the first explains why we tried the older call at all.
+    throw new Error(`${await refused(second, '列对象（V1 回退）').then((e) => e.message)}\n首次尝试：${refusal.message}`)
+  }
+  return parseListing(await second.text())
 }
 
 /** Fetch one object's bytes, with its content type when the server sends one. */

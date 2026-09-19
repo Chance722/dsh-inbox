@@ -165,6 +165,55 @@ describe('listing', () => {
     expect(seen[0]?.auth).toContain('AWS4-HMAC-SHA256')
   })
 
+  it('falls back to ListObjects V1 when the server cannot do V2', async () => {
+    const urls: string[] = []
+    const result = await listPrefix(
+      { ...CONFIG, signatureVersion: 'v2' },
+      'inbox/',
+      deps(async (url) => {
+        urls.push(url)
+        if (url.includes('list-type=2')) {
+          return {
+            ok: false,
+            status: 500,
+            text: async () => '{"msg":"未知运行时异常","code":500}',
+            arrayBuffer: async () => new ArrayBuffer(0),
+          }
+        }
+        return {
+          ok: true,
+          status: 200,
+          text: async () => LISTING,
+          arrayBuffer: async () => new ArrayBuffer(0),
+        }
+      }),
+    )
+
+    expect(result).toHaveLength(2)
+    expect(urls[0]).toContain('list-type=2')
+    expect(urls[1]).toBe('https://data.cstcloud.cn/my-bucket?prefix=inbox%2F')
+  })
+
+  it('does not fall back on a 4xx, which is already an answer', async () => {
+    const urls: string[] = []
+    await expect(
+      listPrefix(
+        CONFIG,
+        'inbox/',
+        deps(async (url) => {
+          urls.push(url)
+          return {
+            ok: false,
+            status: 403,
+            text: async () => '<Error><Code>AccessDenied</Code></Error>',
+            arrayBuffer: async () => new ArrayBuffer(0),
+          }
+        }),
+      ),
+    ).rejects.toThrow(/AccessDenied/)
+    expect(urls).toHaveLength(1)
+  })
+
   it('reports a refused listing instead of throwing something opaque', async () => {
     await expect(
       listPrefix(
