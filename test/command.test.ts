@@ -104,7 +104,7 @@ describe('/inbox command', () => {
 
     expect(result).toEqual({ kind: 'success', text: '已存入 2 条' })
     expect(vault?.size).toBe(2)
-    expect(vault?.getAttachment('att-9')?.filename).toBe('id.jpg')
+    expect(vault?.findAttachmentByStoreId('att-9')?.filename).toBe('id.jpg')
   })
 
   it('merges a repeated submission instead of double-storing it', async () => {

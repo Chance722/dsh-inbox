@@ -165,8 +165,13 @@ export async function captureText(
   return { item: await vault.create(candidate), merged: false }
 }
 
-/** Attachment reference as it arrives from the composer's durable blocks. */
-export type CapturedAttachment = Pick<Attachment, 'id' | 'mime' | 'bytes'> &
+/**
+ * Attachment reference as it arrives from the composer's durable blocks.
+ * `id` is the *store's* id, not ours.
+ */
+export type CapturedAttachment = Pick<Attachment, 'mime' | 'bytes'> & {
+  id: string
+} &
   Partial<Pick<Attachment, 'filename' | 'width' | 'height' | 'sha256'>>
 
 /**
@@ -188,19 +193,31 @@ export async function captureImage(
   source: Source,
   note?: string,
 ): Promise<CaptureOutcome> {
-  const existing = vault
-    .list({ includeDeleted: true, kinds: ['image', 'file'] })
-    .find((item) => item.attachmentIds.includes(attachment.id))
+  const known = vault.findAttachmentByStoreId(attachment.id)
+  const existing =
+    known === undefined
+      ? undefined
+      : vault
+          .list({ includeDeleted: true, kinds: ['image', 'file'] })
+          .find((item) => item.attachmentIds.includes(known.id))
 
   if (existing !== undefined) return absorb(vault, existing, { note })
 
-  await vault.addAttachment({ ...attachment, createdAt: new Date().toISOString() })
+  const record = await vault.addAttachment({
+    storeId: attachment.id,
+    mime: attachment.mime,
+    bytes: attachment.bytes,
+    filename: attachment.filename,
+    width: attachment.width,
+    height: attachment.height,
+    sha256: attachment.sha256,
+  })
   const item = await vault.create({
     kind: attachment.mime.startsWith('image/') ? 'image' : 'file',
     category: 'other',
     source,
     ...(note === undefined || note.length === 0 ? {} : { note }),
-    attachmentIds: [attachment.id],
+    attachmentIds: [record.id],
   })
   return { item, merged: false }
 }

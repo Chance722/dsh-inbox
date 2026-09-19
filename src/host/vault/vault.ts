@@ -169,10 +169,17 @@ export class Vault {
     })
   }
 
-  /** Record an attachment's metadata. Bytes are stored by the caller (M2). */
-  async addAttachment(input: Omit<Attachment, 'createdAt'> & { createdAt?: string }): Promise<Attachment> {
+  /**
+   * Record an attachment's metadata. The bytes stay in the store named by
+   * `storeId`; this row is our own index over them, keyed by a generated id
+   * because store ids are not path-safe.
+   */
+  async addAttachment(
+    input: Omit<Attachment, 'id' | 'createdAt'> & { createdAt?: string },
+  ): Promise<Attachment> {
     const record: Attachment = {
       ...input,
+      id: randomUUID(),
       createdAt: input.createdAt ?? new Date().toISOString(),
     }
     await this.attachments.put(record.id, record)
@@ -182,6 +189,14 @@ export class Vault {
   /** Read one attachment record. */
   getAttachment(id: string): Attachment | undefined {
     return this.attachments.get(id)
+  }
+
+  /** Find our index row for a store-side attachment id, if we have one. */
+  findAttachmentByStoreId(storeId: string): Attachment | undefined {
+    for (const [, record] of this.attachments.entries()) {
+      if (record.storeId === storeId) return record
+    }
+    return undefined
   }
 
   /** Current sync state; M6 writes it. */

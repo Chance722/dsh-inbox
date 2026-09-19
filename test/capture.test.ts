@@ -136,12 +136,29 @@ describe('capture against a real vault', () => {
     const ref = { id: 'att-1', mime: 'image/png', bytes: 2048, width: 800, height: 600 }
     const first = await captureImage(vault, ref, 'chat')
     expect(first.item.kind).toBe('image')
-    expect(first.item.attachmentIds).toEqual(['att-1'])
-    expect(vault.getAttachment('att-1')?.width).toBe(800)
+    const attachmentId = first.item.attachmentIds[0] ?? ''
+    expect(vault.getAttachment(attachmentId)?.width).toBe(800)
+    expect(vault.findAttachmentByStoreId('att-1')?.id).toBe(attachmentId)
 
     const second = await captureImage(vault, ref, 'panel')
     expect(second.merged).toBe(true)
     expect(vault.size).toBe(1)
+  })
+
+  it('keeps a non-path-safe store id out of the record key', async () => {
+    // dsh's own attachment ids look like `sha256:<hex>`; a colon cannot be a
+    // per-record key, which is why the index row carries a generated id.
+    const storeId = 'sha256:fd1842488dfd70ca985ad3d6d7d9193d320d34ef416818c068f81b134a14a4b5'
+    const outcome = await captureImage(
+      vault,
+      { id: storeId, mime: 'image/png', bytes: 5825, width: 800, height: 600 },
+      'chat',
+    )
+
+    const attachmentId = outcome.item.attachmentIds[0] ?? ''
+    expect(attachmentId).toMatch(/^[a-zA-Z0-9_-]+$/)
+    expect(vault.getAttachment(attachmentId)?.storeId).toBe(storeId)
+    expect(vault.findAttachmentByStoreId(storeId)?.mime).toBe('image/png')
   })
 
   it('calls a non-image attachment a file', async () => {

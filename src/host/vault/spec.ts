@@ -45,11 +45,17 @@ export const itemSchema = z.object({
 
 export const attachmentSchema = z.object({
   /**
-   * The owning store's identifier: dsh's attachment id for anything the user
-   * pasted (opaque for images, the sha256 digest for generic files). Bytes stay
-   * wherever that store keeps them; this table only carries metadata.
+   * Our own record key. It has to be path-safe (`[a-zA-Z0-9_-]+`) because the
+   * per-record backend names a document after it — which is exactly why the
+   * store's id below cannot serve as the key.
    */
   id: z.string().min(1),
+  /**
+   * The owning store's identifier: dsh's attachment id for anything the user
+   * pasted. Opaque, and observed in the wild as `sha256:<hex>` — the colon is
+   * not path-safe, so it lives here and never in the key.
+   */
+  storeId: z.string().min(1),
   mime: z.string().min(1),
   bytes: z.number().int().nonnegative(),
   createdAt: timestamp,

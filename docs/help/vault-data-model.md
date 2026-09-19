@@ -38,7 +38,9 @@ M1 定下来的东西。改这个模型 = 改领域版本号 + 写迁移，别�
 - `note` 是**用户追加的描述**——按产品决策，它一旦存在就是权威分类来源，模型不许覆盖。
 - 正文和图片**不进域**，域里只放元数据 + `attachmentIds` 引用；大内容按内容哈希存文件（M2 落地）。
 
-`attachments`：`id` / `sha256` / `mime` / `bytes` / `createdAt` / 可选 `filename` / `width` / `height`。
+`attachments`：`id`（我们自己生成的 UUID，**记录 key 必须路径安全**）/ `storeId`（dsh 的附件 id，形如 `sha256:<hex>`，带冒号所以不能当 key）/ `mime` / `bytes` / `createdAt` / 可选 `filename` / `width` / `height` / `sha256`（通用文件才有）。
+
+判重找的是 `storeId`，所以不要把 store id 和我们的 key 混用——这是 M2 端到端才暴露的坑（见 dev-bus 的 M2 记录）。
 
 `global.sync`：`{ lastPullAt?, cursor? }`，M6 的 WebDAV 单向摄取用。
 

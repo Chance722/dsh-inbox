@@ -101,8 +101,9 @@ describe('vault over the real storage domain', () => {
   })
 
   it('keeps attachment metadata and the global slot', async () => {
-    await vault.addAttachment({ id: 'a1', sha256: 'deadbeef', mime: 'image/png', bytes: 12 })
-    expect(vault.getAttachment('a1')?.mime).toBe('image/png')
+    const record = await vault.addAttachment({ storeId: 'a1', mime: 'image/png', bytes: 12 })
+    expect(vault.getAttachment(record.id)?.mime).toBe('image/png')
+    expect(vault.findAttachmentByStoreId('a1')?.id).toBe(record.id)
 
     expect(vault.global.sync).toEqual({})
     await vault.setGlobal({ sync: { lastPullAt: '2026-09-19T00:00:00.000Z' } })

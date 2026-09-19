@@ -87,3 +87,18 @@
 
 1. **面板自己的粘贴框**需要"浏览器半边调宿主半边"。dsh 的正规机制是 Typert Remote（要生成调用描述符），备选是 webserver 的具名 HTTP 路由。调研还在跑，结论出来才能定 M2b 的做法。
 2. **`/inbox` 的 UI 端到端验证**被工作区卡住：web 端要选一个工作区才能建会话，而"添加工作区"打开的是 **Windows 原生目录对话框**，Codex 的浏览器自动化驱动不了它（原生 API 被禁用）。需要用户手动加一个工作区，或者授权我往 `~/.dsh/storages/workspace.json` 里写一条记录。
+
+#### 端到端验证（2026-09-19 完成，聊天路径）
+
+用户手加了工作区（`C:\Duoyu\dsh-inbox`）之后，在真实 web UI 里逐条跑通：
+
+| 用例 | 结果 |
+|---|---|
+| `/inbox 这是一条 M2 端到端验证文本` | 落盘 `items/<uuid>.json`，`kind=text`、`source=chat`、`status=unread` |
+| 同一条文本再提交一次 | **没有新增文件**：同一个 id、`createdAt` 不变、`updatedAt` 更新（合并生效） |
+| `/inbox https://www.bilibili.com/video/BV1xx…?spm_id_from=333.999` | `kind=link`、`platform=bilibili` |
+| 附加一张 800×600 PNG 后 `/inbox 测试图片附件` | `kind=image` + `attachments/<uuid>.json`（`storeId`、`mime`、`bytes`、`width/height`、`filename` 齐全） |
+
+另外两条附带确认：`/inbox` 出现在输入框的斜杠菜单里；空库第一次写入才物化 `~/.dsh/storages/dsh_inbox/`（M1 遗留项）。
+
+**端到端逮到的真 bug（单测没覆盖）**：dsh 自己的附件 id 形如 `sha256:<hex>`，**带冒号**；而 per-record 后端的记录 key 必须匹配 `/^[a-zA-Z0-9_-]+$/`，直接拿 store id 当 key 会整条命令失败（`command.execute failed: … is not path-safe`）。修法：`attachments` 表的 key 改成我们自己生成的 UUID，store id 放进 `storeId` 字段；判重靠 `findAttachmentByStoreId` 线性查找。单测之所以没抓到，是因为假 id（`att-1`）恰好是路径安全的——已补上一条用真实形状 id 的回归测试。
