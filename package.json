@@ -43,6 +43,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "lucide-react": "^1.47.0",
     "zod": "^4.4.3"
   },
   "peerDependencies": {

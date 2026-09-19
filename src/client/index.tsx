@@ -8,6 +8,20 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import React from 'react'
+import {
+  Check,
+  FileText,
+  Film,
+  Image as ImageIcon,
+  Layers,
+  LayoutGrid,
+  Link2,
+  Music,
+  Paperclip,
+  RefreshCw,
+  Rows3,
+  Settings2,
+} from 'lucide-react'
 
 import {
   INBOX_API_PREFIX,
@@ -186,6 +200,7 @@ function InboxPanel(): React.ReactElement {
   const [selectedId, setSelectedId] = React.useState<string>()
   const [detail, setDetail] = React.useState<EntryDetail>()
   const [settingsOpen, setSettingsOpen] = React.useState(false)
+  const [listMode, setListMode] = React.useState<ListMode>('rows')
 
   /** One POST to the vault channel; see the transport note in panel-wire.ts. */
   const call = React.useCallback(
@@ -401,7 +416,7 @@ function InboxPanel(): React.ReactElement {
             aria-expanded={settingsOpen}
             onClick={() => setSettingsOpen((open) => !open)}
           >
-            ⚙ 入库设置
+            <Settings2 size={14} /> 入库设置
           </button>
         </div>
       </header>
@@ -563,8 +578,36 @@ function InboxPanel(): React.ReactElement {
           placeholder="搜标题、正文、链接、备注…"
           style={{ ...inputStyle, marginLeft: 'auto', minWidth: 180 }}
         />
+        <span
+          role="group"
+          aria-label="列表模式"
+          style={{
+            display: 'inline-flex',
+            border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
+            borderRadius: 8,
+            overflow: 'hidden',
+          }}
+        >
+          {LIST_MODES.map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              title={`列表模式：${mode.label}`}
+              aria-pressed={listMode === mode.id}
+              onClick={() => setListMode(mode.id)}
+              style={{
+                ...buttonStyle,
+                border: 'none',
+                borderRadius: 0,
+                opacity: listMode === mode.id ? 1 : 0.5,
+              }}
+            >
+              {mode.icon}
+            </button>
+          ))}
+        </span>
         <button type="button" style={buttonStyle} onClick={() => void refresh()}>
-          刷新
+          <RefreshCw size={13} /> 刷新
         </button>
       </div>
 
@@ -613,16 +656,23 @@ function InboxPanel(): React.ReactElement {
             </p>
           )}
 
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          <div
+            style={
+              listMode === 'grid'
+                ? { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }
+                : { display: 'flex', flexDirection: 'column', gap: listMode === 'compact' ? 4 : 8 }
+            }
+          >
             {list?.entries.map((entry) => (
-              <EntryRow
+              <EntryCard
                 key={entry.id}
                 entry={entry}
+                mode={listMode}
                 selected={entry.id === selectedId}
                 onOpen={() => void openDetail(entry.id)}
               />
             ))}
-          </ul>
+          </div>
         </section>
 
         <section style={{ ...cardStyle, minWidth: 0 }}>
@@ -1009,55 +1059,122 @@ function detailNotice(notice: string | undefined): React.ReactNode {
 }
 
 /** One stored record as a list row. */
-function EntryRow({
+/** How the list is laid out. Three densities, one switch — people differ. */
+export type ListMode = 'rows' | 'grid' | 'compact'
+
+/** The three modes, in switch order, with their labels. */
+export const LIST_MODES: readonly { id: ListMode; label: string; icon: React.ReactElement }[] = [
+  { id: 'rows', label: '单列', icon: <Rows3 size={14} /> },
+  { id: 'grid', label: '网格', icon: <LayoutGrid size={14} /> },
+  { id: 'compact', label: '紧凑', icon: <Layers size={14} /> },
+]
+
+/** The glyph a card leads with; the same frame, a different picture per kind. */
+function kindGlyph(entry: EntrySummary): React.ReactElement {
+  const size = 16
+  if (entry.kind === 'image') return <ImageIcon size={size} />
+  if (entry.kind === 'link') {
+    const media = entry.platform === 'bilibili' || entry.platform === 'xiaoyuzhou'
+    if (media) return entry.platform === 'xiaoyuzhou' ? <Music size={size} /> : <Film size={size} />
+    return <Link2 size={size} />
+  }
+  if (entry.kind === 'file') return <Paperclip size={size} />
+  return <FileText size={size} />
+}
+
+/**
+ * One record as a card.
+ *
+ * The frame is identical for every kind on purpose: what changes inside is the
+ * picture and the one line under the title. A row that reads `图片 · 图片 ·
+ * 未读 · 1 个附件 · 规则判的` said the same thing three times.
+ *
+ * @param props - the summary, whether it is selected, and how to lay it out.
+ * @returns the card.
+ */
+function EntryCard({
   entry,
+  mode,
   selected,
   onOpen,
 }: {
   entry: EntrySummary
+  mode: ListMode
   selected: boolean
   onOpen: () => void
 }): React.ReactElement {
   const heading = entry.title ?? entry.url ?? entry.preview ?? '（无标题）'
+  const compact = mode === 'compact'
+  const wash = selected ? 'color-mix(in srgb, currentColor 12%, transparent)' : 'transparent'
   return (
-    <li>
-      <button
-        type="button"
-        onClick={onOpen}
+    <button
+      type="button"
+      onClick={onOpen}
+      style={{
+        display: 'flex',
+        gap: compact ? 8 : 10,
+        alignItems: 'flex-start',
+        width: '100%',
+        textAlign: 'left',
+        font: 'inherit',
+        color: 'inherit',
+        background: wash,
+        border: selected
+          ? '1px solid color-mix(in srgb, currentColor 45%, transparent)'
+          : '1px solid color-mix(in srgb, currentColor 12%, transparent)',
+        borderRadius: 10,
+        padding: compact ? '6px 8px' : '9px 10px',
+        cursor: 'pointer',
+        opacity: entry.status === 'read' ? 0.72 : 1,
+      }}
+    >
+      <span
+        aria-hidden
         style={{
-          display: 'block',
-          width: '100%',
-          textAlign: 'left',
-          font: 'inherit',
-          color: 'inherit',
-          background: selected ? 'color-mix(in srgb, currentColor 10%, transparent)' : 'transparent',
-          border: 'none',
-          borderTop: '1px solid color-mix(in srgb, currentColor 12%, transparent)',
-          padding: '8px 6px',
-          cursor: 'pointer',
+          flex: 'none',
+          width: compact ? 24 : 30,
+          height: compact ? 24 : 30,
+          borderRadius: 7,
+          display: 'grid',
+          placeItems: 'center',
+          background: 'color-mix(in srgb, currentColor 8%, transparent)',
+          border: '1px solid color-mix(in srgb, currentColor 10%, transparent)',
         }}
       >
-        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-          <span style={{ opacity: 0.6 }}>{KIND_LABELS[entry.kind]}</span>
-          <span style={{ opacity: 0.6 }}>· {CATEGORY_LABELS[entry.category]}</span>
-          <span style={{ opacity: entry.status === 'unread' ? 1 : 0.6 }}>
-            · {STATUS_LABELS[entry.status]}
+        {kindGlyph(entry)}
+      </span>
+      <span style={{ minWidth: 0, flex: 1 }}>
+        <span style={{ display: 'block', overflowWrap: 'anywhere' }}>{heading}</span>
+        {!compact && entry.preview !== undefined && entry.preview !== heading && (
+          <span style={{ display: 'block', opacity: 0.65, marginTop: 2, overflowWrap: 'anywhere' }}>
+            {entry.preview.slice(0, 90)}
           </span>
-          {entry.platform !== undefined && <span style={{ opacity: 0.6 }}>· {entry.platform}</span>}
-          {entry.attachmentCount > 0 && (
-            <span style={{ opacity: 0.6 }}>· {entry.attachmentCount} 个附件</span>
-          )}
-          {entry.deletedAt !== undefined && <span style={{ color: 'salmon' }}>· 已删</span>}
-          <span style={{ marginLeft: 'auto', opacity: 0.5 }}>
-            {new Date(entry.createdAt).toLocaleString()}
-          </span>
-        </div>
-        <div style={{ marginTop: 2, overflowWrap: 'anywhere' }}>{heading}</div>
-        {entry.tags.length > 0 && (
-          <div style={{ marginTop: 2, opacity: 0.6 }}>{entry.tags.map((t) => `#${t}`).join(' ')}</div>
         )}
-      </button>
-    </li>
+        <span
+          style={{
+            display: 'flex',
+            gap: 6,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            marginTop: 4,
+            fontSize: 12,
+            opacity: 0.6,
+          }}
+        >
+          <span>{CATEGORY_LABELS[entry.category]}</span>
+          {entry.platform !== undefined && <span>· {entry.platform}</span>}
+          {entry.attachmentCount > 0 && <span>· {entry.attachmentCount} 附件</span>}
+          {entry.deletedAt !== undefined && <span style={{ color: 'salmon' }}>· 已删</span>}
+          <span>· {new Date(entry.createdAt).toLocaleDateString()}</span>
+          {entry.tags.map((tag) => (
+            <span key={tag}>#{tag}</span>
+          ))}
+          <span style={{ marginLeft: 'auto' }}>
+            {entry.status === 'read' ? <Check size={13} /> : '未读'}
+          </span>
+        </span>
+      </span>
+    </button>
   )
 }
 
@@ -1093,7 +1210,7 @@ function EntryPane({
           {CATEGORY_LABELS[detail.category]}
           {detail.categorySource === undefined
             ? ''
-            : `（${CATEGORY_SOURCE_LABELS[detail.categorySource]}判的）`}
+            : ` · ${CATEGORY_SOURCE_LABELS[detail.categorySource]}`}
         </span>
         {detail.platform !== undefined && <span style={{ opacity: 0.6 }}>· {detail.platform}</span>}
         <span style={{ marginLeft: 'auto', opacity: 0.6 }}>
@@ -1171,7 +1288,9 @@ function EntryPane({
       </label>
 
       <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ opacity: 0.7 }}>描述（你写的永远优先于模型的判断）</span>
+        <span style={{ opacity: 0.7 }} title="你写的永远优先于模型的判断">
+          描述
+        </span>
         <textarea
           value={note}
           disabled={busy}

@@ -262,7 +262,7 @@ const CATS = [
 const KIND = { text: '文本', link: '链接', image: '图片', file: '文件' };
 const KIND_ICON = { text: 'file-text', link: 'link-2', image: 'image', file: 'paperclip' };
 const SRC = { panel: '面板', chat: '对话', webdav: 'WebDAV', import: '导入' };
-const CATSOURCE = { rule: ['规则判的', 'ruler'], model: ['模型判的', 'sparkles'], user: ['你定', 'user'] };
+const CATSOURCE = { rule: ['规则', 'ruler'], model: ['模型', 'sparkles'], user: ['你', 'user'] };
 const cat = (id) => (CATS.find((c) => c[0] === id) ?? CATS[6])[1];
 const catIcon = (id) => (CATS.find((c) => c[0] === id) ?? CATS[6])[2];
 
@@ -343,19 +343,19 @@ function cardBody(r) {
   const p = plat(r);
   if (r.category === 'secret') {
     return `<span class="masked tiny">•••••••••••••••• ••••••••</span>
-      <span class="meta">${icon('lock', 12)} 列表里不显示明文 · 对话里永不输出</span>`;
+      <span class="meta">${icon('lock', 12)} 不显示明文</span>`;
   }
   if (r.kind === 'image') {
     return `<span class="sub">${esc(r.att ?? '1 个附件')}</span>
-      <span class="meta">${icon('zoom-in', 12)} 点开可放大${(r.tags || []).includes('疑似证件') ? ` · <span style="color:var(--warn)">${icon('shield-alert', 12)} 疑似证件</span>` : ''}</span>`;
+      <span class="meta">${icon('zoom-in', 12)} 可放大${(r.tags || []).includes('疑似证件') ? ` · <span style="color:var(--warn)">${icon('shield-alert', 12)} 疑似证件</span>` : ''}</span>`;
   }
   if (r.kind === 'file') {
     return `<span class="sub">${esc(r.att ?? '附件')}</span>
-      <span class="meta">${icon('paperclip', 12)} 文件 · 点开可预览/放大</span>`;
+      <span class="meta">${icon('paperclip', 12)} 可预览</span>`;
   }
   if (p && (p.kind === 'video' || p.kind === 'audio')) {
     return `<span class="sub">${esc(p.name)} · ${esc(p.domain)}${r.duration ? ` · ${esc(r.duration)}` : ''}</span>
-      <span class="meta">${icon(p.kind === 'video' ? 'film' : 'music', 12)} ${p.kind === 'video' ? '视频' : '音频'} · ${icon('zoom-in', 12)} 可放大预览</span>`;
+      <span class="meta">${icon(p.kind === 'video' ? 'film' : 'music', 12)} ${p.kind === 'video' ? '视频' : '音频'} · ${icon('zoom-in', 12)} 可放大</span>`;
   }
   if (r.kind === 'link') {
     return `<span class="sub">${esc(r.url)}</span>
