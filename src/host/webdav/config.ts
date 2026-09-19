@@ -25,18 +25,33 @@ export const SETTINGS_NAMESPACE = 'dsh-inbox-webdav'
 /** The credential key holding the password. */
 export const PASSWORD_KEY = 'DSH_INBOX_WEBDAV_PASSWORD'
 
+/** The credential key holding the S3 secret access key. */
+export const S3_SECRET_KEY = 'DSH_INBOX_S3_SECRET'
+
 /** The composed defaults, so a fresh install has a sane shape. */
 export const DEFAULT_SETTINGS: WebdavSettings = {
+  protocol: 'webdav',
   baseUrl: '',
   directory: '/inbox',
   username: '',
+  endpoint: '',
+  bucket: '',
+  region: 'us-east-1',
+  signatureVersion: 'v4',
+  accessKeyId: '',
 }
 
 /** The namespace's schema: every field optional, so a partial user layer is valid. */
 export const WebdavSettingsSchema = z.object({
+  protocol: z.union(['webdav', 's3']).default('webdav'),
   baseUrl: z.string().default(''),
   directory: z.string().default('/inbox'),
   username: z.string().default(''),
+  endpoint: z.string().default(''),
+  bucket: z.string().default(''),
+  region: z.string().default('us-east-1'),
+  signatureVersion: z.string().default('v4'),
+  accessKeyId: z.string().default(''),
 })
 
 /** The slice of the settings service this file uses. */
@@ -79,12 +94,26 @@ export async function readPassword(ctx: Context): Promise<string | undefined> {
   }
 }
 
+/** Read the S3 secret access key, or undefined when none is stored. */
+export async function readS3Secret(ctx: Context): Promise<string | undefined> {
+  const credentials = ctx.get('credentials') as CredentialsLike | undefined
+  if (credentials === undefined) return undefined
+  try {
+    return (await credentials.resolve(S3_SECRET_KEY))?.value
+  } catch {
+    return undefined
+  }
+}
+
 /** Everything the panel needs, without ever handing out the password. */
 export async function describeWebdav(ctx: Context): Promise<WebdavStatus> {
   const credentials = ctx.get('credentials') as CredentialsLike | undefined
+  const password = await readPassword(ctx)
+  const secret = await readS3Secret(ctx)
   return {
     settings: readSettings(ctx),
-    passwordSet: (await readPassword(ctx)) !== undefined,
+    passwordSet: password !== undefined,
+    secretSet: secret !== undefined,
     settingsAvailable: ctx.get('settings') !== undefined,
     credentialsAvailable: credentials !== undefined,
   }
@@ -92,11 +121,19 @@ export async function describeWebdav(ctx: Context): Promise<WebdavStatus> {
 
 /** What a save may change. An absent password leaves the stored one alone. */
 export interface WebdavPatch {
+  protocol?: string
   baseUrl?: string
   directory?: string
   username?: string
   /** Empty string clears the stored password; undefined leaves it. */
   password?: string
+  endpoint?: string
+  bucket?: string
+  region?: string
+  signatureVersion?: string
+  accessKeyId?: string
+  /** Empty string clears the stored S3 secret; undefined leaves it. */
+  accessKeySecret?: string
 }
 
 /**
@@ -122,12 +159,22 @@ export async function saveWebdav(
   const credentials = ctx.get('credentials') as CredentialsLike | undefined
 
   const config: Partial<WebdavSettings> = {}
+  if (patch.protocol === 'webdav' || patch.protocol === 's3') config.protocol = patch.protocol
   if (patch.baseUrl !== undefined) config.baseUrl = patch.baseUrl.trim()
   if (patch.directory !== undefined) {
     const directory = patch.directory.trim()
     config.directory = directory.startsWith('/') ? directory : `/${directory}`
   }
   if (patch.username !== undefined) config.username = patch.username.trim()
+  if (patch.endpoint !== undefined) config.endpoint = patch.endpoint.trim()
+  if (patch.bucket !== undefined) config.bucket = patch.bucket.trim()
+  if (patch.region !== undefined) config.region = patch.region.trim() || 'us-east-1'
+  if (patch.signatureVersion !== undefined) {
+    const version = patch.signatureVersion.trim().toLowerCase()
+    if (version !== 'v4') return { ok: false, reason: `只实现了 v4 签名，收到的是 ${version}` }
+    config.signatureVersion = 'v4'
+  }
+  if (patch.accessKeyId !== undefined) config.accessKeyId = patch.accessKeyId.trim()
 
   if (Object.keys(config).length > 0) {
     if (settings === undefined) {
@@ -144,6 +191,14 @@ export async function saveWebdav(
     }
     if (patch.password.length === 0) await credentials.unset(PASSWORD_KEY)
     else await credentials.set(PASSWORD_KEY, patch.password)
+  }
+
+  if (patch.accessKeySecret !== undefined) {
+    if (credentials === undefined) {
+      return { ok: false, reason: '这个组合里没有凭证服务，密钥不知道存哪才安全' }
+    }
+    if (patch.accessKeySecret.length === 0) await credentials.unset(S3_SECRET_KEY)
+    else await credentials.set(S3_SECRET_KEY, patch.accessKeySecret)
   }
 
   void vault

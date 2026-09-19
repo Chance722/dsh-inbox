@@ -93,11 +93,17 @@ Nothing is installed into `dsh` itself and no global state is touched, so removi
 
 ## Development
 
-### WebDAV (the phone's way in)
+### Remote inbox (the phone's way in)
 
-Open the panel, press **⚙ 入库设置**, and fill in the base URL (e.g.
-`https://data.cstcloud.cn/dav`), the folder (default `/inbox`), the username and
-the password. Save, then press **立即拉取**.
+Open the panel, press **⚙ 入库设置**, and pick a protocol:
+
+- **WebDAV** — base URL (e.g. `https://data.cstcloud.cn/dav`), folder (default
+  `/inbox`), username and password.
+- **S3** — endpoint (e.g. `https://s3.cstcloud.cn`), bucket, region, signature
+  version (v4), AccessKey ID and AccessKey Secret.
+
+Save, then press **立即拉取**. Passwords and secrets go to dsh's credential
+store, never into configuration.
 
 Anything another device drops into that folder is pulled, classified and filed —
 text-ish files become text or links, everything else becomes an attachment.

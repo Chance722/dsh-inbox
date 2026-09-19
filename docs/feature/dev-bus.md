@@ -13,7 +13,7 @@
 | M3 | 侧栏面板 | 看得见、管得动 | 列表 + 按类目/标签/未读筛选 + 详情 + 改备注与类目 + 标记已读 + 软删/回收站 | 已验收 |
 | M4 | 对话工具与卡片 | 对话里取得到 | 检索/取回接口按约定返回（文本截断 1000 字、图片缩略图、链接卡、列表 10 条 + 还有 N 条）；截图留证 | 已验收 |
 | M5 | 分类与脱敏 | 自动分类且不泄密 | 规则层（URL 判平台/类型、密钥正则、图片本地启发式）+ API 兜底 + 发模型前脱敏；用户描述优先级高于模型，有单测覆盖 | 已验收 |
-| M6 | 远端单向摄取 | 别的设备进得来 | 配好远端（WebDAV / S3）→ 启动拉取远端 `inbox/` → 入库 → 走分类；远端不可用不阻塞启动 | 进行中（WebDAV 已验收；按用户要求增加 S3 接入，客户端已完成） |
+| M6 | 远端单向摄取 | 别的设备进得来 | 配好远端（WebDAV / S3）→ 启动拉取远端 `inbox/` → 入库 → 走分类；远端不可用不阻塞启动 | 已验收（WebDAV + S3 双协议） |
 | M7 | 打包与一键安装 | 别人装得上 | npm 包可发布 + `init` 完成装配（装包/建 preset/指默认）；中英 README；在干净环境按 README 走一遍成功 | 未开始 |
 
 ## 依赖关系
@@ -280,3 +280,15 @@
 **证据**：`test/s3.test.ts` 9 条——日期格式、**canonical request 逐行钉住**（查询串排序、`inbox/` 作为值被编码、空 body 的 SHA-256）、path-style URL、Credential/SignedHeaders 形状、签名确定性、改密钥/改日期/改 region 签名必须变、列表 XML 解析（含 `&amp;` 反转义）、403 变成人话、对象读取带 content-type。全套 **119 条**全绿。
 
 **还没做**：设置里加 `protocol` 与 S3 字段、AccessKey Secret 进凭证库、把摄取层改成"源无关"（WebDAV 与 S3 共用同一条分类/合并逻辑）、面板表单加协议切换与 S3 输入框、对你的真实 endpoint 做一次端到端。
+
+#### M6c 完成（同日）
+
+- **摄取层改成源无关**（`src/host/remote/pull.ts`）：协议藏在 `RemoteSource` 后面，WebDAV 与 S3 各自只负责"列"与"读"，其余（哪些是新的、什么算文本、重复如何合并、失败长什么样）**只实现一次**。刻意不做两份——会漂移的那份，恰好是"悄悄存两遍"的那份。
+- **设置扩展**：`protocol`（webdav / s3）+ `endpoint` / `bucket` / `region` / `signatureVersion` / `accessKeyId`；WebDAV 的 `directory` 同时是 S3 的 key 前缀（`/inbox` → `inbox/`）。
+- **密钥分家**：AccessKey Secret 进 `ctx.credentials` 的 `DSH_INBOX_S3_SECRET`，与 WebDAV 密码同等待遇；状态接口只报"存过没有"（`passwordSet` / `secretSet`），从不回显。
+- **签名版本**：只实现 v4，填别的会明确回绝（`只实现了 v4 签名，收到的是 v2`），而不是静默用错签名去撞。
+- **面板**：⚙ 表单加协议切换；选 S3 时显示接入点/Bucket/签名/区域/AccessKey ID/Secret；标题从"WebDAV 入库"改为"远端入库"。
+
+**证据**：`pnpm test` 12 个文件 **119 条**全绿——WebDAV 那 8 条在重构后**没改一行就通过**，正好证明"源无关"抽取没改变原有行为。
+
+**命名债（如实记）**：`webdav/config.ts`、`WebdavSettings`、`WebdavStatus`、端点名 `webdav` 这些名字是 M6b 留下的，现在同时覆盖两种协议。没改是因为改动面大于收益；`panel-wire.ts` 里已经写明"这个端点名的历史原因"。

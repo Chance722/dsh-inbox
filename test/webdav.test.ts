@@ -19,7 +19,7 @@ import * as storageJson from '@deepseek-ai/dsh-storage-json'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { authHeaders, joinUrl, parseListing, type FetchLike } from '../src/host/webdav/client.js'
-import { pullRemote } from '../src/host/webdav/pull.js'
+import { pullRemote } from '../src/host/remote/pull.js'
 import { Vault } from '../src/host/vault/vault.js'
 
 /** A content-addressed stand-in for the shipped attachment store. */

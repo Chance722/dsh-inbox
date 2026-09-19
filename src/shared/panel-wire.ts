@@ -49,27 +49,59 @@ export const INBOX_ENDPOINT_PULL = 'pull'
 /** What the panel sends to `webdav`: read the status, or save a patch. */
 export interface WebdavRequest {
   action: 'read' | 'save'
+  protocol?: RemoteProtocol
   baseUrl?: string
   directory?: string
   username?: string
   /** Empty string clears the stored password; absent leaves it alone. */
   password?: string
+  endpoint?: string
+  bucket?: string
+  region?: string
+  signatureVersion?: string
+  accessKeyId?: string
+  /** Empty string clears the stored S3 secret; absent leaves it alone. */
+  accessKeySecret?: string
 }
 
-/** The non-secret half of the WebDAV configuration. */
+/** Which remote protocol the vault pulls from. */
+export const REMOTE_PROTOCOLS = ['webdav', 's3'] as const
+export type RemoteProtocol = (typeof REMOTE_PROTOCOLS)[number]
+
+/**
+ * The non-secret half of the remote configuration.
+ *
+ * The wire still calls this endpoint `webdav` for historical reasons; it now
+ * carries both protocols, and the field below is what decides which.
+ */
 export interface WebdavSettings {
+  /** Which client the pull uses. */
+  protocol: RemoteProtocol
+  /** WebDAV: base URL, e.g. `https://data.cstcloud.cn/dav`. */
   /** Base URL, e.g. `https://data.cstcloud.cn/dav`. */
   baseUrl: string
   /** Folder under the base URL; the convention every device drops into. */
   directory: string
   username: string
+  /** S3: endpoint host, e.g. `https://s3.cstcloud.cn`. */
+  endpoint: string
+  /** S3: bucket to read from. */
+  bucket: string
+  /** S3: covered by the signature even when the server ignores it. */
+  region: string
+  /** S3: only `v4` is implemented; the field exists so the choice is visible. */
+  signatureVersion: string
+  /** S3: the identifier, which is not a secret. */
+  accessKeyId: string
 }
 
 /** What the panel needs to render the form and its status. */
 export interface WebdavStatus {
   settings: WebdavSettings
-  /** Whether a password is stored — never the value itself. */
+  /** Whether the WebDAV password is stored — never the value itself. */
   passwordSet: boolean
+  /** Whether the S3 secret is stored — never the value itself. */
+  secretSet: boolean
   settingsAvailable: boolean
   credentialsAvailable: boolean
 }

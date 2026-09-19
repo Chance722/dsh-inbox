@@ -71,7 +71,7 @@ import {
   type WebdavStatus,
 } from './webdav/config.js'
 import { runPull } from './webdav/run.js'
-import type { PullResult } from './webdav/pull.js'
+import type { PullResult } from '../shared/panel-wire.js'
 import type { Attachment, Item } from './vault/spec.js'
 import type { Vault } from './vault/vault.js'
 
@@ -422,19 +422,37 @@ async function handleWebdav(
 ): Promise<InboxRpcResult<unknown>> {
   const request = (payload ?? {}) as {
     action?: unknown
+    protocol?: unknown
     baseUrl?: unknown
     directory?: unknown
     username?: unknown
     password?: unknown
+    endpoint?: unknown
+    bucket?: unknown
+    region?: unknown
+    signatureVersion?: unknown
+    accessKeyId?: unknown
+    accessKeySecret?: unknown
   }
   const action = request.action === 'save' ? 'save' : 'read'
 
   if (action === 'save') {
     const patch: WebdavPatch = {}
+    if (typeof request.protocol === 'string') patch.protocol = request.protocol
     if (typeof request.baseUrl === 'string') patch.baseUrl = request.baseUrl
     if (typeof request.directory === 'string') patch.directory = request.directory
     if (typeof request.username === 'string') patch.username = request.username
     if (typeof request.password === 'string') patch.password = request.password
+    if (typeof request.endpoint === 'string') patch.endpoint = request.endpoint
+    if (typeof request.bucket === 'string') patch.bucket = request.bucket
+    if (typeof request.region === 'string') patch.region = request.region
+    if (typeof request.signatureVersion === 'string') {
+      patch.signatureVersion = request.signatureVersion
+    }
+    if (typeof request.accessKeyId === 'string') patch.accessKeyId = request.accessKeyId
+    if (typeof request.accessKeySecret === 'string') {
+      patch.accessKeySecret = request.accessKeySecret
+    }
     const saved = await saveWebdav(ctx, vault, readSettings(ctx), patch)
     if (!saved.ok) return failure('inbox/webdav-unsaved', saved.reason ?? '存不进去')
   }

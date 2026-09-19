@@ -671,6 +671,13 @@ function WebdavSettings({
   const [directory, setDirectory] = React.useState('/inbox')
   const [username, setUsername] = React.useState('')
   const [password, setPassword] = React.useState('')
+  const [protocol, setProtocol] = React.useState<'webdav' | 's3'>('webdav')
+  const [endpoint, setEndpoint] = React.useState('')
+  const [bucket, setBucket] = React.useState('')
+  const [region, setRegion] = React.useState('us-east-1')
+  const [signatureVersion, setSignatureVersion] = React.useState('v4')
+  const [accessKeyId, setAccessKeyId] = React.useState('')
+  const [accessKeySecret, setAccessKeySecret] = React.useState('')
   const [notice, setNotice] = React.useState<string>()
   const [busy, setBusy] = React.useState(false)
 
@@ -685,7 +692,14 @@ function WebdavSettings({
     setBaseUrl(next.settings.baseUrl)
     setDirectory(next.settings.directory)
     setUsername(next.settings.username)
+    setProtocol(next.settings.protocol)
+    setEndpoint(next.settings.endpoint)
+    setBucket(next.settings.bucket)
+    setRegion(next.settings.region)
+    setSignatureVersion(next.settings.signatureVersion)
+    setAccessKeyId(next.settings.accessKeyId)
     setPassword('')
+    setAccessKeySecret('')
   }, [call])
 
   React.useEffect(() => {
@@ -697,11 +711,18 @@ function WebdavSettings({
     try {
       const request: WebdavRequest = {
         action: 'save',
+        protocol,
         baseUrl,
         directory,
         username,
         // Sending nothing leaves the stored password alone; sending "" clears it.
         ...(password.length === 0 ? {} : { password }),
+        endpoint,
+        bucket,
+        region,
+        signatureVersion,
+        accessKeyId,
+        ...(accessKeySecret.length === 0 ? {} : { accessKeySecret }),
       }
       const result = await call(INBOX_ENDPOINT_WEBDAV, request)
       if (!result.ok) {
@@ -710,6 +731,7 @@ function WebdavSettings({
       }
       setStatus(result.value as WebdavStatus)
       setPassword('')
+      setAccessKeySecret('')
       setNotice('设置已保存')
     } finally {
       setBusy(false)
@@ -729,7 +751,7 @@ function WebdavSettings({
   return (
     <section style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-        <strong>WebDAV 入库</strong>
+        <strong>远端入库</strong>
         <span style={{ opacity: 0.65 }}>
           {status === undefined
             ? '读取中…'
@@ -748,6 +770,26 @@ function WebdavSettings({
         </p>
       )}
 
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span style={{ opacity: 0.7, minWidth: 64 }}>协议</span>
+        <select
+          value={protocol}
+          disabled={busy}
+          onChange={(event) => {
+            const next = event.target.value === 's3' ? 's3' : 'webdav'
+            setProtocol(next)
+            // Leaving the field is not the same as saving it; save applies it.
+          }}
+          style={{ ...inputStyle, padding: '4px 6px' }}
+        >
+          <option value="webdav">WebDAV</option>
+          <option value="s3">S3</option>
+        </select>
+        <span style={{ opacity: 0.6 }}>换协议后记得点保存</span>
+      </label>
+
+      {protocol === 'webdav' ? (
+        <>
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <span style={{ opacity: 0.7, minWidth: 64 }}>地址</span>
         <input
@@ -792,6 +834,77 @@ function WebdavSettings({
           style={{ ...inputStyle, flex: 1 }}
         />
       </label>
+        </>
+      ) : (
+        <>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ opacity: 0.7, minWidth: 64 }}>接入点</span>
+            <input
+              value={endpoint}
+              disabled={busy}
+              onChange={(event) => setEndpoint(event.target.value)}
+              placeholder="https://s3.cstcloud.cn"
+              style={{ ...inputStyle, flex: 1 }}
+            />
+          </label>
+
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ opacity: 0.7, minWidth: 64 }}>Bucket</span>
+            <input
+              value={bucket}
+              disabled={busy}
+              onChange={(event) => setBucket(event.target.value)}
+              style={{ ...inputStyle, flex: 1 }}
+            />
+          </label>
+
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ opacity: 0.7, minWidth: 64 }}>签名</span>
+            <select
+              value={signatureVersion}
+              disabled={busy}
+              onChange={(event) => setSignatureVersion(event.target.value)}
+              style={{ ...inputStyle, padding: '4px 6px' }}
+            >
+              <option value="v4">v4（唯一实现）</option>
+            </select>
+            <span style={{ opacity: 0.7, minWidth: 40 }}>区域</span>
+            <input
+              value={region}
+              disabled={busy}
+              onChange={(event) => setRegion(event.target.value)}
+              placeholder="us-east-1"
+              style={{ ...inputStyle, width: 140 }}
+            />
+          </label>
+
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ opacity: 0.7, minWidth: 64 }}>AccessKey ID</span>
+            <input
+              value={accessKeyId}
+              disabled={busy}
+              onChange={(event) => setAccessKeyId(event.target.value)}
+              style={{ ...inputStyle, flex: 1 }}
+            />
+          </label>
+
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ opacity: 0.7, minWidth: 64 }}>Secret</span>
+            <input
+              type="password"
+              value={accessKeySecret}
+              disabled={busy || status?.credentialsAvailable === false}
+              onChange={(event) => setAccessKeySecret(event.target.value)}
+              placeholder={status?.secretSet === true ? '已存（留空则不改）' : '存在 dsh 的凭证库里'}
+              style={{ ...inputStyle, flex: 1 }}
+            />
+          </label>
+
+          <p style={{ margin: 0, opacity: 0.6 }}>
+            目录那一栏同时是 S3 的 key 前缀（默认 <code>/inbox</code>，会转成 <code>inbox/</code>）。
+          </p>
+        </>
+      )}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button type="button" style={buttonStyle} disabled={busy} onClick={() => void save()}>
