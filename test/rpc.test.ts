@@ -10,6 +10,7 @@
  */
 
 import { createHash } from 'node:crypto'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -48,14 +49,29 @@ import {
   type UpdateResult,
 } from '../src/shared/panel-wire.js'
 
-/** Content-addressed stand-in: ids look exactly like the shipped store's. */
+/**
+ * Content-addressed stand-in: ids look exactly like the shipped store's, and the
+ * bytes land in a directory the host can read back — the attachment route serves
+ * pictures and plays videos off the filesystem, so a stand-in that kept nothing
+ * could not exercise it.
+ */
 class FakeAttachmentStore {
   readonly objects = new Map<string, { mediaType: string; name?: string }>()
+
+  constructor(private readonly root: string) {}
 
   private save(bytes: Uint8Array, mediaType: string, name?: string): string {
     const id = `sha256:${createHash('sha256').update(bytes).digest('hex')}`
     this.objects.set(id, { mediaType, ...(name === undefined ? {} : { name }) })
+    const directory = join(this.root, 'objects')
+    mkdirSync(directory, { recursive: true })
+    writeFileSync(this.pathOf(id), bytes)
     return id
+  }
+
+  /** One file per id, named the way the store's own ids travel. */
+  private pathOf(id: string): string {
+    return join(this.root, 'objects', id.replace(':', '-'))
   }
 
   async saveImages(
@@ -79,9 +95,12 @@ class FakeAttachmentStore {
     }
   }
 
-  /** The stand-in keeps no files, so nothing is locally previewable. */
-  imageHostPath(): undefined {
-    return undefined
+  imageHostPath(ref: { attachmentId: string }): string {
+    return this.pathOf(ref.attachmentId)
+  }
+
+  fileHostPath(ref: { attachmentId: string }): string {
+    return this.pathOf(ref.attachmentId)
   }
 }
 
@@ -132,12 +151,15 @@ async function post(
   return { status: response.status, body: (await response.json()) as InboxRpcResult<unknown> }
 }
 
-/** GET one attachment the way an `<img src>` does. */
-async function getAttachment(id: string): Promise<Response> {
+/** GET one attachment the way an `<img src>` or a media element does. */
+async function getAttachment(id: string, headers?: Record<string, string>): Promise<Response> {
   const route = routes.get(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}`)
   if (route === undefined) throw new Error('attachment route was not registered')
   return route.fetch(
-    new Request(`http://127.0.0.1${route.path}?id=${encodeURIComponent(id)}`, { method: 'GET' }),
+    new Request(`http://127.0.0.1${route.path}?id=${encodeURIComponent(id)}`, {
+      method: 'GET',
+      ...(headers === undefined ? {} : { headers }),
+    }),
   )
 }
 
@@ -161,7 +183,8 @@ async function file(text: string, extra: Record<string, unknown> = {}): Promise<
     : ''
 }
 
-const PNG_BASE64 = Buffer.from('not-really-a-png-but-canonical-base64').toString('base64')
+const PNG_BASE64_PLAIN = 'not-really-a-png-but-canonical-base64'
+const PNG_BASE64 = Buffer.from(PNG_BASE64_PLAIN).toString('base64')
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'dsh-inbox-rpc-'))
@@ -171,7 +194,7 @@ beforeEach(async () => {
   await ctx.plugin(storageDomain, { backend: 'json' }).await()
   vault = await Vault.open(ctx)
   routes = new Map()
-  store = new FakeAttachmentStore()
+  store = new FakeAttachmentStore(root)
   mount()
 })
 
@@ -396,16 +419,63 @@ describe('detail, edit and the recycle bin', () => {
     expect(vault?.findAttachmentByStoreId(`sha256:${createHash('sha256').update('not-really-a-png-but-canonical-base64').digest('hex')}`)).toBeUndefined()
   })
 
-  it('serves attachment bytes only for images it can reach', async () => {
+  it('serves attachment bytes only for the media it can render', async () => {
     await post(INBOX_ENDPOINT_CAPTURE, {
       images: [{ mediaType: 'image/png', data: PNG_BASE64, name: 'shot.png' }],
     })
+    await post(INBOX_ENDPOINT_CAPTURE, {
+      files: [{ data: Buffer.from('a plain document').toString('base64'), name: 'notes.pdf' }],
+    })
     const image = vault?.list({ kinds: ['image'] })[0]
-    const attachmentId = image?.attachmentIds[0] ?? ''
+    const file = vault?.list({ kinds: ['file'] })[0]
 
     expect((await getAttachment('nope')).status).toBe(404)
-    // The stand-in store keeps no files, so the route reports "not on this machine".
-    expect((await getAttachment(attachmentId)).status).toBe(404)
+
+    const picture = await getAttachment(image?.attachmentIds[0] ?? '')
+    expect(picture.status).toBe(200)
+    expect(picture.headers.get('content-type')).toBe('image/png')
+    expect(picture.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(Buffer.from(await picture.arrayBuffer()).toString()).toBe(PNG_BASE64_PLAIN)
+
+    // A document has no player and no `<img>`; the route says so instead of
+    // handing the browser bytes it would have to guess about.
+    const refused = await getAttachment(file?.attachmentIds[0] ?? '')
+    expect(refused.status).toBe(415)
+    expect((await refused.json()).error.code).toBe('inbox/attachment-not-renderable')
+  })
+
+  it('plays a video by ranges, so a player can seek without the whole file', async () => {
+    const bytes = '0123456789abcdef'
+    await post(INBOX_ENDPOINT_CAPTURE, {
+      files: [
+        {
+          data: Buffer.from(bytes).toString('base64'),
+          name: 'clip.mp4',
+          mediaType: 'video/mp4',
+        },
+      ],
+    })
+
+    const listed = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {}))
+    const clip = listed.entries.find((entry) => entry.kind === 'file')
+    // The card gets a preview slot for it — that is what makes it clickable.
+    expect(clip?.previewMime).toBe('video/mp4')
+    expect(clip?.previewId).toBeTruthy()
+
+    const whole = await getAttachment(clip?.previewId ?? '')
+    expect(whole.status).toBe(200)
+    expect(whole.headers.get('content-type')).toBe('video/mp4')
+    expect(whole.headers.get('accept-ranges')).toBe('bytes')
+
+    const part = await getAttachment(clip?.previewId ?? '', { range: 'bytes=4-7' })
+    expect(part.status).toBe(206)
+    expect(part.headers.get('content-range')).toBe(`bytes 4-7/${String(bytes.length)}`)
+    expect(Buffer.from(await part.arrayBuffer()).toString()).toBe('4567')
+
+    // A suffix range is how a player asks for the tail (the moov atom).
+    const tail = await getAttachment(clip?.previewId ?? '', { range: 'bytes=-3' })
+    expect(tail.status).toBe(206)
+    expect(Buffer.from(await tail.arrayBuffer()).toString()).toBe('def')
   })
 
   it('explains itself while the vault is closed', async () => {

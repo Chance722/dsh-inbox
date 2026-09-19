@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Circle,
+  ExternalLink,
   FileText,
   Film,
   IdCard,
@@ -27,6 +28,7 @@ import {
   Link2,
   Music,
   Paperclip,
+  Play,
   RefreshCw,
   RotateCcw,
   Settings2,
@@ -158,6 +160,23 @@ interface Staged {
 
 /** Which shelf the list is showing. */
 type Scope = 'live' | 'bin'
+
+/**
+ * What the lightbox is showing.
+ *
+ * Either bytes the panel can render itself — a picture it draws, a video or a
+ * sound it plays — or a page it must not embed (a video on someone else's site)
+ * and therefore hands to the browser.
+ */
+interface Lightbox {
+  label: string
+  /** The attachment's bytes, through the panel's own route. */
+  src?: string
+  /** `src`'s media type: `image/*`, `video/*` or `audio/*`. */
+  mime?: string
+  /** A page to open when there are no bytes to show. */
+  href?: string
+}
 
 const panelStyle: React.CSSProperties = {
   padding: '16px 20px',
@@ -383,7 +402,8 @@ function InboxPanel(): React.ReactElement {
   const [listMode, setListMode] = React.useState<ListMode>('grid')
   const [page, setPage] = React.useState(0)
   /** The attachment being looked at full size, if any. */
-  const [zoom, setZoom] = React.useState<{ src: string; label: string }>()
+  /** The open lightbox, if any — see `Lightbox`. */
+  const [zoom, setZoom] = React.useState<Lightbox>()
   /**
    * How much room the panel actually got.
    *
@@ -687,7 +707,13 @@ function InboxPanel(): React.ReactElement {
         if (entry.slot === 'image') {
           images.push({ mediaType: entry.file.type as WireImage['mediaType'], data, name: entry.name })
         } else {
-          files.push({ data, name: entry.name })
+          // The browser's own guess rides along; the host keeps it only for
+          // media it can play (see `WireFile.mediaType`).
+          files.push({
+            data,
+            name: entry.name,
+            ...(entry.file.type.length === 0 ? {} : { mediaType: entry.file.type }),
+          })
         }
       }
 
@@ -718,6 +744,33 @@ function InboxPanel(): React.ReactElement {
 
   /** How many pages the current filter has, for the pager's own rules. */
   const pageCount = Math.max(1, Math.ceil((list?.matched ?? 0) / PAGE_SIZE))
+
+  /** Which face the lightbox shows; a hand-off (no bytes) falls through to image. */
+  const zoomKind =
+    zoom?.mime?.startsWith('video/') === true
+      ? 'video'
+      : zoom?.mime?.startsWith('audio/') === true
+        ? 'audio'
+        : 'image'
+
+  /**
+   * The card's preview slot opens the lightbox the detail pane already uses.
+   *
+   * A record with bytes hands over its attachment and that attachment's media
+   * type; a media link has no bytes at all, so the lightbox gets the page to open
+   * instead.
+   */
+  const openEntryPreview = React.useCallback((entry: EntrySummary): void => {
+    if (entry.previewId !== undefined) {
+      setZoom({
+        src: attachmentUrl(entry.previewId),
+        ...(entry.previewMime === undefined ? {} : { mime: entry.previewMime }),
+        label: headingOf(entry),
+      })
+      return
+    }
+    if (entry.url !== undefined) setZoom({ href: entry.url, label: headingOf(entry) })
+  }, [])
 
   return (
     <div ref={panelRef} style={panelStyle}>
@@ -787,13 +840,85 @@ function InboxPanel(): React.ReactElement {
           }}
           onClick={() => setZoom(undefined)}
         >
-          <img
-            src={zoom.src}
-            alt={zoom.label}
-            style={{ maxWidth: '92vw', maxHeight: '80vh', borderRadius: 8, background: '#000' }}
-          />
+          {/*
+            Three shapes, one overlay: a picture, something that plays, or a page
+            we cannot embed. `<video>`/`<audio>` swallow their own clicks (their
+            controls are the point); anywhere else closes, which is why the wash
+            itself is the close target.
+          */}
+          {zoom.src !== undefined && zoomKind === 'video' && (
+            <video
+              src={zoom.src}
+              controls
+              autoPlay
+              playsInline
+              onClick={(event) => event.stopPropagation()}
+              style={{ maxWidth: '92vw', maxHeight: '80vh', borderRadius: 8, background: '#000' }}
+            />
+          )}
+          {zoom.src !== undefined && zoomKind === 'audio' && (
+            <audio
+              src={zoom.src}
+              controls
+              autoPlay
+              onClick={(event) => event.stopPropagation()}
+              style={{ width: 'min(560px, 92vw)' }}
+            />
+          )}
+          {zoom.src !== undefined && zoomKind === 'image' && (
+            <img
+              src={zoom.src}
+              alt={zoom.label}
+              style={{ maxWidth: '92vw', maxHeight: '80vh', borderRadius: 8, background: '#000' }}
+            />
+          )}
+          {zoom.src === undefined && (
+            /*
+              A video on someone else's site. Embedding their player would mean a
+              remote frame inside the panel and their own terms; handing the page
+              to the browser is the honest version, and it is also the big screen.
+            */
+            <div
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                ...cardStyle,
+                maxWidth: 'min(560px, 92vw)',
+                background: 'Canvas',
+                color: 'CanvasText',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+                alignItems: 'flex-start',
+              }}
+            >
+              <strong>这条是外站的内容</strong>
+              <span style={{ opacity: 0.75 }}>
+                面板不内嵌别人的播放器，所以在浏览器里打开——那里才是大屏。
+              </span>
+              {zoom.href !== undefined && (
+                <a
+                  href={zoom.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ ...primaryStyle, textDecoration: 'none' }}
+                >
+                  <ExternalLink size={14} /> 在浏览器里播放
+                </a>
+              )}
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 12, opacity: 0.85 }}>
             <span style={{ overflowWrap: 'anywhere' }}>{zoom.label}</span>
+            {zoom.src !== undefined && (
+              <a
+                href={zoom.src}
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              >
+                <ExternalLink size={13} /> 在浏览器打开
+              </a>
+            )}
             <button type="button" style={buttonStyle} onClick={() => setZoom(undefined)}>
               <X size={13} /> 关闭
             </button>
@@ -1192,6 +1317,7 @@ function InboxPanel(): React.ReactElement {
                 mode={listMode}
                 selected={entry.id === selectedId}
                 onOpen={() => void openDetail(entry.id)}
+                onPreview={() => openEntryPreview(entry)}
               />
             ))}
           </div>
@@ -1288,7 +1414,7 @@ function InboxPanel(): React.ReactElement {
                 onRestore={() =>
                   mutate(INBOX_ENDPOINT_RESTORE, { id: detail.id }, { dropSelection: true })
                 }
-                onZoom={(src, label) => setZoom({ src, label })}
+                onZoom={setZoom}
               />
             </div>
           )
@@ -1324,7 +1450,7 @@ function InboxPanel(): React.ReactElement {
                 onRestore={() =>
                   mutate(INBOX_ENDPOINT_RESTORE, { id: detail.id }, { dropSelection: true })
                 }
-                onZoom={(src, label) => setZoom({ src, label })}
+                onZoom={setZoom}
               />
             )}
           </section>
@@ -1706,8 +1832,7 @@ const LIST_MODES: readonly { id: ListMode; label: string; icon: React.ReactEleme
 ]
 
 /** The glyph a card leads with; the same frame, a different picture per kind. */
-function kindGlyph(entry: EntrySummary): React.ReactElement {
-  const size = 20
+function kindGlyph(entry: EntrySummary, size = 22): React.ReactElement {
   if (entry.kind === 'image') return <ImageIcon size={size} />
   if (entry.kind === 'link') {
     const media = entry.platform === 'bilibili' || entry.platform === 'xiaoyuzhou'
@@ -1816,11 +1941,14 @@ function EntryCard({
   mode,
   selected,
   onOpen,
+  onPreview,
 }: {
   entry: EntrySummary
   mode: ListMode
   selected: boolean
   onOpen: () => void
+  /** Open the preview slot in the lightbox (a picture, or something that plays). */
+  onPreview: () => void
 }): React.ReactElement {
   /**
    * A credential's text never reaches the list.
@@ -1846,8 +1974,9 @@ function EntryCard({
    *
    * It is the record's *type*, and it answers a different question than the
    * picture does — so a record with a thumbnail shows both, side by side,
-   * instead of one replacing the other. One size in both densities: at 28px the
-   * compact row's glyph read as a smudge next to the title.
+   * instead of one replacing the other. One size in both densities: the user
+   * asked twice for it to be larger, and 38 is where it stopped reading as a
+   * smudge next to the title.
    */
   const glyph = (
     <span
@@ -1857,50 +1986,111 @@ function EntryCard({
         display: 'grid',
         placeItems: 'center',
         background: tileBackground(entry),
-        width: 34,
-        height: 34,
+        width: 38,
+        height: 38,
         borderRadius: 8,
         border: `1px solid ${hairline}`,
       }}
     >
-      {kindGlyph(entry)}
+      {kindGlyph(entry, 22)}
     </span>
   )
 
   /**
-   * The picture has a slot of its own, on the right of the card, square and
-   * cropped — not a full-width poster. A phone photo is portrait and a video
-   * still is landscape, so a fixed band would either letterbox one or crop the
-   * other into nonsense.
+   * The preview slot, on the right of the card, square and cropped — not a
+   * full-width poster. A phone photo is portrait and a video still is
+   * landscape, so a fixed band would either letterbox one or crop the other
+   * into nonsense.
+   *
+   * It is a button of its own: clicking it opens the panel's lightbox — the same
+   * one the detail pane's 「放大查看」 uses — and does *not* select the record,
+   * which is what the rest of the card is for. A media link has no bytes to show,
+   * so its tile is only an affordance and the lightbox hands the page over.
    */
-  const thumbnail =
-    entry.thumbnailId === undefined || compact ? null : (
-      <img
-        src={`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}?id=${encodeURIComponent(entry.thumbnailId)}`}
-        alt=""
-        loading="lazy"
+  const previewMime = entry.previewMime ?? ''
+  const previewKind = previewMime.startsWith('video/')
+    ? 'video'
+    : previewMime.startsWith('audio/')
+      ? 'audio'
+      : previewMime.startsWith('image/')
+        ? 'image'
+        : undefined
+  const mediaLink =
+    entry.kind === 'link' && (entry.platform === 'bilibili' || entry.platform === 'xiaoyuzhou')
+  const preview =
+    compact || (previewKind === undefined && !mediaLink) ? null : (
+      <button
+        type="button"
+        title={previewKind === undefined ? '在浏览器里播放' : '在面板里放大'}
+        onClick={(event) => {
+          // The card opens the record; the picture must not.
+          event.stopPropagation()
+          onPreview()
+        }}
         style={{
           flex: 'none',
           width: 64,
           height: 64,
-          objectFit: 'cover',
-          objectPosition: 'center',
-          borderRadius: 8,
+          padding: 0,
+          display: 'grid',
+          placeItems: 'center',
+          overflow: 'hidden',
+          background: tileBackground(entry),
           border: `1px solid ${hairline}`,
+          borderRadius: 8,
+          color: 'inherit',
+          cursor: previewKind === undefined ? 'pointer' : 'zoom-in',
         }}
-      />
+      >
+        {previewKind === 'image' && entry.previewId !== undefined ? (
+          <img
+            src={attachmentUrl(entry.previewId)}
+            alt=""
+            loading="lazy"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              objectPosition: 'center',
+              display: 'block',
+            }}
+          />
+        ) : (
+          <Play size={26} />
+        )}
+      </button>
     )
 
   return (
-    <button
-      type="button"
+    /*
+      A div carrying a button's semantics rather than a `<button>`: the preview
+      slot is a real button of its own, and interactive content may not nest.
+     */
+    <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
       onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        onOpen()
+      }}
       style={{
         position: 'relative',
         display: 'flex',
         alignItems: 'center',
         gap: compact ? 8 : 10,
         width: '100%',
+        // A div is content-box by default, a `<button>` was not.
+        boxSizing: 'border-box',
+        // One height for every card in the grid, whether or not it has a preview
+        // line to fill: the tallest natural card is the one with a picture
+        // (three text lines beside a 64px thumbnail), while a record whose
+        // heading doubles as its preview only fills two. 94 is what that tallest
+        // card measures with the panel's own font — the panel sets 14px/1.6
+        // system-ui rather than inheriting dsh's, so the number does not move.
+        ...(compact ? {} : { minHeight: 94 }),
         textAlign: 'left',
         font: 'inherit',
         color: 'inherit',
@@ -2035,8 +2225,8 @@ function EntryCard({
           ))}
         </span>
       </span>
-      {thumbnail}
-    </button>
+      {preview}
+    </div>
   )
 }
 
@@ -2054,8 +2244,8 @@ function EntryPane({
   onUpdate: (patch: Record<string, unknown>) => Promise<boolean>
   onDelete: () => Promise<boolean>
   onRestore: () => Promise<boolean>
-  /** Open one attachment full size, out of the panel's own layout. */
-  onZoom: (src: string, label: string) => void
+  /** Open one attachment full size (or playing), out of the panel's own layout. */
+  onZoom: (target: Lightbox) => void
 }): React.ReactElement {
   const [note, setNote] = React.useState(detail.note ?? '')
   const [tags, setTags] = React.useState(detail.tags.join(', '))
@@ -2154,14 +2344,18 @@ function EntryPane({
           }}
         >
           {detail.attachments.map((attachment) => {
-            const src = `${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}?id=${encodeURIComponent(attachment.id)}`
+            const src = attachmentUrl(attachment.id)
             const caption = attachmentCaption(attachment)
+            const playable =
+              attachment.mime.startsWith('video/') || attachment.mime.startsWith('audio/')
             /*
               A picture is not a document: no frame around it, and the picture
-              and its caption both sit on the pane's centre line. Everything
-              else keeps the framed box — a bare 📄 glyph would float.
+              and its caption both sit on the pane's centre line. A video or a
+              sound gets the same slot with a play badge, and opens in the
+              lightbox; a document keeps the framed box, because a bare 📄 glyph
+              would float.
             */
-            if (!attachment.image) {
+            if (!attachment.image && !playable) {
               return (
                 <figure
                   key={attachment.id}
@@ -2188,15 +2382,37 @@ function EntryPane({
               >
                 <button
                   type="button"
-                  title="放大查看"
-                  onClick={() => onZoom(src, caption)}
-                  style={{ padding: 0, border: 'none', background: 'none', cursor: 'zoom-in' }}
+                  title={playable ? '播放' : '放大查看'}
+                  onClick={() => onZoom({ src, mime: attachment.mime, label: caption })}
+                  style={{
+                    padding: 0,
+                    border: 'none',
+                    background: 'none',
+                    cursor: playable ? 'pointer' : 'zoom-in',
+                  }}
                 >
-                  <img
-                    src={src}
-                    alt={attachment.filename ?? ''}
-                    style={{ maxWidth: 220, maxHeight: 220, borderRadius: 6, display: 'block' }}
-                  />
+                  {playable ? (
+                    <span
+                      style={{
+                        display: 'grid',
+                        placeItems: 'center',
+                        width: 160,
+                        height: 90,
+                        borderRadius: 6,
+                        border: '1px solid color-mix(in srgb, currentColor 10%, transparent)',
+                        background: tileBackground(detail),
+                        color: 'inherit',
+                      }}
+                    >
+                      <Play size={28} />
+                    </span>
+                  ) : (
+                    <img
+                      src={src}
+                      alt={attachment.filename ?? ''}
+                      style={{ maxWidth: 220, maxHeight: 220, borderRadius: 6, display: 'block' }}
+                    />
+                  )}
                 </button>
                 <figcaption
                   style={{
@@ -2403,6 +2619,11 @@ function attachmentCaption(attachment: AttachmentSummary): string {
       ? ''
       : ` · ${String(attachment.width)}×${String(attachment.height)}`
   return `${attachment.filename ?? attachment.mime}${pixels} · ${formatBytes(attachment.bytes)}`
+}
+
+/** The panel's own route for one attachment's bytes. */
+function attachmentUrl(id: string): string {
+  return `${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}?id=${encodeURIComponent(id)}`
 }
 
 /**

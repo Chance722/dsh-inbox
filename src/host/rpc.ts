@@ -15,7 +15,7 @@
  * bytes back.
  */
 
-import { readFile } from 'node:fs/promises'
+import { open, readFile } from 'node:fs/promises'
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { FileAttachmentRef, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
@@ -97,6 +97,10 @@ const imageSchema = z.object({
 const fileSchema = z.object({
   data: z.string(),
   name: z.string().optional(),
+  // The browser's declaration, kept only for playable media (see
+  // `fileAttachment`); a schema that promised more would be a promise the host
+  // does not keep.
+  mediaType: z.string().optional(),
 })
 
 const captureRequestSchema = z.object({
@@ -167,11 +171,16 @@ function imageAttachment(ref: ImageAttachmentRef): CapturedAttachment {
 }
 
 /** Generic files are stored byte-for-byte, so the id already is their digest. */
-function fileAttachment(ref: FileAttachmentRef): CapturedAttachment {
+function fileAttachment(ref: FileAttachmentRef, declared?: string): CapturedAttachment {
   const sha256 = digestOf(ref.attachmentId)
+  // The browser's own guess, kept only when it names a media type the panel can
+  // play: everything else stays `application/octet-stream`, because the route
+  // serves the stored type back and a scriptable one would be an injection.
+  const playable =
+    declared !== undefined && (declared.startsWith('video/') || declared.startsWith('audio/'))
   return {
     id: ref.attachmentId,
-    mime: 'application/octet-stream',
+    mime: playable ? declared : 'application/octet-stream',
     bytes: ref.bytes,
     filename: ref.name,
     ...(sha256 === undefined ? {} : { sha256 }),
@@ -183,15 +192,38 @@ function collapse(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
 
+/**
+ * The one rule for "the panel can render this": exactly what the attachment
+ * route is willing to serve.
+ *
+ * Pictures ride the image lane (which validates and normalises), and only the
+ * types the panel ships support for — a record whose media type came in as
+ * `image/svg+xml` from a remote must not be offered as a card's picture, because
+ * the route will refuse to serve it and the card would show a broken image.
+ * Video and sound ride the verbatim file lane.
+ *
+ * @param mime - an attachment's media type.
+ * @returns true when both the summary and the route accept it.
+ */
+function renderableMime(mime: string): boolean {
+  return (
+    (INBOX_IMAGE_TYPES as readonly string[]).includes(mime) ||
+    mime.startsWith('video/') ||
+    mime.startsWith('audio/')
+  )
+}
+
 /** One stored record, trimmed to what a list row shows. */
 function toSummary(
   item: Item,
   attachmentOf?: (id: string) => Attachment | undefined,
 ): EntrySummary {
   const preview = item.text === undefined ? undefined : collapse(item.text).slice(0, PREVIEW_CHARS)
-  // The card can only show a picture if we say which attachment to ask for —
-  // and only for attachments that really are images.
-  const thumbnail = item.attachmentIds.find((id) => attachmentOf?.(id)?.mime.startsWith('image/') === true)
+  // The card can only show something if we tell it which attachment to ask for,
+  // and what that attachment is.
+  const previewRecord = item.attachmentIds
+    .map((id) => attachmentOf?.(id))
+    .find((record) => record !== undefined && renderableMime(record.mime))
   return {
     id: item.id,
     kind: item.kind,
@@ -202,7 +234,9 @@ function toSummary(
     updatedAt: item.updatedAt,
     tags: [...item.tags],
     attachmentCount: item.attachmentIds.length,
-    ...(thumbnail === undefined ? {} : { thumbnailId: thumbnail }),
+    ...(previewRecord === undefined
+      ? {}
+      : { previewId: previewRecord.id, previewMime: previewRecord.mime }),
     ...(item.title === undefined ? {} : { title: item.title }),
     ...(preview === undefined || preview.length === 0 ? {} : { preview }),
     ...(item.url === undefined ? {} : { url: item.url }),
@@ -284,7 +318,9 @@ async function handleCapture(
   let stored: CapturedAttachment[]
   try {
     stored = (await admitEncodedImages(attachments, images)).map(imageAttachment)
-    for (const file of files) stored.push(fileAttachment(await admitEncodedFile(attachments, file)))
+    for (const file of files) {
+      stored.push(fileAttachment(await admitEncodedFile(attachments, file), file.mediaType))
+    }
   } catch (error) {
     if (isAttachmentError(error)) {
       return failure('inbox/attachment-refused', error.message, { code: error.code })
@@ -555,23 +591,86 @@ function imageRef(record: Attachment): ImageAttachmentRef {
   }
 }
 
+/** The same, for a file stored byte-for-byte (video, audio, anything else). */
+function fileRef(record: Attachment): FileAttachmentRef {
+  return {
+    attachmentId: record.storeId as FileAttachmentRef['attachmentId'],
+    name: record.filename ?? 'file',
+    bytes: record.bytes,
+  }
+}
+
+/**
+ * Read one byte range out of a file.
+ *
+ * `readFile` would be the easy way, and it is the wrong one here: a video is
+ * routinely hundreds of megabytes, and a browser asks for it in pieces.
+ *
+ * @param path - the object's host path.
+ * @param start - first byte to read (inclusive).
+ * @param length - how many bytes to read.
+ * @returns the slice.
+ */
+async function readSlice(path: string, start: number, length: number): Promise<Buffer> {
+  const handle = await open(path, 'r')
+  try {
+    const buffer = Buffer.alloc(length)
+    const { bytesRead } = await handle.read(buffer, 0, length, start)
+    return buffer.subarray(0, bytesRead)
+  } finally {
+    await handle.close()
+  }
+}
+
+/**
+ * `bytes=start-end`, the only range syntax a media element sends.
+ *
+ * A header we cannot read as a range is answered with the whole file, which is
+ * what the spec expects of a server that does not honour it.
+ *
+ * @param header - the request's `range` header, if it has one.
+ * @param total - the object's size in bytes.
+ * @returns the clamped range, or undefined to serve everything.
+ */
+function parseByteRange(header: string | null, total: number): { start: number; end: number } | undefined {
+  const match = header === null ? null : /^bytes=(\d*)-(\d*)$/.exec(header.trim())
+  if (match === null || total === 0) return undefined
+  const rawStart = match[1] ?? ''
+  const rawEnd = match[2] ?? ''
+  if (rawStart === '' && rawEnd === '') return undefined
+  // `bytes=-500` means "the last 500 bytes"; `bytes=100-` means "from 100 on".
+  const start = rawStart === '' ? Math.max(0, total - Number(rawEnd)) : Number(rawStart)
+  const end = rawStart === '' || rawEnd === '' ? total - 1 : Math.min(Number(rawEnd), total - 1)
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start > end || start >= total) {
+    return undefined
+  }
+  return { start, end }
+}
+
 async function handleAttachment(
   vault: Vault | undefined,
   attachments: AttachmentStore,
-  url: URL,
+  request: Request,
 ): Promise<Response> {
-  const id = url.searchParams.get('id') ?? ''
+  const id = new URL(request.url).searchParams.get('id') ?? ''
   const record = vault?.getAttachment(id)
   if (record === undefined) {
     return Response.json(failure('inbox/attachment-missing', '附件不存在'), { status: 404 })
   }
-  if (!record.mime.startsWith('image/')) {
-    return Response.json(failure('inbox/attachment-not-image', '只有图片能在面板里预览'), {
-      status: 415,
-    })
+  // An allowlist, not "anything that is not a file": this route is served from
+  // the panel's own origin, and a stored `image/svg+xml` (which a remote can
+  // hand us, and which the file path stores verbatim) would run script there.
+  if (!renderableMime(record.mime)) {
+    return Response.json(
+      failure('inbox/attachment-not-renderable', '只有图片、视频和音频能在面板里预览'),
+      { status: 415 },
+    )
   }
 
-  const path = attachments.imageHostPath(imageRef(record))
+  const image = (INBOX_IMAGE_TYPES as readonly string[]).includes(record.mime)
+  const path = image
+    ? attachments.imageHostPath(imageRef(record))
+    : attachments.fileHostPath(fileRef(record))
   if (path === undefined) {
     return Response.json(
       failure('inbox/attachment-remote', '这个附件不在本机，面板没法直接读它'),
@@ -580,9 +679,26 @@ async function handleAttachment(
   }
 
   try {
-    const bytes = await readFile(path)
-    return new Response(bytes, {
-      headers: { 'content-type': record.mime, 'cache-control': 'private, max-age=86400' },
+    const headers = {
+      'content-type': record.mime,
+      'cache-control': 'private, max-age=86400',
+      'accept-ranges': 'bytes',
+      'x-content-type-options': 'nosniff',
+    }
+    const range = parseByteRange(request.headers.get('range'), record.bytes)
+    if (range === undefined) {
+      return new Response(await readFile(path), { headers })
+    }
+    const length = range.end - range.start + 1
+    // `new Uint8Array(...)` rather than the buffer itself: `BodyInit` is typed
+    // against `ArrayBuffer`-backed views, and a `Buffer` is not one.
+    return new Response(new Uint8Array(await readSlice(path, range.start, length)), {
+      status: 206,
+      headers: {
+        ...headers,
+        'content-length': String(length),
+        'content-range': `bytes ${String(range.start)}-${String(range.end)}/${String(record.bytes)}`,
+      },
     })
   } catch (error) {
     return Response.json(failure('inbox/attachment-unreadable', reasonOf(error)), { status: 500 })
@@ -695,8 +811,7 @@ export function registerInboxRpc(ctx: Context, vault: () => Vault | undefined): 
         path: `${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}`,
         methods: ['GET'],
         requestBody: 'buffered',
-        fetch: (request: Request) =>
-          handleAttachment(vault(), attachments, new URL(request.url)),
+        fetch: (request: Request) => handleAttachment(vault(), attachments, request),
       },
     ]
 

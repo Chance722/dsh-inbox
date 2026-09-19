@@ -177,6 +177,17 @@ export interface WireImage {
 export interface WireFile {
   data: string
   name?: string
+  /**
+   * What the browser said this file is, when it said anything.
+   *
+   * Kept only for media the panel can render (`video/*`, `audio/*`): a generic
+   * file's bytes are stored verbatim on the file path, and the media type the
+   * panel later serves them with has to be one that cannot execute — an
+   * attacker-declared `text/html` or `image/svg+xml` served from the panel's own
+   * origin would be a script injection, which is why the host allowlists this
+   * instead of trusting it.
+   */
+  mediaType?: string
 }
 
 /** Everything one panel submission can carry. */
@@ -235,8 +246,17 @@ export interface EntrySummary {
   updatedAt: string
   /** How many attachments the record references. */
   attachmentCount: number
-  /** The first image attachment, when the record has one — the card's picture. */
-  thumbnailId?: string
+  /**
+   * The first attachment the panel can render itself — the card's picture.
+   *
+   * Not just pictures any more: a video or an audio file gets a play tile in the
+   * same slot and opens in the panel's own lightbox. `previewMime` says which of
+   * the three it is, because the card has to draw it differently — and because a
+   * `<video>` needs to know it is one before it fetches the bytes.
+   */
+  previewId?: string
+  /** That attachment's MIME type: `image/*`, `video/*` or `audio/*`. */
+  previewMime?: string
   /** Present while the record sits in the recycle bin. */
   deletedAt?: string
 }
