@@ -1,0 +1,231 @@
+/**
+ * The smallest S3 surface the inbox needs: list one prefix, read one object.
+ *
+ * Signing is implemented rather than imported. A dependency would be the
+ * obvious move, but this is ~60 lines of well-specified HMAC chaining, and the
+ * alternative is shipping a second network stack inside a vault plugin whose
+ * whole point is that nothing unexpected leaves the machine.
+ *
+ * Assumptions that keep it small, each of them honest about its limit:
+ *   - **path-style** addressing (`<endpoint>/<bucket>/<key>`), which is what
+ *     non-AWS S3 deployments such as 数据胶囊 accept;
+ *   - **SigV4** (`AWS4-HMAC-SHA256`), with the region configurable because the
+ *     signature covers it even when the server ignores it;
+ *   - `UNSIGNED-PAYLOAD` is *not* used: every body we send is empty, so the
+ *     payload hash is the SHA-256 of nothing.
+ */
+
+import { createHash, createHmac } from 'node:crypto'
+
+/** What the user fills in. The secret never lives here. */
+export interface S3Config {
+  /** e.g. `https://s3.cstcloud.cn` — no bucket, no trailing slash needed. */
+  endpoint: string
+  bucket: string
+  /** Covered by the signature; defaults to `us-east-1` for non-AWS servers. */
+  region?: string
+  /** Only v4 is implemented; the field exists so the choice is visible. */
+  signatureVersion?: string
+}
+
+/** One object found under the prefix. */
+export interface RemoteObject {
+  key: string
+  lastModified?: string
+  bytes?: number
+}
+
+/** The subset of `fetch` this module uses, so tests can stand in for it. */
+export interface S3ResponseLike {
+  ok: boolean
+  status: number
+  text(): Promise<string>
+  arrayBuffer(): Promise<ArrayBuffer>
+  headers?: { get(name: string): string | null }
+}
+
+export type S3FetchLike = (
+  url: string,
+  init: { method: string; headers: Record<string, string> },
+) => Promise<S3ResponseLike>
+
+/** Everything a call needs besides the configuration. */
+export interface S3Deps {
+  fetch: S3FetchLike
+  accessKeyId: string
+  accessKeySecret: string
+  /** Injected so tests are not clock-dependent. */
+  now?: Date
+}
+
+/** `YYYYMMDDTHHMMSSZ`, the only date format SigV4 accepts. */
+export function amzDate(now: Date): string {
+  return `${now.toISOString().replace(/[-:]/g, '').split('.')[0] ?? ''}Z`
+}
+
+function sha256Hex(value: string | Uint8Array): string {
+  return createHash('sha256').update(value).digest('hex')
+}
+
+function hmac(key: Buffer | string, value: string): Buffer {
+  return createHmac('sha256', key).update(value).digest()
+}
+
+/** RFC 3986 encoding, which differs from `encodeURIComponent` on `!'()*`. */
+function encodePart(value: string, encodeSlash: boolean): string {
+  const encoded = encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  )
+  return encodeSlash ? encoded : encoded.replace(/%2F/g, '/')
+}
+
+/** The pieces of a signed request, exposed so a test can look at them. */
+export interface SignedRequest {
+  url: string
+  headers: Record<string, string>
+  canonicalRequest: string
+  signature: string
+}
+
+/**
+ * Sign one request.
+ *
+ * @param config - endpoint, bucket, region.
+ * @param deps - credentials, fetch, clock.
+ * @param method - HTTP method.
+ * @param key - object key, empty for a bucket operation.
+ * @param query - query parameters, already encoded values.
+ * @returns the URL, headers, and the intermediate values (for tests).
+ */
+export function signRequest(
+  config: S3Config,
+  deps: S3Deps,
+  method: string,
+  key: string,
+  query: Record<string, string> = {},
+): SignedRequest {
+  const now = deps.now ?? new Date()
+  const stamp = amzDate(now)
+  const day = stamp.slice(0, 8)
+  const region = config.region ?? 'us-east-1'
+  const base = config.endpoint.replace(/\/$/, '')
+
+  const canonicalUri = `/${encodePart(config.bucket, false)}${
+    key.length === 0 ? '' : `/${encodePart(key, false)}`
+  }`
+  const canonicalQuery = Object.entries(query)
+    .map(([name, value]) => `${encodePart(name, true)}=${encodePart(value, true)}`)
+    .sort()
+    .join('&')
+
+  const payloadHash = sha256Hex('')
+  const host = new URL(base).host
+  const signedHeaders = 'host;x-amz-content-sha256;x-amz-date'
+  const canonicalHeaders =
+    `host:${host}\n` + `x-amz-content-sha256:${payloadHash}\n` + `x-amz-date:${stamp}\n`
+
+  const canonicalRequest = [
+    method,
+    canonicalUri,
+    canonicalQuery,
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join('\n')
+
+  const scope = `${day}/${region}/s3/aws4_request`
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    stamp,
+    scope,
+    sha256Hex(canonicalRequest),
+  ].join('\n')
+
+  const signingKey = hmac(hmac(hmac(hmac(`AWS4${deps.accessKeySecret}`, day), region), 's3'), 'aws4_request')
+  const signature = createHmac('sha256', signingKey).update(stringToSign).digest('hex')
+
+  return {
+    url: `${base}${canonicalUri}${canonicalQuery.length === 0 ? '' : `?${canonicalQuery}`}`,
+    headers: {
+      host,
+      'x-amz-date': stamp,
+      'x-amz-content-sha256': payloadHash,
+      authorization: `AWS4-HMAC-SHA256 Credential=${deps.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+    },
+    canonicalRequest,
+    signature,
+  }
+}
+
+const KEY_BLOCK = /<Key>([\s\S]*?)<\/Key>/i
+const LAST_MODIFIED = /<LastModified>([\s\S]*?)<\/LastModified>/i
+const SIZE = /<Size>([\s\S]*?)<\/Size>/i
+const CONTENTS = /<Contents>[\s\S]*?<\/Contents>/gi
+
+/** Undo the XML escapes a key can carry (keys legitimately contain `&`). */
+function decode(value: string): string {
+  return value
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+    .trim()
+}
+
+/**
+ * Read a ListObjectsV2 answer.
+ *
+ * @param xml - the response body.
+ * @returns the objects it listed.
+ */
+export function parseListing(xml: string): RemoteObject[] {
+  const objects: RemoteObject[] = []
+  for (const block of xml.match(CONTENTS) ?? []) {
+    const key = KEY_BLOCK.exec(block)?.[1]
+    if (key === undefined) continue
+    const lastModified = LAST_MODIFIED.exec(block)?.[1]
+    const size = SIZE.exec(block)?.[1]
+    const parsedSize = size === undefined ? undefined : Number.parseInt(size, 10)
+    objects.push({
+      key: decode(key),
+      ...(lastModified === undefined ? {} : { lastModified: decode(lastModified) }),
+      ...(parsedSize === undefined || Number.isNaN(parsedSize) ? {} : { bytes: parsedSize }),
+    })
+  }
+  return objects
+}
+
+/**
+ * List objects under a prefix.
+ *
+ * @param config - endpoint, bucket, region.
+ * @param prefix - key prefix, e.g. `inbox/`.
+ * @param deps - credentials, fetch, clock.
+ * @returns the objects found.
+ */
+export async function listPrefix(
+  config: S3Config,
+  prefix: string,
+  deps: S3Deps,
+): Promise<RemoteObject[]> {
+  const signed = signRequest(config, deps, 'GET', '', { 'list-type': '2', prefix })
+  const response = await deps.fetch(signed.url, { method: 'GET', headers: signed.headers })
+  if (!response.ok) throw new Error(`列对象失败：HTTP ${String(response.status)}`)
+  return parseListing(await response.text())
+}
+
+/** Fetch one object's bytes, with its content type when the server sends one. */
+export async function readObject(
+  config: S3Config,
+  key: string,
+  deps: S3Deps,
+): Promise<{ bytes: Uint8Array; contentType: string }> {
+  const signed = signRequest(config, deps, 'GET', key)
+  const response = await deps.fetch(signed.url, { method: 'GET', headers: signed.headers })
+  if (!response.ok) throw new Error(`取对象失败：HTTP ${String(response.status)}`)
+  const bytes = new Uint8Array(await response.arrayBuffer())
+  const declared = response.headers?.get('content-type') ?? 'application/octet-stream'
+  return { bytes, contentType: declared.split(';')[0] ?? 'application/octet-stream' }
+}
