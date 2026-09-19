@@ -23,7 +23,7 @@
 | ✅ 你说的算 | 自己改的类目会标记成"你判的"，任何后续流程都覆盖不了 |
 | ✅ 有上限的模型兜底 | 规则判不出的文字、或认得出平台的链接，会先脱敏再问一次 `deepseek-flash`。每天上限 200 次 / 10 万 token，花费记在仓库里；失败就退回规则结果。图片永不外发。 |
 | ✅ 单向同步 | 配一个远端（**WebDAV 目录**或 **S3 桶**），任何设备往里扔文件；仓库在启动时或按需拉取、分类、重复合并。地址与用户名进 dsh 的设置，密码与密钥进 dsh 的凭证库。 |
-| ✅ 客户端标识 | 有些网关（中科院数据胶囊就是）把 AccessKey 绑在一个"应用"上，并**按 `User-Agent` 认客户端**——不在名单里的一律拒，状态码却和"密码错"一样。设置里可以填这个标识（留空则自称 `dsh-inbox`）。 |
+| ✅ 客户端标识 | 有些网关（中科院数据胶囊就是）把每把 AccessKey / 每个账号绑在一个"应用"上，并**按 `User-Agent` 认客户端**——对不上的一律拒，状态码却和"密码错"一样。标识**按协议各存一份**（两个门可以绑不同的应用），留空则自称 `dsh-inbox`。 |
 
 ### 你的数据存在哪
 
@@ -101,10 +101,12 @@ rm -r ~/.dsh/storages/dsh_inbox
 - **WebDAV** — 地址（例如 `https://data.cstcloud.cn/dav`）、目录（默认 `/inbox`）、用户名、密码。
 - **S3** — 接入点（例如 `s3.cstcloud.cn`；不写协议默认 `https`，写 `http://` 则保留给内网）、
   Bucket、区域、签名版本（v4）、AccessKey ID、AccessKey Secret。
-- **客户端标识**（两个协议共用）— 留空即 `dsh-inbox`。**数据胶囊上必须填**成你创建
-  AccessKey 时选的那个应用名（例如 `Obsidian`），否则 S3 门回 401、WebDAV 门回
-  `403 Client type mismatch.`，看起来完全像密码错了。同一个 key 也能走 WebDAV：
-  用户名填 AccessKey ID、密码填 AccessKey Secret。
+- **客户端标识**（每个协议各存一份）— 留空即 `dsh-inbox`。**数据胶囊上必须填**成这把
+  凭证绑定的那个应用名，否则 S3 门回 401、WebDAV 门回 `403 Client type mismatch.`，
+  看起来完全像密码错了。匹配是"包含 + 不分大小写"，填 `Obsidian` 或 `Zotero/7.0.11` 都行。
+  两个门可以绑不同应用（例如 S3 的 key 绑 `Obsidian`、WebDAV 账号绑 `Zotero`），所以
+  换协议时标识跟着协议走、互不覆盖。同一个 key 也能走 WebDAV：用户名填 AccessKey ID、
+  密码填 AccessKey Secret——**不想维护两份绑定的话，这是最省事的组合**。
 
 保存后点 **立即拉取**。密码与密钥进 dsh 的凭证库，不写进配置。
 

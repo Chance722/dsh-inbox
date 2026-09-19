@@ -23,7 +23,7 @@ A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/de
 | ✅ Your word wins | Set the category yourself and it is marked as yours; nothing overwrites it |
 | ✅ Model fallback, capped | Text or a recognised-host link no rule could judge gets one `deepseek-flash` call, redacted first. Capped at 200 calls / 100k tokens per day, recorded in the vault, and a failure leaves the rule's verdict standing. Images are never sent. |
 | ✅ Sync, one way | Point it at a remote — a **WebDAV folder** or an **S3 bucket** — and any device can drop files in; the vault pulls them at startup or on demand, classifies them, and merges repeats. Configuration lives in dsh's settings, the password and secret in dsh's credential store. |
-| ✅ Client identity | Some gateways (中科院数据胶囊 among them) bind an access key to an "application" and **tell clients apart by `User-Agent`** — anything else is refused with the same status code a wrong password gets. The settings form can send that identity (empty means the plugin's own name, `dsh-inbox`). |
+| ✅ Client identity | Some gateways (中科院数据胶囊 among them) bind **each access key or account** to an "application" and **tell clients apart by `User-Agent`** — anything else is refused with the same status code a wrong password gets. The identity is kept **per protocol** (the two doors can be bound to different applications); empty means the plugin's own name, `dsh-inbox`. |
 
 ### Where your data lives
 
@@ -103,12 +103,16 @@ Open the panel, press **⚙ 入库设置**, and pick a protocol:
 - **S3** — endpoint (e.g. `s3.cstcloud.cn`; the scheme defaults to `https`, and
   an explicit `http://` is kept for a LAN endpoint), bucket, region, signature
   version (v4), AccessKey ID and AccessKey Secret.
-- **Client identity** (shared by both protocols) — empty means `dsh-inbox`. On
-  数据胶囊 this **must** be the application you picked when creating the
-  AccessKey (for example `Obsidian`); without it the S3 door answers 401 and the
-  WebDAV door answers `403 Client type mismatch.`, both of which read like a
-  wrong password. The same key also works over WebDAV: username = AccessKey ID,
-  password = AccessKey Secret.
+- **Client identity** (stored per protocol) — empty means `dsh-inbox`. On
+  数据胶囊 this **must** be the application the credential is bound to;
+  without it the S3 door answers 401 and the WebDAV door answers
+  `403 Client type mismatch.`, both of which read like a wrong password. The
+  match is "contains, case-insensitive", so `Obsidian` or `Zotero/7.0.11` both
+  work. The two doors may be bound to different applications (say an S3 key
+  bound to `Obsidian` and a WebDAV account bound to `Zotero`), which is why the
+  identity travels with the protocol instead of being shared. The same key also
+  works over WebDAV: username = AccessKey ID, password = AccessKey Secret —
+  **if you would rather keep one binding, that is the combination to use**.
 
 Save, then press **立即拉取**. Passwords and secrets go to dsh's credential
 store, never into configuration.
