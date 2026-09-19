@@ -116,7 +116,12 @@ window.__ModuleLoader__.load({
 
 ### pnpm 11 的构建脚本白名单
 
-`package.json` 里的 `pnpm` 字段已不再被读取；`onlyBuiltDependencies` 必须写进 **`pnpm-workspace.yaml`**。否则 esbuild 的原生二进制装不上，且每次 `pnpm run` 都会因依赖状态检查失败而报 `ERR_PNPM_IGNORED_BUILDS`。
+pnpm 11 在跑任何脚本前会先做依赖状态检查，一看到「ignored build scripts」就**非零退出**——`pnpm build` / `pnpm test` / `pnpm typecheck` 全部失效。`pnpm-workspace.yaml` 里要同时写两条：
+
+- `onlyBuiltDependencies: [esbuild]`——允许构建脚本（`package.json` 里的 `pnpm` 字段已不再被读取）
+- `verifyDepsBeforeRun: false`——关掉那个前置检查
+
+实测即使提示被拦，esbuild 的二进制照样能用（`node scripts/build.mjs` 直接跑是成功的），所以拦住的是检查本身，不是工具。两条都补上之后 README 里写的 `pnpm build/test/typecheck` 才真的可用。
 
 ## M1 实测补充（存储栈，2026-09-19）
 

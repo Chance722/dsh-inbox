@@ -9,3 +9,8 @@ allowBuilds:
 
 onlyBuiltDependencies:
   - esbuild
+
+# esbuild's build script is already allowed above; this only stops pnpm from
+# re-running the dependency check before every `pnpm run` (which exits non-zero
+# on the "ignored builds" notice and would break `pnpm build` / `pnpm test`).
+verifyDepsBeforeRun: false
