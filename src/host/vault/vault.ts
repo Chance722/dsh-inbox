@@ -259,6 +259,11 @@ export class Vault {
     await this.setGlobal({ ...this.global, model: { ...spend, ...(last === undefined ? {} : { last }) } })
   }
 
+  /** Record where the last WebDAV pull got to. */
+  async setSync(sync: VaultGlobal['sync']): Promise<void> {
+    await this.setGlobal({ ...this.global, sync })
+  }
+
   /** Release the domain handle. Idempotent. */
   async close(): Promise<void> {
     if (this.closed) return

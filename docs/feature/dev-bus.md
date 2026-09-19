@@ -13,7 +13,7 @@
 | M3 | 侧栏面板 | 看得见、管得动 | 列表 + 按类目/标签/未读筛选 + 详情 + 改备注与类目 + 标记已读 + 软删/回收站 | 已验收 |
 | M4 | 对话工具与卡片 | 对话里取得到 | 检索/取回接口按约定返回（文本截断 1000 字、图片缩略图、链接卡、列表 10 条 + 还有 N 条）；截图留证 | 已验收 |
 | M5 | 分类与脱敏 | 自动分类且不泄密 | 规则层（URL 判平台/类型、密钥正则、图片本地启发式）+ API 兜底 + 发模型前脱敏；用户描述优先级高于模型，有单测覆盖 | 已验收 |
-| M6 | WebDAV 单向摄取 | 别的设备进得来 | 配好 WebDAV → 启动拉取远端 `inbox/` → 入库并标"未整理" → 走分类；WebDAV 不可用不阻塞启动 | 未开始 |
+| M6 | WebDAV 单向摄取 | 别的设备进得来 | 配好 WebDAV → 启动拉取远端 `inbox/` → 入库并标"未整理" → 走分类；WebDAV 不可用不阻塞启动 | 进行中（摄取管线完成；配置/凭证与面板入口待接） |
 | M7 | 打包与一键安装 | 别人装得上 | npm 包可发布 + `init` 完成装配（装包/建 preset/指默认）；中英 README；在干净环境按 README 走一遍成功 | 未开始 |
 
 ## 依赖关系
@@ -231,3 +231,23 @@
 **真机验证**：提交一张 1200×800、画面里写着"ID CARD 姓名 张三 证件号…"的合成图（规则按比例判不出），20 秒后 `global.model.last = applied: image (674 tokens)`，该记录 `categorySource` 变成 `model`。累计 4 次调用 1179 token。
 
 **红线变更已同步到**：`AGENTS.md` 第 4 条、`docs/help/product-decisions.md`、中英 README。
+
+### M6 — WebDAV 单向摄取（进行中，2026-09-19）
+
+**已完成的部分**
+
+- `src/host/webdav/client.ts`：够用的最小 WebDAV 面——`PROPFIND` 列目录、`GET` 取文件，Basic 认证，**不引 XML 库**（两条正则读我们真正用到的那几个字段）。`fetch` 由调用方注入，所以整条链路可离线测。
+- `src/host/webdav/pull.ts`：**单向**摄取。列出远端 `inbox/` → 用 `getlastmodified` 过滤掉上次拉过的 → 文本类文件（`text/*`、`.txt/.md/.url/.json`）按**文本**入库（所以手机上复制过来的链接会变成一个链接记录，而不是一个文件），其他按**附件**入库 → 更新 `global.sync.lastPullAt`。
+- **重复安全不靠记账**：附件仓库是内容寻址的，同样的字节拉两次得到同一个 id，`captureImage` 自然合并进已有记录。`lastPullAt` 只是省流量的过滤器。
+- **失败不抛出**：列目录失败 → 返回 `failed` 结果带原因（例如 `HTTP 401`）；单个文件失败只让计数 +1，不打断其余文件。这两点都是"WebDAV 不可用不阻塞启动"的实现。
+- 配置结构里**故意没有 password 字段**——密码要走 dsh 的 credentials 域，不是我们的配置。
+
+**证据**：`pnpm test` 10 个文件 **103 条**全绿，`webdav.test.ts` 8 条覆盖 XML 解析（含丢掉落目录项自身）、URL 拼接、Basic 认证头、文本→链接、图片→附件、跳过已拉过、重复拉取合并、未配置、服务器 401。
+
+**踩到的坑（是我测试代码的，不是产品的）**：假服务器用 `Buffer.from(s).buffer` 当响应体，而 Node 的小 Buffer 来自 8KB 内存池——`arrayBuffer()` 于是吐出八公里外的数据，把一条链接变成了带垃圾字符的文本。改成 `TextEncoder` 产生精确长度的 buffer 才对。**这个坑值得记**：任何 mock HTTP 响应体都要按 `byteOffset/byteLength` 切片。
+
+**还没做（M6b）**
+
+1. 配置入口：面板右上角的设置区块（WebDAV 地址、用户名），走 `ctx.settings`；**密码走 `ctx.credentials` 的 `set/resolve`**（API 已确认：`set(ref, value)` / `resolve(ref)` / `modifyRecord(key, mutate)`，key 是两段式 `scope/id`）。
+2. 启动时触发一次拉取（`ctx.effect` + 后台任务，失败只记状态），外加面板上一个"立即拉取"按钮。
+3. 拉进来的条目标"未整理/待确认"——数据模型里已经有 `source: 'webdav'`，是否再加一个状态位等 M6b 一起定。
