@@ -12,17 +12,24 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Circle,
   FileText,
   Film,
+  IdCard,
   Image as ImageIcon,
+  Inbox,
+  KeyRound,
   Layers,
   LayoutGrid,
+  Lightbulb,
   Link2,
   Music,
   Paperclip,
   RefreshCw,
   Rows3,
   Settings2,
+  Tag,
+  Trash2,
   X,
 } from 'lucide-react'
 
@@ -642,52 +649,11 @@ function InboxPanel(): React.ReactElement {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          style={chipStyle(scope === 'live' && !unreadOnly)}
-          onClick={() => {
-            setScope('live')
-            setUnreadOnly(false)
-          }}
-        >
-          全部 {list === undefined ? '' : list.total}
-        </button>
-        <button
-          type="button"
-          style={chipStyle(scope === 'live' && unreadOnly)}
-          onClick={() => {
-            setScope('live')
-            setUnreadOnly(true)
-          }}
-        >
-          未读 {list === undefined ? '' : list.unread}
-        </button>
-        <button
-          type="button"
-          style={chipStyle(scope === 'bin')}
-          onClick={() => setScope('bin')}
-        >
-          回收站 {list === undefined ? '' : list.deleted}
-        </button>
-
-        <span style={{ width: 1, height: 18, background: 'currentColor', opacity: 0.2 }} />
-
-        {list?.categories.map((facet) => (
-          <button
-            key={facet.value}
-            type="button"
-            style={chipStyle(category === facet.value)}
-            onClick={() => setCategory(category === facet.value ? undefined : facet.value)}
-          >
-            {CATEGORY_LABELS[facet.value]} {facet.count}
-          </button>
-        ))}
-
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="搜标题、正文、链接、备注…"
-          style={{ ...inputStyle, marginLeft: 'auto', minWidth: 180 }}
+          style={{ ...inputStyle, flex: 1, minWidth: 180 }}
         />
         <span
           role="group"
@@ -722,23 +688,92 @@ function InboxPanel(): React.ReactElement {
         </button>
       </div>
 
-      {list !== undefined && list.tags.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ opacity: 0.6 }}>标签</span>
-          {list.tags.map((facet) => (
-            <button
-              key={facet.value}
-              type="button"
-              style={chipStyle(tag === facet.value)}
-              onClick={() => setTag(tag === facet.value ? undefined : facet.value)}
-            >
-              #{facet.value} {facet.count}
-            </button>
-          ))}
-        </div>
-      )}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '186px minmax(240px, 1fr) minmax(260px, 1.25fr)',
+          gap: 14,
+        }}
+      >
+        <nav
+          aria-label="筛选"
+          style={{
+            ...cardStyle,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            alignSelf: 'start',
+          }}
+        >
+          <RailRow
+            active={scope === 'live' && !unreadOnly}
+            icon={<Inbox size={15} />}
+            label="全部"
+            {...(list === undefined ? {} : { count: list.total })}
+            onClick={() => {
+              setScope('live')
+              setUnreadOnly(false)
+            }}
+          />
+          <RailRow
+            active={scope === 'live' && unreadOnly}
+            icon={<Circle size={15} />}
+            label="未读"
+            {...(list === undefined ? {} : { count: list.unread })}
+            onClick={() => {
+              setScope('live')
+              setUnreadOnly(true)
+            }}
+          />
+          <RailRow
+            active={scope === 'bin'}
+            icon={<Trash2 size={15} />}
+            label="回收站"
+            {...(list === undefined ? {} : { count: list.deleted })}
+            onClick={() => setScope('bin')}
+          />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 1fr) 1.4fr', gap: 14 }}>
+          <div style={{ margin: '8px 0 4px', padding: '0 9px', fontSize: 11, opacity: 0.6 }}>
+            类目
+          </div>
+          {/*
+            Every category, always — the host only reports the ones with records
+            in them, and a rail whose rows appear and disappear as things are
+            filed is a rail you have to re-read every time.
+          */}
+          {CATEGORIES.map((value) => {
+            const count = list?.categories.find((facet) => facet.value === value)?.count
+            return (
+              <RailRow
+                key={value}
+                active={category === value}
+                icon={CATEGORY_ICONS[value]}
+                label={CATEGORY_LABELS[value]}
+                {...(list === undefined ? {} : { count: count ?? 0 })}
+                onClick={() => setCategory(category === value ? undefined : value)}
+              />
+            )
+          })}
+
+          {list !== undefined && list.tags.length > 0 && (
+            <>
+              <div style={{ margin: '8px 0 4px', padding: '0 9px', fontSize: 11, opacity: 0.6 }}>
+                标签
+              </div>
+              {list.tags.map((facet) => (
+                <RailRow
+                  key={facet.value}
+                  active={tag === facet.value}
+                  icon={<Tag size={14} />}
+                  label={`#${facet.value}`}
+                  count={facet.count}
+                  onClick={() => setTag(tag === facet.value ? undefined : facet.value)}
+                />
+              ))}
+            </>
+          )}
+        </nav>
+
         <section style={{ ...cardStyle, minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
             <strong>{scope === 'bin' ? '回收站' : '存入的'}</strong>
@@ -1226,6 +1261,67 @@ function kindGlyph(entry: EntrySummary): React.ReactElement {
   }
   if (entry.kind === 'file') return <Paperclip size={size} />
   return <FileText size={size} />
+}
+
+/** Each category gets a glyph of its own, so the rail reads at a glance. */
+const CATEGORY_ICONS: Record<(typeof CATEGORIES)[number], React.ReactElement> = {
+  idea: <Lightbulb size={15} />,
+  article: <FileText size={15} />,
+  media: <Film size={15} />,
+  image: <ImageIcon size={15} />,
+  document: <IdCard size={15} />,
+  secret: <KeyRound size={15} />,
+  other: <Layers size={15} />,
+}
+
+/**
+ * One row of the filter rail: glyph, name, count.
+ *
+ * The rail is where filtering lives — the header keeps only what applies to the
+ * whole panel (search, layout, settings, refresh).
+ *
+ * @param props - what the row stands for and whether it is the active filter.
+ * @returns the row.
+ */
+function RailRow({
+  active,
+  icon,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean
+  icon: React.ReactElement
+  label: string
+  count?: number
+  onClick: () => void
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        width: '100%',
+        textAlign: 'left',
+        font: 'inherit',
+        color: 'inherit',
+        background: active ? 'color-mix(in srgb, currentColor 12%, transparent)' : 'transparent',
+        border: 'none',
+        borderRadius: 8,
+        padding: '6px 9px',
+        cursor: 'pointer',
+        opacity: active ? 1 : 0.72,
+      }}
+    >
+      {icon}
+      <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{label}</span>
+      {count === undefined ? null : <span style={{ opacity: 0.6, fontSize: 12 }}>{count}</span>}
+    </button>
+  )
 }
 
 /**
