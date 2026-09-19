@@ -11,6 +11,7 @@ import React from 'react'
 import {
   Bookmark,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Circle,
@@ -206,15 +207,63 @@ const primaryStyle: React.CSSProperties = {
 /** Destructive actions say so. */
 const dangerStyle: React.CSSProperties = {
   ...actionStyle,
-  borderColor: 'color-mix(in srgb, salmon 45%, transparent)',
+  borderColor: 'color-mix(in srgb, salmon 60%, transparent)',
+  background: 'color-mix(in srgb, salmon 18%, transparent)',
   color: 'salmon',
+  fontWeight: 600,
 }
 
 /** A `<select>` that matches the buttons, popup included. */
 const selectStyle: React.CSSProperties = {
   ...actionStyle,
-  paddingRight: 8,
+  // Opaque on purpose: a translucent background is why the popup's options
+  // stayed white-on-white. `appearance: none` lets us draw the caret instead of
+  // letting the browser park it against the border.
+  appearance: 'none',
+  paddingRight: 26,
+  background: 'Canvas',
+  color: 'CanvasText',
   colorScheme: 'dark',
+}
+
+/**
+ * A labelled `<select>` with our own caret, so it looks like the buttons and
+ * the popup is legible in a dark app.
+ *
+ * @param props - the current value, the options, and what to do on change.
+ * @returns the control.
+ */
+function SelectBox({
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  value: string
+  options: readonly (readonly [string, string])[]
+  disabled?: boolean
+  onChange: (next: string) => void
+}): React.ReactElement {
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        style={selectStyle}
+      >
+        {options.map(([id, label]) => (
+          <option key={id} value={id}>
+            {label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        size={13}
+        style={{ position: 'absolute', right: 9, pointerEvents: 'none', opacity: 0.7 }}
+      />
+    </span>
+  )
 }
 
 const cardStyle: React.CSSProperties = {
@@ -372,6 +421,13 @@ function InboxPanel(): React.ReactElement {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  /** A toast is a moment, not a state: it leaves on its own. */
+  React.useEffect(() => {
+    if (notice === undefined || notice.length === 0) return
+    const timer = window.setTimeout(() => setNotice(undefined), 4000)
+    return () => window.clearTimeout(timer)
+  }, [notice])
 
   /**
    * The layout the panel remembers for next time.
@@ -592,6 +648,9 @@ function InboxPanel(): React.ReactElement {
     }
   }
 
+  /** How many pages the current filter has, for the pager's own rules. */
+  const pageCount = Math.max(1, Math.ceil((list?.matched ?? 0) / PAGE_SIZE))
+
   return (
     <div ref={panelRef} style={panelStyle}>
       <header>
@@ -777,9 +836,35 @@ function InboxPanel(): React.ReactElement {
           <button type="button" style={buttonStyle} disabled={busy} onClick={() => void submit()}>
             {busy ? '处理中…' : '存入仓库'}
           </button>
-          {notice !== undefined && <span style={{ opacity: 0.8 }}>{notice}</span>}
         </div>
       </div>
+
+      {/*
+        Notices are toasts now: the old inline line sat next to 存入仓库, where a
+        refresh result ("已刷新（13 条） · 远端没有新内容") had no business being.
+      */}
+      {notice !== undefined && notice.length > 0 && (
+        <div
+          role="status"
+          style={{
+            position: 'fixed',
+            left: '50%',
+            bottom: 28,
+            transform: 'translateX(-50%)',
+            zIndex: 60,
+            padding: '8px 14px',
+            borderRadius: 999,
+            border: '1px solid color-mix(in srgb, currentColor 25%, transparent)',
+            background: 'Canvas',
+            color: 'CanvasText',
+            boxShadow: '0 10px 30px #0006',
+            fontSize: 13,
+            maxWidth: '80vw',
+          }}
+        >
+          {notice}
+        </div>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {narrow && (
@@ -1045,7 +1130,9 @@ function InboxPanel(): React.ReactElement {
             ))}
           </div>
 
-          {(list?.matched ?? 0) > 0 && (
+          {/* One page needs no pager, and each end hides the button that would
+              only ever be disabled. */}
+          {(list?.matched ?? 0) > 0 && pageCount > 1 && (
             <div
               style={{
                 display: 'flex',
@@ -1057,25 +1144,27 @@ function InboxPanel(): React.ReactElement {
               }}
             >
               <span>
-                第 {String(page + 1)} / {String(Math.max(1, Math.ceil((list?.matched ?? 0) / PAGE_SIZE)))} 页
+                第 {String(page + 1)} / {String(pageCount)} 页
               </span>
               <span style={{ marginLeft: 'auto' }} />
-              <button
-                type="button"
-                style={buttonStyle}
-                disabled={page === 0}
-                onClick={() => setPage((current) => Math.max(0, current - 1))}
-              >
-                <ChevronLeft size={13} /> 上一页
-              </button>
-              <button
-                type="button"
-                style={buttonStyle}
-                disabled={(page + 1) * PAGE_SIZE >= (list?.matched ?? 0)}
-                onClick={() => setPage((current) => current + 1)}
-              >
-                下一页 <ChevronRight size={13} />
-              </button>
+              {page > 0 && (
+                <button
+                  type="button"
+                  style={buttonStyle}
+                  onClick={() => setPage((current) => Math.max(0, current - 1))}
+                >
+                  <ChevronLeft size={13} /> 上一页
+                </button>
+              )}
+              {page + 1 < pageCount && (
+                <button
+                  type="button"
+                  style={buttonStyle}
+                  onClick={() => setPage((current) => current + 1)}
+                >
+                  下一页 <ChevronRight size={13} />
+                </button>
+              )}
             </div>
           )}
         </section>
@@ -1320,19 +1409,16 @@ function WebdavSettings({
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <span style={{ opacity: 0.7, minWidth: 64 }}>协议</span>
-        <select
+        <SelectBox
           value={protocol}
+          options={[
+            ['webdav', 'WebDAV'],
+            ['s3', 'S3'],
+          ]}
           disabled={busy}
-          onChange={(event) => {
-            const next = event.target.value === 's3' ? 's3' : 'webdav'
-            setProtocol(next)
-            // Leaving the field is not the same as saving it; save applies it.
-          }}
-          style={selectStyle}
-        >
-          <option value="webdav">WebDAV</option>
-          <option value="s3">S3</option>
-        </select>
+          // Leaving the field is not the same as saving it; save applies it.
+          onChange={(next) => setProtocol(next === 's3' ? 's3' : 'webdav')}
+        />
         <span style={{ opacity: 0.6 }}>换协议后记得点保存</span>
       </label>
 
@@ -1423,15 +1509,15 @@ function WebdavSettings({
 
           <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <span style={{ opacity: 0.7, minWidth: 64 }}>签名</span>
-            <select
+            <SelectBox
               value={signatureVersion}
+              options={[
+                ['v4', 'v4'],
+                ['v2', 'v2（老网关多半要这个）'],
+              ]}
               disabled={busy}
-              onChange={(event) => setSignatureVersion(event.target.value)}
-              style={selectStyle}
-            >
-              <option value="v4">v4</option>
-              <option value="v2">v2（老网关多半要这个）</option>
-            </select>
+              onChange={setSignatureVersion}
+            />
             <span style={{ opacity: 0.7, minWidth: 40 }}>区域</span>
             <input
               value={region}
@@ -1535,7 +1621,7 @@ const LIST_MODES: readonly { id: ListMode; label: string; icon: React.ReactEleme
 
 /** The glyph a card leads with; the same frame, a different picture per kind. */
 function kindGlyph(entry: EntrySummary): React.ReactElement {
-  const size = 16
+  const size = 20
   if (entry.kind === 'image') return <ImageIcon size={size} />
   if (entry.kind === 'link') {
     const media = entry.platform === 'bilibili' || entry.platform === 'xiaoyuzhou'
@@ -1674,16 +1760,27 @@ function EntryCard({
         display: 'grid',
         placeItems: 'center',
         background: tileBackground(entry),
-        width: grid ? '100%' : compact ? 30 : 104,
-        height: grid ? (visual ? 132 : 64) : compact ? 30 : 78,
+        width: grid ? '100%' : compact ? 36 : 104,
+        height: grid ? (visual ? 132 : 64) : compact ? 36 : 82,
         borderRadius: grid ? 0 : compact ? 6 : 8,
         ...(grid
           ? { borderBottom: `1px solid ${hairline}` }
           : { borderRight: `1px solid ${hairline}` }),
         ...(compact ? { margin: '6px 0 6px 10px' } : {}),
+        // Rows put the picture on the right; the grid puts it on top.
+        ...(grid ? {} : { order: 2 }),
       }}
     >
-      {kindGlyph(entry)}
+      {entry.thumbnailId === undefined ? (
+        <span style={{ display: 'grid', placeItems: 'center' }}>{kindGlyph(entry)}</span>
+      ) : (
+        <img
+          src={`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}?id=${encodeURIComponent(entry.thumbnailId)}`}
+          alt=""
+          loading="lazy"
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+      )}
     </span>
   )
 
@@ -1733,6 +1830,7 @@ function EntryCard({
           alignItems: compact ? 'center' : 'stretch',
           gap: compact ? 8 : 5,
           padding: compact ? '6px 12px 6px 8px' : '9px 12px',
+          ...(grid ? {} : { order: 1 }),
         }}
       >
         {/*
@@ -1916,18 +2014,12 @@ function EntryPane({
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <span style={{ opacity: 0.7, minWidth: 44 }}>类目</span>
-        <select
+        <SelectBox
           value={detail.category}
+          options={CATEGORIES.map((value) => [value, CATEGORY_LABELS[value]] as const)}
           disabled={busy}
-          onChange={(event) => void onUpdate({ category: event.target.value })}
-          style={selectStyle}
-        >
-          {CATEGORIES.map((value) => (
-            <option key={value} value={value}>
-              {CATEGORY_LABELS[value]}
-            </option>
-          ))}
-        </select>
+          onChange={(next) => void onUpdate({ category: next })}
+        />
       </label>
 
       <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1967,7 +2059,7 @@ function EntryPane({
             <button
               type="button"
               title={`从这条记录上移除「${value}」`}
-              style={{ ...buttonStyle, border: 'none', padding: '2px 4px', opacity: 0.7 }}
+              style={{ ...actionStyle, padding: '2px 6px', gap: 2 }}
               onClick={() =>
                 void onUpdate({ tags: detail.tags.filter((tag) => tag !== value) })
               }

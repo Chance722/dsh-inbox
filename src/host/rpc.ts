@@ -184,8 +184,14 @@ function collapse(text: string): string {
 }
 
 /** One stored record, trimmed to what a list row shows. */
-function toSummary(item: Item): EntrySummary {
+function toSummary(
+  item: Item,
+  attachmentOf?: (id: string) => Attachment | undefined,
+): EntrySummary {
   const preview = item.text === undefined ? undefined : collapse(item.text).slice(0, PREVIEW_CHARS)
+  // The card can only show a picture if we say which attachment to ask for —
+  // and only for attachments that really are images.
+  const thumbnail = item.attachmentIds.find((id) => attachmentOf?.(id)?.mime.startsWith('image/') === true)
   return {
     id: item.id,
     kind: item.kind,
@@ -196,6 +202,7 @@ function toSummary(item: Item): EntrySummary {
     updatedAt: item.updatedAt,
     tags: [...item.tags],
     attachmentCount: item.attachmentIds.length,
+    ...(thumbnail === undefined ? {} : { thumbnailId: thumbnail }),
     ...(item.title === undefined ? {} : { title: item.title }),
     ...(preview === undefined || preview.length === 0 ? {} : { preview }),
     ...(item.url === undefined ? {} : { url: item.url }),
@@ -225,7 +232,7 @@ function toDetail(vault: Vault, item: Item): EntryDetail {
     if (record !== undefined) attachments.push(toAttachmentSummary(record))
   }
   return {
-    ...toSummary(item),
+    ...toSummary(item, (id) => vault.getAttachment(id)),
     ...(item.text === undefined ? {} : { text: item.text }),
     attachments,
   }
@@ -320,7 +327,9 @@ function handleList(vault: Vault | undefined, payload: unknown): InboxRpcResult<
   }).filter((item) => (scope === 'bin' ? item.deletedAt !== undefined : item.deletedAt === undefined))
 
   const value: ListResult = {
-    entries: matched.slice(offset, offset + limit).map(toSummary),
+    entries: matched
+      .slice(offset, offset + limit)
+      .map((item) => toSummary(item, (id) => vault.getAttachment(id))),
     matched: matched.length,
     total: live.length,
     watchLater: live.filter((item) => item.watchLater === true).length,

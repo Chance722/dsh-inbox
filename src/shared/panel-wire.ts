@@ -235,6 +235,8 @@ export interface EntrySummary {
   updatedAt: string
   /** How many attachments the record references. */
   attachmentCount: number
+  /** The first image attachment, when the record has one — the card's picture. */
+  thumbnailId?: string
   /** Present while the record sits in the recycle bin. */
   deletedAt?: string
 }
