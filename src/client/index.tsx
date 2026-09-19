@@ -691,7 +691,9 @@ function InboxPanel(): React.ReactElement {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '186px minmax(240px, 1fr) minmax(260px, 1.25fr)',
+          // The list is the working surface; the detail is a reader pane beside
+          // it, so it gets a width rather than half the room.
+          gridTemplateColumns: '176px minmax(320px, 1fr) minmax(250px, 300px)',
           gap: 14,
         }}
       >
@@ -805,8 +807,15 @@ function InboxPanel(): React.ReactElement {
           <div
             style={
               listMode === 'grid'
-                ? { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }
-                : { display: 'flex', flexDirection: 'column', gap: listMode === 'compact' ? 4 : 8 }
+                ? {
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                    gap: 12,
+                    alignContent: 'start',
+                  }
+                : listMode === 'compact'
+                  ? { display: 'flex', flexDirection: 'column', gap: 0 }
+                  : { display: 'flex', flexDirection: 'column', gap: 10 }
             }
           >
             {list?.entries.map((entry) => (
@@ -1263,6 +1272,28 @@ function kindGlyph(entry: EntrySummary): React.ReactElement {
   return <FileText size={size} />
 }
 
+/**
+ * What a card's tile is filled with.
+ *
+ * The panel has no theme tokens of its own (it is one component inside someone
+ * else's app), so the fills are mixed from `currentColor` — which keeps them
+ * legible in light and dark alike. Images get the diagonal hatch the prototype
+ * used for "a picture lives here", media a soft gradient, everything else a
+ * flat wash.
+ *
+ * @param entry - the record the tile belongs to.
+ * @returns a CSS background value.
+ */
+function tileBackground(entry: EntrySummary): string {
+  if (entry.kind === 'image') {
+    return 'repeating-linear-gradient(135deg, color-mix(in srgb, currentColor 14%, transparent) 0 10px, color-mix(in srgb, currentColor 7%, transparent) 10px 20px)'
+  }
+  if (entry.platform === 'bilibili' || entry.platform === 'xiaoyuzhou') {
+    return 'linear-gradient(135deg, color-mix(in srgb, currentColor 16%, transparent), color-mix(in srgb, currentColor 6%, transparent))'
+  }
+  return 'color-mix(in srgb, currentColor 8%, transparent)'
+}
+
 /** Each category gets a glyph of its own, so the rail reads at a glance. */
 const CATEGORY_ICONS: Record<(typeof CATEGORIES)[number], React.ReactElement> = {
   idea: <Lightbulb size={15} />,
@@ -1345,50 +1376,121 @@ function EntryCard({
   selected: boolean
   onOpen: () => void
 }): React.ReactElement {
-  const heading = entry.title ?? entry.url ?? entry.preview ?? '（无标题）'
+  /**
+   * A credential's text never reaches the list.
+   *
+   * The rule is older than this card (`AGENTS.md` 3: 账密类列表脱敏) and the old
+   * list broke it — it printed the first line of the secret as the row title.
+   * The list is the surface most likely to be on screen when someone walks by.
+   */
+  const secret = entry.category === 'secret'
+  const heading = secret ? '密钥 / 账密' : (entry.title ?? entry.url ?? entry.preview ?? '（无标题）')
   const compact = mode === 'compact'
-  const wash = selected ? 'color-mix(in srgb, currentColor 12%, transparent)' : 'transparent'
+  const grid = mode === 'grid'
+  /** Only things that have a picture get a poster; a text note gets a band. */
+  const visual = entry.kind === 'image' || entry.platform === 'bilibili' || entry.platform === 'xiaoyuzhou'
+  const hairline = 'color-mix(in srgb, currentColor 10%, transparent)'
+  const accent = 'color-mix(in srgb, currentColor 45%, transparent)'
+
+  const tile = (
+    <span
+      aria-hidden
+      style={{
+        flex: 'none',
+        display: 'grid',
+        placeItems: 'center',
+        background: tileBackground(entry),
+        width: grid ? '100%' : compact ? 30 : 104,
+        height: grid ? (visual ? 132 : 64) : compact ? 30 : 78,
+        borderRadius: grid ? 0 : compact ? 6 : 8,
+        ...(grid
+          ? { borderBottom: `1px solid ${hairline}` }
+          : { borderRight: `1px solid ${hairline}` }),
+        ...(compact ? { margin: '6px 0 6px 10px' } : {}),
+      }}
+    >
+      {kindGlyph(entry)}
+    </span>
+  )
+
   return (
     <button
       type="button"
       onClick={onOpen}
       style={{
+        position: 'relative',
         display: 'flex',
-        gap: compact ? 8 : 10,
-        alignItems: 'flex-start',
+        flexDirection: grid ? 'column' : 'row',
+        alignItems: compact ? 'center' : grid ? 'stretch' : 'stretch',
         width: '100%',
         textAlign: 'left',
         font: 'inherit',
         color: 'inherit',
-        background: wash,
-        border: selected
-          ? '1px solid color-mix(in srgb, currentColor 45%, transparent)'
-          : '1px solid color-mix(in srgb, currentColor 12%, transparent)',
-        borderRadius: 10,
-        padding: compact ? '6px 8px' : '9px 10px',
+        background: selected
+          ? 'color-mix(in srgb, currentColor 12%, transparent)'
+          : compact
+            ? 'transparent'
+            : 'color-mix(in srgb, currentColor 4%, transparent)',
+        ...(compact
+          ? { border: 'none', borderBottom: `1px solid ${hairline}`, borderRadius: 0 }
+          : {
+              border: `1px solid ${selected ? accent : hairline}`,
+              borderRadius: 12,
+              overflow: 'hidden',
+            }),
+        padding: 0,
         cursor: 'pointer',
         opacity: entry.status === 'read' ? 0.72 : 1,
       }}
     >
+      {selected && !compact && (
+        <span
+          aria-hidden
+          style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: accent }}
+        />
+      )}
+      {tile}
       <span
-        aria-hidden
         style={{
-          flex: 'none',
-          width: compact ? 24 : 30,
-          height: compact ? 24 : 30,
-          borderRadius: 7,
-          display: 'grid',
-          placeItems: 'center',
-          background: 'color-mix(in srgb, currentColor 8%, transparent)',
-          border: '1px solid color-mix(in srgb, currentColor 10%, transparent)',
+          minWidth: 0,
+          flex: 1,
+          display: 'flex',
+          flexDirection: compact ? 'row' : 'column',
+          alignItems: compact ? 'center' : 'stretch',
+          gap: compact ? 8 : 5,
+          padding: compact ? '6px 12px 6px 8px' : '9px 12px',
         }}
       >
-        {kindGlyph(entry)}
-      </span>
-      <span style={{ minWidth: 0, flex: 1 }}>
-        <span style={{ display: 'block', overflowWrap: 'anywhere' }}>{heading}</span>
-        {!compact && entry.preview !== undefined && entry.preview !== heading && (
-          <span style={{ display: 'block', opacity: 0.65, marginTop: 2, overflowWrap: 'anywhere' }}>
+        {/*
+          One line each, ellipsised. A card whose height depends on how long its
+          URL is turns the list into a ragged column you cannot scan — and in a
+          three-column panel there is never room for the wrapping to look
+          deliberate.
+        */}
+        <span
+          title={heading}
+          style={{
+            display: 'block',
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {heading}
+        </span>
+        {!compact && !secret && entry.preview !== undefined && entry.preview !== heading && (
+          <span
+            title={entry.preview}
+            style={{
+              display: 'block',
+              minWidth: 0,
+              opacity: 0.65,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
             {entry.preview.slice(0, 90)}
           </span>
         )}
@@ -1397,8 +1499,10 @@ function EntryCard({
             display: 'flex',
             gap: 6,
             alignItems: 'center',
-            flexWrap: 'wrap',
-            marginTop: 4,
+            minWidth: 0,
+            overflow: 'hidden',
+            whiteSpace: 'nowrap',
+            ...(compact ? { marginLeft: 'auto' } : { marginTop: 4 }),
             fontSize: 12,
             opacity: 0.6,
           }}
@@ -1407,11 +1511,13 @@ function EntryCard({
           {entry.platform !== undefined && <span>· {entry.platform}</span>}
           {entry.attachmentCount > 0 && <span>· {entry.attachmentCount} 附件</span>}
           {entry.deletedAt !== undefined && <span style={{ color: 'salmon' }}>· 已删</span>}
-          <span>· {new Date(entry.createdAt).toLocaleDateString()}</span>
+          <span style={{ flex: 'none' }}>· {new Date(entry.createdAt).toLocaleDateString()}</span>
           {entry.tags.map((tag) => (
-            <span key={tag}>#{tag}</span>
+            <span key={tag} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              #{tag}
+            </span>
           ))}
-          <span style={{ marginLeft: 'auto' }}>
+          <span style={{ marginLeft: 'auto', flex: 'none' }}>
             {entry.status === 'read' ? <Check size={13} /> : '未读'}
           </span>
         </span>
