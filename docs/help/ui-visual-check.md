@@ -73,3 +73,4 @@ Start-Process -FilePath $chrome -ArgumentList $args -Wait -NoNewWindow
 | 详情时间戳 | 距卡片下沿 17px（`bottom: 16` + 1px 边框），始终在框内 |
 | 详情列 | 有界 flex 列 + 内容列 `overflow-y: auto`：内容比卡片高时**列内滚动**（实测 h=603.6 / 内容 809，滚动到底时时间戳位移 0、按钮可见）；留白用 `margin-bottom: 40` 才挡得住内容滑到时间戳底下 |
 | 密钥标题 | `密钥 / 账密（描述…）`，描述截断在 24 字符（逻辑在 `src/client/heading.ts`，另有单测），整行再由 CSS 省略号收口 |
+| 两列卡片 | 一律 **94px**（不论有没有预览行）；图标 38px（含边框 40）；预览位 64×64 且是一个自己的按钮 |
