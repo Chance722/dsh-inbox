@@ -292,3 +292,12 @@
 **证据**：`pnpm test` 12 个文件 **119 条**全绿——WebDAV 那 8 条在重构后**没改一行就通过**，正好证明"源无关"抽取没改变原有行为。
 
 **命名债（如实记）**：`webdav/config.ts`、`WebdavSettings`、`WebdavStatus`、端点名 `webdav` 这些名字是 M6b 留下的，现在同时覆盖两种协议。没改是因为改动面大于收益；`panel-wire.ts` 里已经写明"这个端点名的历史原因"。
+
+**用户实测抓到的 bug（已修）**：第一次保存成功，**再保存就报"没存上：Unexpected end of JSON input"**。两个问题叠在一起：
+
+1. 我每次保存都调 `settings.register(...)`，而命名空间第二次注册会抛 `already registered`；
+2. 抛出后端点**吐出空 body**，面板只能报一句 JSON 解析失败的噪声。
+
+修法两处：**端点里 catch 住任何 handler 异常并回一个 `inbox/handler-threw` 的 JSON 结果**（无论如何都不该让调用方拿到空 body）；写入改成官方的**命名空间寻址形式** `settings.update(ns, patch)`，注册只作为"声明"、失败就忽略——因为 `ctx.get('settings')` 每次返回的是**新的包装对象**，按对象身份缓存 scope 根本不命中（这是我第一次尝试修复时踩的，第二次才对）。
+
+回归测试：假 settings 现在**和真服务一样拒绝第二次注册**，并断言"同一进程里保存两次都成功、值取最后一次"。实测两次保存都是"设置已保存"。

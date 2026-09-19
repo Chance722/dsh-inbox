@@ -544,7 +544,14 @@ function endpoint(
       } catch {
         return Response.json(failure('inbox/bad-json', '请求体不是 JSON'), { status: 400 })
       }
-      return Response.json(await run(payload))
+      try {
+        return Response.json(await run(payload))
+      } catch (error) {
+        // A thrown handler used to leave the caller with an empty body, and the
+        // panel could only report "Unexpected end of JSON input". Always answer
+        // with the reason instead.
+        return Response.json(failure('inbox/handler-threw', reasonOf(error)))
+      }
     },
   }
 }

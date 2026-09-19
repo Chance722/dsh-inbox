@@ -23,9 +23,14 @@ import {
 /** A settings service that keeps one namespace value in memory. */
 function fakeSettings(initial?: Partial<typeof DEFAULT_SETTINGS>) {
   let current = { ...DEFAULT_SETTINGS, ...initial }
+  let registered = false
   return {
     current: () => current,
     register: vi.fn((namespace: string, _schema: unknown, options: { base: typeof DEFAULT_SETTINGS }) => {
+      // The real service refuses a second registration; the fake has to refuse
+      // it too, or this test would have missed the bug it exists for.
+      if (registered) throw new Error(`settings namespace "${namespace}" is already registered`)
+      registered = true
       current = { ...options.base, ...current }
       return {
         get: () => current,
@@ -35,6 +40,10 @@ function fakeSettings(initial?: Partial<typeof DEFAULT_SETTINGS>) {
       }
     }),
     get: (namespace: string) => (namespace === SETTINGS_NAMESPACE ? current : undefined),
+    update: (namespace: string, patch: Partial<typeof DEFAULT_SETTINGS>) => {
+      if (namespace !== SETTINGS_NAMESPACE) throw new Error('unknown namespace')
+      current = { ...current, ...patch }
+    },
   }
 }
 
@@ -111,6 +120,26 @@ describe('saving the configuration', () => {
     expect(credentials.set).toHaveBeenCalledWith(PASSWORD_KEY, 'hunter2')
     // The secret must not be anywhere in the settings layer.
     expect(JSON.stringify(settings.current())).not.toContain('hunter2')
+  })
+
+  it('saves more than once in one process', async () => {
+    // Regression: registering on every save threw "already registered" on the
+    // second one, and the panel could only report an empty body.
+    const settings = fakeSettings()
+    const ctx = context({ settings, credentials: fakeCredentials() })
+
+    expect((await saveWebdav(ctx, undefined, DEFAULT_SETTINGS, { baseUrl: 'https://a' })).ok).toBe(true)
+    expect((await saveWebdav(ctx, undefined, DEFAULT_SETTINGS, { baseUrl: 'https://b' })).ok).toBe(true)
+    expect(settings.current().baseUrl).toBe('https://b')
+  })
+
+  it('refuses a signature version it does not implement', async () => {
+    const settings = fakeSettings()
+    const result = await saveWebdav(context({ settings }), undefined, DEFAULT_SETTINGS, {
+      signatureVersion: 'v2',
+    })
+    expect(result.ok).toBe(false)
+    expect(result.reason).toContain('v4')
   })
 
   it('clears a stored password on an empty string, and leaves it alone when omitted', async () => {

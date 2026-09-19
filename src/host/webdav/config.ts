@@ -67,6 +67,8 @@ interface SettingsLike {
     options: { base: WebdavSettings },
   ): SettingsScope
   get(namespace: string): WebdavSettings | undefined
+  /** Namespace-addressed write: no scope object required. */
+  update(namespace: string, patch: Partial<WebdavSettings>): void
 }
 
 /** The slice of the credentials service this file uses. */
@@ -180,9 +182,19 @@ export async function saveWebdav(
     if (settings === undefined) {
       return { ok: false, reason: '这个组合里没有设置服务，改不了地址' }
     }
+    // Declare the namespace if this process has not yet, then write through the
+    // *namespace* form. Two reasons for this shape: `register` throws when a
+    // namespace is already registered (a second save used to fail on exactly
+    // that), and the service hands out a fresh wrapper per `ctx.get`, so caching
+    // the returned scope by object identity does not work.
+    try {
+      settings.register(SETTINGS_NAMESPACE, WebdavSettingsSchema, { base })
+    } catch {
+      // Already declared — which is the normal case from the second save on.
+    }
     // `update()` merges into the *user* layer and persists; the composed base
     // stays the deployment's, which is what makes a shipped default work.
-    settings.register(SETTINGS_NAMESPACE, WebdavSettingsSchema, { base }).update(config)
+    settings.update(SETTINGS_NAMESPACE, config)
   }
 
   if (patch.password !== undefined) {
