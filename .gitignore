@@ -1,0 +1,14 @@
+# Temporary reference copy of the official dsh distribution, used while
+# reading upstream source. Delete it once it is no longer needed.
+.research/
+
+# Dependencies and build output
+node_modules/
+dist/
+lib/
+coverage/
+
+# Logs and local scratch
+*.log
+.DS_Store
+Thumbs.db
