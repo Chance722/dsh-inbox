@@ -777,26 +777,42 @@ function InboxPanel(): React.ReactElement {
         </nav>
 
         <section style={{ ...cardStyle, minWidth: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              marginBottom: 6,
+            }}
+          >
             <strong>{scope === 'bin' ? '回收站' : '存入的'}</strong>
-            <span style={{ opacity: 0.6 }}>
-              {list === undefined ? '读取中…' : `${String(list.matched)} 条匹配`}
-            </span>
+            {/* The area's own action lives where the count used to sit. */}
+            {scope === 'bin' && (list?.deleted ?? 0) > 0 && (
+              <button
+                type="button"
+                style={buttonStyle}
+                disabled={busy}
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      '清空回收站会真的删掉这些记录，不能撤销。附件字节仍留在 dsh 的附件仓库里。继续？',
+                    )
+                  )
+                    return
+                  void mutate(INBOX_ENDPOINT_PURGE, {}, { dropSelection: true })
+                }}
+              >
+                <Trash2 size={13} /> 清空回收站
+              </button>
+            )}
           </div>
 
-          {scope === 'bin' && (list?.deleted ?? 0) > 0 && (
-            <button
-              type="button"
-              style={{ ...buttonStyle, marginBottom: 8 }}
-              disabled={busy}
-              onClick={() => {
-                if (!window.confirm('清空回收站会真的删掉这些记录，不能撤销。附件字节仍留在 dsh 的附件仓库里。继续？')) return
-                void mutate(INBOX_ENDPOINT_PURGE, {}, { dropSelection: true })
-              }}
-            >
-              清空回收站
-            </button>
-          )}
+          {/* …and the count moves to the top-right of the list itself. */}
+          <div style={{ textAlign: 'right', fontSize: 12, opacity: 0.6, marginBottom: 6 }}>
+            {list === undefined ? '读取中…' : `${String(list.matched)} 条匹配`}
+          </div>
+
 
           {list?.entries.length === 0 && (
             <p style={{ margin: '8px 0 0', opacity: 0.7 }}>
