@@ -4,6 +4,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { MILESTONE, PACKAGE_NAME } from '../shared/constants.js'
 import { registerInboxCommand } from './command.js'
 import { registerInboxRpc } from './rpc.js'
+import { registerInboxTools } from './tools.js'
 import { Vault } from './vault/vault.js'
 
 /** Stable Cordis plugin name for the host half. */
@@ -51,6 +52,7 @@ export function apply(ctx: Context): void {
 
   registerInboxCommand(ctx, () => vault)
   registerInboxRpc(ctx, () => vault)
+  registerInboxTools(ctx, () => vault)
 
   ctx.tools.register(
     defineTool({

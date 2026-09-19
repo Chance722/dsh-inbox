@@ -35,10 +35,13 @@ describe('dsh-inbox host half', () => {
     expect(inject).toEqual(['tools', 'commands', 'storageDomain'])
   })
 
-  it('registers exactly one model-facing tool', () => {
+  it('registers the vault tools the model may call', () => {
     const { register, ctx } = fakeContext()
     apply(ctx)
-    expect(register).toHaveBeenCalledTimes(1)
+    const names = register.mock.calls.map(
+      (call) => (call[0] as { name: string }).name,
+    )
+    expect(names).toEqual(['inbox_search', 'inbox_get', 'inbox_status'])
   })
 
   it('registers the /inbox command without recording its input', () => {
@@ -55,15 +58,15 @@ describe('dsh-inbox host half', () => {
     expect(definition.input?.attachments).toBe(true)
   })
 
-  it('reports package identity and milestone', async () => {
+  it('reports package identity and milestone through inbox_status', async () => {
     const { register, ctx } = fakeContext()
     apply(ctx)
 
-    const tool = register.mock.calls[0]?.[0] as {
-      name: string
-      execute: (args: unknown, exec: unknown) => Promise<unknown>
-    }
-    expect(tool.name).toBe('inbox_status')
+    const tool = register.mock.calls
+      .map((call) => call[0] as { name: string; execute: (a: unknown, e: unknown) => Promise<unknown> })
+      .find((candidate) => candidate.name === 'inbox_status')
+    if (tool === undefined) throw new Error('inbox_status was not registered')
+
     await expect(tool.execute({}, {})).resolves.toEqual({
       ok: true,
       package: PACKAGE_NAME,

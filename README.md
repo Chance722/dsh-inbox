@@ -2,11 +2,11 @@
 
 English | [中文](README.zh.md)
 
-> **Status: pre-alpha — M0–M3 done.** You can file things two ways, browse and manage them in the panel (filters, detail, edit, read/unread, recycle bin), and repeats merge. Classification, chat retrieval and sync are still ahead. Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
+> **Status: pre-alpha — M0–M4 done.** File things two ways, browse and manage them in the panel, and now **ask for them in conversation**. Automatic classification and sync are still ahead. One known gap: the conversation shows tool results in dsh's built-in card, not our own (the tool-view slot is session-scoped — see the development bus). Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
 
 A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`): paste links, images, text and credentials into one local vault, get them classified, browse them from the sidebar, and pull them back through conversation.
 
-## What works today (M3)
+## What works today (M4)
 
 | | |
 |---|---|
@@ -16,7 +16,9 @@ A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/de
 | ✅ Browse and manage | Filter by unread / category / tag, search across title, text, url and note, open a record's detail with image thumbnails, edit its category, description and tags, mark it read |
 | ✅ Recycle bin | Delete is a soft delete; restore from the bin, or empty it to remove the records for good |
 | ✅ Storage and merging | Records persist through dsh's own storage stack; a repeat paste merges into the record you already have |
-| ❌ Not yet | Automatic classification (M5), pulling records back through conversation (M4), sync (M6) |
+| ✅ Ask in conversation | `inbox_search` finds records by words, category, tag, status or kind; `inbox_get` opens one by id (text up to 1000 characters, links, notes, tags, attachment facts) |
+| 🔒 Two hard refusals | A credential record never returns its text, and image bytes never enter the conversation — images come back as markers the UI renders locally |
+| ❌ Not yet | Automatic classification (M5), sync (M6), our own conversation card (see the gap above) |
 
 ### Where your data lives
 

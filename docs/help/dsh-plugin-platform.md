@@ -179,6 +179,13 @@ ctx.inject(['connection', 'attachments'], (scoped) => {
 
 如果将来要放弃 Fetch 路由改用 RPC，**先复现这两条**再定。
 
+## M4 实测补充：工具卡片的槽是 session 作用域的
+
+- 模型能看见并调用宿主侧注册的工具：在 web 会话里问"我仓库里有哪些没看的"，模型直接调了 `inbox_status` + `inbox_search` 并给出结果。**工具归属 preset 的担心不成立**——宿主组合里的注册对会话可见。
+- 工具结果原样进入对话（`output.render` 的文本就是模型看到的内容），带 id，模型可以拿 id 继续调 `inbox_get`。
+- **`tool.call.toolview` 的 scope 是 `session`**（证据：`dsh-client-ui-tool/lib/types/client/contract/slots.d.ts`）。我们在 root 半边的客户端插件里注册自定义卡片，注册没报错、产物里也有这段代码，但**界面仍然用内置通用卡片渲染**——根作用域的注册对这个槽不生效。
+- 结论：要自定义工具卡片，得在 session 作用域里注册（具体怎么进那个作用域还没查）。在那之前，工具结果的展示交给内置通用卡片。
+
 ### 在单测里跑真实存储栈
 
 不用起 dsh，直接在 vitest 里组一个 Cordis 应用即可（实测可行）：

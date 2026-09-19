@@ -32,6 +32,7 @@ import {
   type WireImage,
 } from '../shared/panel-wire.js'
 import { MILESTONE, PANEL_ID, PACKAGE_NAME } from '../shared/constants.js'
+import { registerToolCards } from './card.js'
 import {
   CATEGORIES,
   CATEGORY_LABELS,
@@ -75,6 +76,8 @@ export function apply(ctx: Context): void {
   )
 
   slots.inject('main', () => slots.register({ name: 'main', key: PANEL_ID }, InboxPanel))
+
+  registerToolCards(slots)
 }
 
 /** Sidebar row icon: a box glyph sized to the shell's requested square. */
