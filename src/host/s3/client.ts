@@ -248,6 +248,73 @@ export function signRequest(
   }
 }
 
+/**
+ * SigV4 with the **minimum** signed headers: `host` and `x-amz-date` only.
+ *
+ * The full form also signs `x-amz-content-sha256`, which is what AWS expects.
+ * A gateway that implements a subset of v4 recomputes the canonical request
+ * from the two headers it knows and then rejects every signature we send —
+ * which is indistinguishable from a wrong key until you try this.
+ *
+ * @param config - endpoint, bucket, region.
+ * @param deps - credentials, fetch, clock.
+ * @param method - HTTP method.
+ * @param key - object key.
+ * @param query - query parameters.
+ * @returns the signed request.
+ */
+export function signRequestV4Minimal(
+  config: S3Config,
+  deps: S3Deps,
+  method: string,
+  key: string,
+  query: Record<string, string> = {},
+): SignedRequest {
+  const now = deps.now ?? new Date()
+  const stamp = amzDate(now)
+  const day = stamp.slice(0, 8)
+  const region = config.region ?? 'us-east-1'
+  const base = config.endpoint.replace(/\/$/, '')
+
+  const canonicalUri = `/${encodePart(config.bucket, false)}${
+    key.length === 0 ? '' : `/${encodePart(key, false)}`
+  }`
+  const canonicalQuery = Object.entries(query)
+    .map(([name, value]) => `${encodePart(name, true)}=${encodePart(value, true)}`)
+    .sort()
+    .join('&')
+
+  const host = new URL(base).host
+  const signedHeaders = 'host;x-amz-date'
+  const canonicalHeaders = `host:${host}\nx-amz-date:${stamp}\n`
+  const payloadHash = sha256Hex('')
+
+  const canonicalRequest = [
+    method,
+    canonicalUri,
+    canonicalQuery,
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join('\n')
+
+  const scope = `${day}/${region}/s3/aws4_request`
+  const stringToSign = ['AWS4-HMAC-SHA256', stamp, scope, sha256Hex(canonicalRequest)].join('\n')
+  const signingKey = hmac(hmac(hmac(hmac(`AWS4${deps.accessKeySecret}`, day), region), 's3'), 'aws4_request')
+  const signature = createHmac('sha256', signingKey).update(stringToSign).digest('hex')
+
+  return {
+    url: `${base}${canonicalUri}${canonicalQuery.length === 0 ? '' : `?${canonicalQuery}`}`,
+    headers: {
+      host,
+      'x-amz-date': stamp,
+      authorization: `AWS4-HMAC-SHA256 Credential=${deps.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+    },
+    canonicalRequest,
+    signature,
+  }
+}
+
 const KEY_BLOCK = /<Key>([\s\S]*?)<\/Key>/i
 const LAST_MODIFIED = /<LastModified>([\s\S]*?)<\/LastModified>/i
 const SIZE = /<Size>([\s\S]*?)<\/Size>/i
@@ -315,7 +382,20 @@ export async function listPrefix(
   // Only a server-side failure justifies the fallback; a 4xx is an answer
   // (wrong key, missing permission) and asking again would just repeat it.
   const refusal = await refused(first, '列对象')
-  if (first.status < 500) throw refusal
+  if (first.status < 500) {
+    // A 401 under full v4 has one more thing to try before giving up: a gateway
+    // that verifies only `host` and `x-amz-date` rejects every signature that
+    // also covers `x-amz-content-sha256`.
+    if (config.signatureVersion?.toLowerCase() !== 'v2' && first.status === 401) {
+      const minimal = signRequestV4Minimal(config, deps, 'GET', '', { 'list-type': '2', prefix })
+      const retry = await deps.fetch(minimal.url, { method: 'GET', headers: minimal.headers })
+      if (retry.ok) return parseListing(await retry.text())
+      throw new Error(
+        `${(await refused(retry, '列对象（精简 v4）')).message}\n完整 v4：${refusal.message}`,
+      )
+    }
+    throw refusal
+  }
 
   const v1 = sign(config, deps, 'GET', '', { prefix })
   const second = await deps.fetch(v1.url, { method: 'GET', headers: v1.headers })

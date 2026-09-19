@@ -8,7 +8,7 @@
  * Read-only by construction: every probe is a GET, and none of them write.
  */
 
-import { signer, type S3Config, type S3Deps } from './client.js'
+import { signer, signRequestV4Minimal, type S3Config, type S3Deps } from './client.js'
 
 /** One probe's outcome. */
 export interface ProbeResult {
@@ -29,8 +29,9 @@ async function probe(
   label: string,
   key: string,
   query: Record<string, string>,
+  signOverride?: typeof signRequestV4Minimal,
 ): Promise<ProbeResult> {
-  const signed = signer(config)(config, deps, 'GET', key, query)
+  const signed = (signOverride ?? signer(config))(config, deps, 'GET', key, query)
   try {
     const response = await deps.fetch(signed.url, { method: 'GET', headers: signed.headers })
     let detail = ''
@@ -64,13 +65,22 @@ export async function probeS3(
   prefix: string,
 ): Promise<ProbeResult[]> {
   return [
-    await probe(config, deps, '列 bucket（无参数）', '', {}),
-    await probe(config, deps, '列 bucket（带尾斜杠 key）', '/', {}),
-    await probe(config, deps, '列 bucket（prefix 为空）', '', { prefix: '' }),
-    await probe(config, deps, '列 bucket（V1 + 配置的 prefix）', '', { prefix }),
-    await probe(config, deps, '列 bucket（V2 + 配置的 prefix）', '', {
-      'list-type': '2',
-      prefix,
-    }),
+    // Version and region are what a v4 signature covers, and a gateway that
+    // checks either will refuse a request whose scope disagrees with it. Trying
+    // a few regions at once answers "which one does it want" in one click.
+    await probe({ ...config, signatureVersion: 'v4', region: 'us-east-1' }, deps, 'v4 · us-east-1 · 无参数', '', {}),
+    await probe(
+      { ...config, signatureVersion: 'v4', region: 'us-east-1' },
+      deps,
+      'v4 精简（只签 host + date）',
+      '',
+      {},
+      signRequestV4Minimal,
+    ),
+    await probe({ ...config, signatureVersion: 'v4', region: 'cn-north-1' }, deps, 'v4 · cn-north-1 · 无参数', '', {}),
+    await probe({ ...config, signatureVersion: 'v4', region: 'cn-northwest-1' }, deps, 'v4 · cn-northwest-1 · 无参数', '', {}),
+    await probe({ ...config, signatureVersion: 'v4', region: 'us-east-1' }, deps, 'v4 · us-east-1 · 带 prefix', '', { prefix }),
+    await probe({ ...config, signatureVersion: 'v2' }, deps, 'v2 · 无参数', '', {}),
+    await probe({ ...config, signatureVersion: 'v2' }, deps, 'v2 · 带 prefix', '', { prefix }),
   ]
 }
