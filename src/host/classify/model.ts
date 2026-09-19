@@ -38,12 +38,27 @@ interface LlmLike {
   stream(options: {
     provider: string
     model: string
-    messages: { role: string; content: { type: string; text: string }[] }[]
+    messages: { role: string; content: LlmContentPart[] }[]
     system?: string
     temperature?: number
     maxTokens?: number
   }): AsyncIterable<LlmChunk>
 }
+
+/** Text, or a durable image reference the adapter resolves against the store. */
+type LlmContentPart =
+  | { type: 'text'; text: string }
+  | {
+      type: 'image'
+      attachment: {
+        attachmentId: string
+        mediaType: string
+        bytes: number
+        width: number
+        height: number
+        name?: string
+      }
+    }
 
 /** Provider route registered by the shipped DeepSeek adapter. */
 export const PROVIDER = 'deepseek-official'
@@ -139,6 +154,10 @@ export function shouldAskModel(
   item: Item,
   minimumChars = 8,
 ): boolean {
+  // An image is the one case where the rule verdict cannot improve with more
+  // rules: a phone snapshot of an ID document has a photo's aspect ratio, so
+  // deciding needs the picture itself. The user authorised exactly this.
+  if (item.kind === 'image') return item.attachmentIds.length > 0
   if (verdict.confidence !== 'unsure') return false
   if (item.kind === 'link') {
     // A link is worth a call only when the host is one we recognise and the
@@ -206,6 +225,12 @@ export async function classifyWithModel(
   }
 
   const subject = redact((item.text ?? item.url ?? '').slice(0, 2_000))
+  const image = item.kind === 'image' ? firstImage(vault, item) : undefined
+  if (item.kind === 'image' && image === undefined) {
+    const reason = '这条图片记录没有可用的附件'
+    await vault.setModelSpend(rollSpend(vault.global.model), `skipped: ${reason}`)
+    return { kind: 'skipped', reason }
+  }
   let answer = ''
   // A thinking model may put its only useful word in the reasoning channel, so
   // keep both and prefer the answer.
@@ -224,10 +249,14 @@ export async function classifyWithModel(
         {
           role: 'user',
           content: [
+            ...(image === undefined ? [] : [image]),
             {
               type: 'text',
-              text: `这段东西属于哪一类？\n\n${subject}`,
-            },
+              text:
+                image === undefined
+                  ? `这段东西属于哪一类？\n\n${subject}`
+                  : '这张图属于哪一类？（手机拍的照片往往是证件照，所以不要只看形状，看图里有什么）',
+            } satisfies LlmContentPart,
           ],
         },
       ],
@@ -267,4 +296,24 @@ export async function classifyWithModel(
   await vault.patch(item.id, { category, categorySource: 'model' })
   await vault.setModelSpend(after, `applied: ${category} (${String(tokens)} tokens)`)
   return { kind: 'applied', category, tokens }
+}
+
+/** Our attachment row rebuilt as the durable reference the adapter expects. */
+function firstImage(vault: Vault, item: Item): LlmContentPart | undefined {
+  for (const attachmentId of item.attachmentIds) {
+    const record = vault.getAttachment(attachmentId)
+    if (record === undefined || !record.mime.startsWith('image/')) continue
+    return {
+      type: 'image',
+      attachment: {
+        attachmentId: record.storeId,
+        mediaType: record.mime,
+        bytes: record.bytes,
+        width: record.width ?? 0,
+        height: record.height ?? 0,
+        ...(record.filename === undefined ? {} : { name: record.filename }),
+      },
+    }
+  }
+  return undefined
 }

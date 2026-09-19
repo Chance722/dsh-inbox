@@ -43,9 +43,16 @@ describe('when the fallback runs', () => {
     expect(shouldAskModel(decided, item({ text: 'https://b23.tv/x' }))).toBe(false)
   })
 
-  it('never asks about an image, however unsure the rule is', () => {
+  it('asks about an image, because ratio cannot see a phone snapshot of a document', () => {
+    // The red line changed on 2026-09-19: the user authorised sending images out
+    // for classification, since a phone photo of an ID card has a photo's ratio.
     const verdict: Classification = { category: 'image', confidence: 'unsure', reason: '疑似证件' }
-    expect(shouldAskModel(verdict, item({ kind: 'image', attachmentIds: ['a'] }))).toBe(false)
+    expect(shouldAskModel(verdict, item({ kind: 'image', attachmentIds: ['a'] }))).toBe(true)
+  })
+
+  it('skips an image that has nothing to look at', () => {
+    const verdict: Classification = { category: 'image', confidence: 'unsure', reason: '没有尺寸' }
+    expect(shouldAskModel(verdict, item({ kind: 'image' }))).toBe(false)
   })
 
   it('skips content too short to be about anything', () => {

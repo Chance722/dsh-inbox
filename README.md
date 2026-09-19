@@ -17,7 +17,7 @@ A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/de
 | ✅ Recycle bin | Delete is a soft delete; restore from the bin, or empty it to remove the records for good |
 | ✅ Storage and merging | Records persist through dsh's own storage stack; a repeat paste merges into the record you already have |
 | ✅ Ask in conversation | `inbox_search` finds records by words, category, tag, status or kind; `inbox_get` opens one by id (text up to 1000 characters, links, notes, tags, attachment facts) |
-| 🔒 Two hard refusals | A credential record never returns its text, and image bytes never enter the conversation — images come back as markers the UI renders locally |
+| 🔒 What never happens | A credential record never returns its text, and image bytes never enter the **conversation** — images come back as markers the UI renders locally. (Classification may send a picture to the model; that is a deliberate, capped choice — see below.) |
 | ✅ Own conversation card | Tool results render as dsh-inbox cards: links become clickable, and image markers become thumbnails drawn on this machine |
 | ✅ Classification by rule | A video page becomes 视频/音频, a public-account article 文章, a credential-shaped paste 密钥/账密 (and is then never echoed), and a card-shaped image gets a 疑似证件 tag — all decided locally, no bytes or text leaving the machine |
 | ✅ Your word wins | Set the category yourself and it is marked as yours; nothing overwrites it |
