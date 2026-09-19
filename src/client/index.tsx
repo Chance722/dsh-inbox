@@ -843,7 +843,7 @@ function WebdavSettings({
               value={endpoint}
               disabled={busy}
               onChange={(event) => setEndpoint(event.target.value)}
-              placeholder="https://s3.cstcloud.cn"
+              placeholder="s3.cstcloud.cn（不写协议默认 https）"
               style={{ ...inputStyle, flex: 1 }}
             />
           </label>

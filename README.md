@@ -99,7 +99,8 @@ Open the panel, press **⚙ 入库设置**, and pick a protocol:
 
 - **WebDAV** — base URL (e.g. `https://data.cstcloud.cn/dav`), folder (default
   `/inbox`), username and password.
-- **S3** — endpoint (e.g. `https://s3.cstcloud.cn`), bucket, region, signature
+- **S3** — endpoint (e.g. `s3.cstcloud.cn`; the scheme defaults to `https`, and
+  an explicit `http://` is kept for a LAN endpoint), bucket, region, signature
   version (v4), AccessKey ID and AccessKey Secret.
 
 Save, then press **立即拉取**. Passwords and secrets go to dsh's credential

@@ -139,6 +139,21 @@ export interface WebdavPatch {
 }
 
 /**
+ * Accept what people actually type: a bare host is the normal case, and the
+ * scheme is the part they should not have to remember. An explicit `http://`
+ * survives, because a self-hosted endpoint on a LAN is a real setup.
+ *
+ * @param value - whatever was typed.
+ * @returns the URL to store.
+ */
+export function normalizeUrl(value: string): string {
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return ''
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return `https://${trimmed}`
+}
+
+/**
  * Persist a configuration change.
  *
  * The password never lands in settings: it is written (or cleared) through the
@@ -162,13 +177,13 @@ export async function saveWebdav(
 
   const config: Partial<WebdavSettings> = {}
   if (patch.protocol === 'webdav' || patch.protocol === 's3') config.protocol = patch.protocol
-  if (patch.baseUrl !== undefined) config.baseUrl = patch.baseUrl.trim()
+  if (patch.baseUrl !== undefined) config.baseUrl = normalizeUrl(patch.baseUrl)
   if (patch.directory !== undefined) {
     const directory = patch.directory.trim()
     config.directory = directory.startsWith('/') ? directory : `/${directory}`
   }
   if (patch.username !== undefined) config.username = patch.username.trim()
-  if (patch.endpoint !== undefined) config.endpoint = patch.endpoint.trim()
+  if (patch.endpoint !== undefined) config.endpoint = normalizeUrl(patch.endpoint)
   if (patch.bucket !== undefined) config.bucket = patch.bucket.trim()
   if (patch.region !== undefined) config.region = patch.region.trim() || 'us-east-1'
   if (patch.signatureVersion !== undefined) {

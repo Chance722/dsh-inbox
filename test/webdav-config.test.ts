@@ -142,6 +142,26 @@ describe('saving the configuration', () => {
     expect(result.reason).toContain('v4')
   })
 
+  it('adds https to a bare host, and keeps an explicit scheme', async () => {
+    const settings = fakeSettings()
+    const ctx = context({ settings })
+
+    await saveWebdav(ctx, undefined, DEFAULT_SETTINGS, {
+      endpoint: '  s3.cstcloud.cn  ',
+      baseUrl: 'data.cstcloud.cn/dav',
+    })
+    expect(settings.current()).toMatchObject({
+      endpoint: 'https://s3.cstcloud.cn',
+      baseUrl: 'https://data.cstcloud.cn/dav',
+    })
+
+    await saveWebdav(ctx, undefined, DEFAULT_SETTINGS, { endpoint: 'http://192.168.1.9:9000' })
+    expect(settings.current().endpoint).toBe('http://192.168.1.9:9000')
+
+    await saveWebdav(ctx, undefined, DEFAULT_SETTINGS, { endpoint: '' })
+    expect(settings.current().endpoint).toBe('')
+  })
+
   it('clears a stored password on an empty string, and leaves it alone when omitted', async () => {
     const settings = fakeSettings()
     const credentials = fakeCredentials('existing')

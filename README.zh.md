@@ -98,8 +98,8 @@ rm -r ~/.dsh/storages/dsh_inbox
 打开面板，点右上角 **⚙ 入库设置**，先选协议：
 
 - **WebDAV** — 地址（例如 `https://data.cstcloud.cn/dav`）、目录（默认 `/inbox`）、用户名、密码。
-- **S3** — 接入点（例如 `https://s3.cstcloud.cn`）、Bucket、区域、签名版本（v4）、
-  AccessKey ID、AccessKey Secret。
+- **S3** — 接入点（例如 `s3.cstcloud.cn`；不写协议默认 `https`，写 `http://` 则保留给内网）、
+  Bucket、区域、签名版本（v4）、AccessKey ID、AccessKey Secret。
 
 保存后点 **立即拉取**。密码与密钥进 dsh 的凭证库，不写进配置。
 
