@@ -18,7 +18,13 @@ import * as storageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as storageJson from '@deepseek-ai/dsh-storage-json'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { authHeaders, joinUrl, parseListing, type FetchLike } from '../src/host/webdav/client.js'
+import {
+  authHeaders,
+  joinUrl,
+  parseListing,
+  userAgentHeaders,
+  type FetchLike,
+} from '../src/host/webdav/client.js'
 import { pullRemote } from '../src/host/remote/pull.js'
 import { Vault } from '../src/host/vault/vault.js'
 
@@ -78,15 +84,34 @@ interface FakeServer {
   fetch: FetchLike
   calls: string[]
   authSeen: (string | undefined)[]
+  userAgentSeen: (string | undefined)[]
 }
 
-function server(options: { listing?: string; listingFails?: boolean } = {}): FakeServer {
+function server(
+  options: {
+    listing?: string
+    listingFails?: boolean
+    /** A refusal with a body, the way a real gateway explains itself. */
+    refused?: { status: number; body: string }
+  } = {},
+): FakeServer {
   const calls: string[] = []
   const authSeen: (string | undefined)[] = []
+  const userAgentSeen: (string | undefined)[] = []
+  const refused = options.refused
   const fetch: FetchLike = async (url, init) => {
     calls.push(`${init.method} ${url}`)
     authSeen.push(init.headers['authorization'])
+    userAgentSeen.push(init.headers['user-agent'])
     if (init.method === 'PROPFIND') {
+      if (refused !== undefined) {
+        return {
+          ok: false,
+          status: refused.status,
+          text: async () => refused.body,
+          arrayBuffer: async () => new ArrayBuffer(0),
+        }
+      }
       if (options.listingFails === true) {
         return { ok: false, status: 401, text: async () => '', arrayBuffer: async () => new ArrayBuffer(0) }
       }
@@ -111,7 +136,7 @@ function server(options: { listing?: string; listingFails?: boolean } = {}): Fak
       headers: { get: () => (url.endsWith('.png') ? 'image/png' : 'text/plain') },
     }
   }
-  return { fetch, calls, authSeen }
+  return { fetch, calls, authSeen, userAgentSeen }
 }
 
 let root: string
@@ -150,6 +175,14 @@ describe('the WebDAV client', () => {
   it('sends basic auth only when it has credentials', () => {
     expect(authHeaders()).toEqual({})
     expect(authHeaders({ username: 'u', password: 'p' }).authorization).toMatch(/^Basic /)
+  })
+
+  it('names itself in the user agent, by default and on request', () => {
+    const bare = { fetch: async () => ({ ok: true, status: 200, text: async () => '', arrayBuffer: async () => new ArrayBuffer(0) }) }
+    expect(userAgentHeaders(bare)).toEqual({ 'user-agent': 'dsh-inbox' })
+    expect(userAgentHeaders({ ...bare, userAgent: '  Obsidian/1.8.7 ' })).toEqual({
+      'user-agent': 'Obsidian/1.8.7',
+    })
   })
 })
 
@@ -231,5 +264,29 @@ describe('pulling', () => {
     })
     expect(result.status).toBe('failed')
     expect(result.reason).toContain('401')
+  })
+
+  it('carries both the gateway body and the identity hint into a refusal', async () => {
+    // The real 数据胶囊 answer, which names the cause and says nothing about
+    // paths or passwords.
+    const fake = server({ refused: { status: 403, body: 'Client type mismatch.' } })
+    const result = await pullRemote(vault, { baseUrl: 'https://data.cstcloud.cn/dav' }, {
+      fetch: fake.fetch,
+      attachments: store as unknown as AttachmentStore,
+    })
+    expect(result.status).toBe('failed')
+    expect(result.reason).toContain('Client type mismatch')
+    expect(result.reason).toContain('客户端标识')
+  })
+
+  it('presents the configured identity on every request it makes', async () => {
+    const fake = server()
+    await pullRemote(vault, { baseUrl: 'https://data.cstcloud.cn/dav' }, {
+      fetch: fake.fetch,
+      attachments: store as unknown as AttachmentStore,
+      userAgent: 'Obsidian/1.8.7',
+    })
+    expect(fake.userAgentSeen.length).toBeGreaterThan(0)
+    expect(fake.userAgentSeen.every((seen) => seen === 'Obsidian/1.8.7')).toBe(true)
   })
 })

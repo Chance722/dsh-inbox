@@ -9,6 +9,8 @@
  * caller never sees bytes it did not ask for.
  */
 
+import { DEFAULT_USER_AGENT } from '../../shared/constants.js'
+
 /** Basic-auth credentials, when the server is not anonymous. */
 export interface WebdavAuth {
   username: string
@@ -43,6 +45,8 @@ export type FetchLike = (
 export interface WebdavDeps {
   fetch: FetchLike
   auth?: WebdavAuth
+  /** What to send as `User-Agent`; empty falls back to the plugin's own. */
+  userAgent?: string
 }
 
 /** Basic auth header, or nothing for an anonymous server. */
@@ -50,6 +54,21 @@ export function authHeaders(auth?: WebdavAuth): Record<string, string> {
   if (auth === undefined) return {}
   const token = Buffer.from(`${auth.username}:${auth.password}`).toString('base64')
   return { authorization: `Basic ${token}` }
+}
+
+/**
+ * The identity this request presents.
+ *
+ * Same header, same reason as the S3 side: 数据胶囊 answers a request that
+ * does not claim to be the application its access key is bound to with
+ * `403 Client type mismatch.`, and nothing in the status code hints at it.
+ *
+ * @param deps - the client's dependencies.
+ * @returns the header to send.
+ */
+export function userAgentHeaders(deps: WebdavDeps): Record<string, string> {
+  const configured = deps.userAgent?.trim() ?? ''
+  return { 'user-agent': configured.length === 0 ? DEFAULT_USER_AGENT : configured }
 }
 
 /** One joined URL that keeps the base path the user configured. */
@@ -101,6 +120,33 @@ export function parseListing(xml: string, directory: string): RemoteFile[] {
   return files
 }
 
+/**
+ * Turn a refused response into an error that carries what the server said.
+ *
+ * The body is where these gateways explain themselves — `403 Client type
+ * mismatch.` is a complete diagnosis, and dropping it leaves a status code that
+ * reads like a credentials problem.
+ *
+ * @param what - which operation failed, in Chinese.
+ * @param response - the refused response.
+ * @returns the error to throw.
+ */
+async function refusal(what: string, response: FetchResponseLike): Promise<Error> {
+  let body = ''
+  try {
+    body = (await response.text()).trim().slice(0, 200)
+  } catch {
+    // A body we cannot read must not replace the status we can.
+  }
+  const identity =
+    response.status === 401 || response.status === 403
+      ? '\n（这类网关常按客户端标识认人：AccessKey 绑定的应用名要填进设置的「客户端标识」）'
+      : ''
+  return new Error(
+    `${what}失败：HTTP ${String(response.status)}${body.length === 0 ? '' : ` — ${body.replace(/\s+/g, ' ')}`}${identity}`,
+  )
+}
+
 /** List the files directly inside one folder. */
 export async function listFolder(
   baseUrl: string,
@@ -109,11 +155,16 @@ export async function listFolder(
 ): Promise<RemoteFile[]> {
   const response = await deps.fetch(joinUrl(baseUrl, directory), {
     method: 'PROPFIND',
-    headers: { depth: '1', 'content-type': 'application/xml', ...authHeaders(deps.auth) },
+    headers: {
+      depth: '1',
+      'content-type': 'application/xml',
+      ...authHeaders(deps.auth),
+      ...userAgentHeaders(deps),
+    },
     body: '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/><d:getcontenttype/><d:resourcetype/></d:prop></d:propfind>',
   })
   if (!response.ok) {
-    throw new Error(`列目录失败：HTTP ${String(response.status)}`)
+    throw await refusal('列目录', response)
   }
   return parseListing(await response.text(), directory)
 }
@@ -126,10 +177,10 @@ export async function readFile(
 ): Promise<{ bytes: Uint8Array; contentType: string }> {
   const response = await deps.fetch(absoluteUrl ?? path, {
     method: 'GET',
-    headers: { ...authHeaders(deps.auth) },
+    headers: { ...authHeaders(deps.auth), ...userAgentHeaders(deps) },
   })
   if (!response.ok) {
-    throw new Error(`取文件失败：HTTP ${String(response.status)}`)
+    throw await refusal('取文件', response)
   }
   const bytes = new Uint8Array(await response.arrayBuffer())
   const declared = response.headers?.get('content-type') ?? 'application/octet-stream'

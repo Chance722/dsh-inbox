@@ -17,6 +17,8 @@
 
 import { createHash, createHmac } from 'node:crypto'
 
+import { DEFAULT_USER_AGENT } from '../../shared/constants.js'
+
 /** What the user fills in. The secret never lives here. */
 export interface S3Config {
   /** e.g. `https://s3.cstcloud.cn` — no bucket, no trailing slash needed. */
@@ -26,6 +28,24 @@ export interface S3Config {
   region?: string
   /** Only v4 is implemented; the field exists so the choice is visible. */
   signatureVersion?: string
+  /** What to send as `User-Agent`; empty falls back to the plugin's own. */
+  userAgent?: string
+}
+
+/**
+ * The identity this request presents.
+ *
+ * Not cosmetic: 数据胶囊 binds an access key to an application and answers
+ * every request that does not claim to be that application with a body-less
+ * 401 — identical, from the outside, to a wrong secret. The signature never
+ * covers this header, so it can be set freely.
+ *
+ * @param config - endpoint, bucket, region, optional user agent.
+ * @returns the header value to send.
+ */
+export function userAgentOf(config: S3Config): string {
+  const configured = config.userAgent?.trim() ?? ''
+  return configured.length === 0 ? DEFAULT_USER_AGENT : configured
 }
 
 /** One object found under the prefix. */
@@ -71,8 +91,16 @@ async function refused(response: S3ResponseLike, what: string): Promise<Error> {
   const hints = [body, challenge.length === 0 ? '' : `WWW-Authenticate: ${challenge}`].filter(
     (part) => part.length > 0,
   )
+  // A 401 with nothing to read is what a gateway answers when it does not
+  // recognise *who is calling*, not when it dislikes the signature. Say so,
+  // because the two failures look identical and only one of them is fixable
+  // from the settings form.
+  const identity =
+    response.status === 401 || response.status === 403
+      ? '\n（这类网关常按客户端标识认人：AccessKey 创建时绑定的应用名，要填进设置的「客户端标识」）'
+      : ''
   return new Error(
-    `${what}失败：HTTP ${String(response.status)}${hints.length === 0 ? '' : ` — ${hints.join(' ')}`}`,
+    `${what}失败：HTTP ${String(response.status)}${hints.length === 0 ? '' : ` — ${hints.join(' ')}`}${identity}`,
   )
 }
 
@@ -171,6 +199,7 @@ export function signRequestV2(
     headers: {
       date,
       authorization: `AWS ${deps.accessKeyId}:${signature}`,
+      'user-agent': userAgentOf(config),
     },
     canonicalRequest: stringToSign,
     signature,
@@ -242,6 +271,7 @@ export function signRequest(
       'x-amz-date': stamp,
       'x-amz-content-sha256': payloadHash,
       authorization: `AWS4-HMAC-SHA256 Credential=${deps.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+      'user-agent': userAgentOf(config),
     },
     canonicalRequest,
     signature,
@@ -309,6 +339,78 @@ export function signRequestV4Minimal(
       host,
       'x-amz-date': stamp,
       authorization: `AWS4-HMAC-SHA256 Credential=${deps.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+      'user-agent': userAgentOf(config),
+    },
+    canonicalRequest,
+    signature,
+  }
+}
+
+/**
+ * SigV4 with **`UNSIGNED-PAYLOAD`** as the content hash — what the official SDKs
+ * send for a GET over HTTPS.
+ *
+ * This is the third and last shape worth trying: the full form signs the hash of
+ * the empty body, the minimal form omits the header, and this one declares the
+ * payload deliberately unsigned. A gateway that validates the *value* rather
+ * than recomputing it accepts only this one.
+ *
+ * @param config - endpoint, bucket, region.
+ * @param deps - credentials, fetch, clock.
+ * @param method - HTTP method.
+ * @param key - object key.
+ * @param query - query parameters.
+ * @returns the signed request.
+ */
+export function signRequestUnsignedPayload(
+  config: S3Config,
+  deps: S3Deps,
+  method: string,
+  key: string,
+  query: Record<string, string> = {},
+): SignedRequest {
+  const now = deps.now ?? new Date()
+  const stamp = amzDate(now)
+  const day = stamp.slice(0, 8)
+  const region = config.region ?? 'us-east-1'
+  const base = config.endpoint.replace(/\/$/, '')
+
+  const canonicalUri = `/${encodePart(config.bucket, false)}${
+    key.length === 0 ? '' : `/${encodePart(key, false)}`
+  }`
+  const canonicalQuery = Object.entries(query)
+    .map(([name, value]) => `${encodePart(name, true)}=${encodePart(value, true)}`)
+    .sort()
+    .join('&')
+
+  const payloadHash = 'UNSIGNED-PAYLOAD'
+  const host = new URL(base).host
+  const signedHeaders = 'host;x-amz-content-sha256;x-amz-date'
+  const canonicalHeaders =
+    `host:${host}\n` + `x-amz-content-sha256:${payloadHash}\n` + `x-amz-date:${stamp}\n`
+
+  const canonicalRequest = [
+    method,
+    canonicalUri,
+    canonicalQuery,
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join('\n')
+
+  const scope = `${day}/${region}/s3/aws4_request`
+  const stringToSign = ['AWS4-HMAC-SHA256', stamp, scope, sha256Hex(canonicalRequest)].join('\n')
+  const signingKey = hmac(hmac(hmac(hmac(`AWS4${deps.accessKeySecret}`, day), region), 's3'), 'aws4_request')
+  const signature = createHmac('sha256', signingKey).update(stringToSign).digest('hex')
+
+  return {
+    url: `${base}${canonicalUri}${canonicalQuery.length === 0 ? '' : `?${canonicalQuery}`}`,
+    headers: {
+      host,
+      'x-amz-date': stamp,
+      'x-amz-content-sha256': payloadHash,
+      authorization: `AWS4-HMAC-SHA256 Credential=${deps.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+      'user-agent': userAgentOf(config),
     },
     canonicalRequest,
     signature,

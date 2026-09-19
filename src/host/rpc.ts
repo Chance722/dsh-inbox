@@ -436,6 +436,7 @@ async function handleWebdav(
     signatureVersion?: unknown
     accessKeyId?: unknown
     accessKeySecret?: unknown
+    userAgent?: unknown
   }
   const action = request.action === 'save' ? 'save' : 'read'
 
@@ -456,6 +457,7 @@ async function handleWebdav(
     if (typeof request.accessKeySecret === 'string') {
       patch.accessKeySecret = request.accessKeySecret
     }
+    if (typeof request.userAgent === 'string') patch.userAgent = request.userAgent
     const saved = await saveWebdav(ctx, vault, readSettings(ctx), patch)
     if (!saved.ok) return failure('inbox/webdav-unsaved', saved.reason ?? '存不进去')
   }
@@ -493,6 +495,7 @@ async function handleProbe(ctx: Context): Promise<InboxRpcResult<unknown>> {
       bucket: settings.bucket,
       region: settings.region,
       signatureVersion: settings.signatureVersion,
+      userAgent: settings.userAgent,
     },
     { fetch: s3Fetch, accessKeyId: settings.accessKeyId, accessKeySecret: secret },
     settings.directory.replace(/^\//, ''),

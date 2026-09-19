@@ -15,6 +15,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 
 import type { WebdavSettings, WebdavStatus } from '../../shared/panel-wire.js'
+import { DEFAULT_USER_AGENT } from '../../shared/constants.js'
 import type { Vault } from '../vault/vault.js'
 
 export type { WebdavSettings, WebdavStatus } from '../../shared/panel-wire.js'
@@ -39,6 +40,7 @@ export const DEFAULT_SETTINGS: WebdavSettings = {
   region: 'us-east-1',
   signatureVersion: 'v4',
   accessKeyId: '',
+  userAgent: '',
 }
 
 /** The namespace's schema: every field optional, so a partial user layer is valid. */
@@ -52,6 +54,7 @@ export const WebdavSettingsSchema = z.object({
   region: z.string().default('us-east-1'),
   signatureVersion: z.string().default('v4'),
   accessKeyId: z.string().default(''),
+  userAgent: z.string().default(''),
 })
 
 /** The slice of the settings service this file uses. */
@@ -158,6 +161,8 @@ export interface WebdavPatch {
   accessKeyId?: string
   /** Empty string clears the stored S3 secret; undefined leaves it. */
   accessKeySecret?: string
+  /** The `User-Agent` to send; empty string means the plugin's own identity. */
+  userAgent?: string
 }
 
 /**
@@ -216,6 +221,7 @@ export async function saveWebdav(
     config.signatureVersion = version
   }
   if (patch.accessKeyId !== undefined) config.accessKeyId = patch.accessKeyId.trim()
+  if (patch.userAgent !== undefined) config.userAgent = patch.userAgent.trim()
 
   if (Object.keys(config).length > 0) {
     if (settings === undefined) {

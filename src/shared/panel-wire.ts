@@ -65,6 +65,8 @@ export interface WebdavRequest {
   accessKeyId?: string
   /** Empty string clears the stored S3 secret; absent leaves it alone. */
   accessKeySecret?: string
+  /** Identity sent as `User-Agent`; empty string means "the plugin's own". */
+  userAgent?: string
 }
 
 /** Which remote protocol the vault pulls from. */
@@ -96,6 +98,15 @@ export interface WebdavSettings {
   signatureVersion: string
   /** S3: the identifier, which is not a secret. */
   accessKeyId: string
+  /**
+   * What we call ourselves in the `User-Agent` header, for both protocols.
+   *
+   * Empty means "use the plugin's own identity". Some gateways (数据胶囊 among
+   * them) bind an access key to an application and reject every request whose
+   * caller does not claim to be that application, so this is a real setting
+   * rather than decoration.
+   */
+  userAgent: string
 }
 
 /** What the panel needs to render the form and its status. */

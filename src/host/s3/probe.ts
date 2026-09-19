@@ -8,7 +8,13 @@
  * Read-only by construction: every probe is a GET, and none of them write.
  */
 
-import { signer, signRequestV4Minimal, type S3Config, type S3Deps } from './client.js'
+import {
+  signer,
+  signRequestUnsignedPayload,
+  signRequestV4Minimal,
+  type S3Config,
+  type S3Deps,
+} from './client.js'
 
 /** One probe's outcome. */
 export interface ProbeResult {
@@ -76,6 +82,14 @@ export async function probeS3(
       '',
       {},
       signRequestV4Minimal,
+    ),
+    await probe(
+      { ...config, signatureVersion: 'v4', region: 'us-east-1' },
+      deps,
+      'v4 · UNSIGNED-PAYLOAD（SDK 的常规形态）',
+      '',
+      {},
+      signRequestUnsignedPayload,
     ),
     await probe({ ...config, signatureVersion: 'v4', region: 'cn-north-1' }, deps, 'v4 · cn-north-1 · 无参数', '', {}),
     await probe({ ...config, signatureVersion: 'v4', region: 'cn-northwest-1' }, deps, 'v4 · cn-northwest-1 · 无参数', '', {}),

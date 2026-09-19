@@ -166,6 +166,18 @@ describe('saving the configuration', () => {
     expect(settings.current().endpoint).toBe('')
   })
 
+  it('stores the client identity as typed, trimmed, and empty by default', async () => {
+    expect(DEFAULT_SETTINGS.userAgent).toBe('')
+
+    const settings = fakeSettings()
+    const ctx = context({ settings })
+    await saveWebdav(ctx, undefined, DEFAULT_SETTINGS, { userAgent: '  Obsidian/1.8.7 ' })
+    expect(settings.current().userAgent).toBe('Obsidian/1.8.7')
+
+    await saveWebdav(ctx, undefined, DEFAULT_SETTINGS, { userAgent: '' })
+    expect(settings.current().userAgent).toBe('')
+  })
+
   it('clears a stored password on an empty string, and leaves it alone when omitted', async () => {
     const settings = fakeSettings()
     const credentials = fakeCredentials('existing')

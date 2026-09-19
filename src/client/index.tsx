@@ -679,6 +679,7 @@ function WebdavSettings({
   const [region, setRegion] = React.useState('us-east-1')
   const [signatureVersion, setSignatureVersion] = React.useState('v4')
   const [accessKeyId, setAccessKeyId] = React.useState('')
+  const [userAgent, setUserAgent] = React.useState('')
   const [accessKeySecret, setAccessKeySecret] = React.useState('')
   const [probe, setProbe] = React.useState<ProbeRow[]>()
   const [notice, setNotice] = React.useState<string>()
@@ -701,6 +702,7 @@ function WebdavSettings({
     setRegion(next.settings.region)
     setSignatureVersion(next.settings.signatureVersion)
     setAccessKeyId(next.settings.accessKeyId)
+    setUserAgent(next.settings.userAgent)
     setPassword('')
     setAccessKeySecret('')
   }, [call])
@@ -725,6 +727,7 @@ function WebdavSettings({
         region,
         signatureVersion,
         accessKeyId,
+        userAgent,
         ...(accessKeySecret.length === 0 ? {} : { accessKeySecret }),
       }
       const result = await call(INBOX_ENDPOINT_WEBDAV, request)
@@ -806,6 +809,17 @@ function WebdavSettings({
           <option value="s3">S3</option>
         </select>
         <span style={{ opacity: 0.6 }}>换协议后记得点保存</span>
+      </label>
+
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span style={{ opacity: 0.7, minWidth: 64 }}>客户端标识</span>
+        <input
+          value={userAgent}
+          disabled={busy}
+          onChange={(event) => setUserAgent(event.target.value)}
+          placeholder="留空即 dsh-inbox；有些网关按它认人，填成 AccessKey 绑定的应用名"
+          style={{ ...inputStyle, flex: 1 }}
+        />
       </label>
 
       {protocol === 'webdav' ? (
@@ -939,6 +953,13 @@ function WebdavSettings({
         </button>
         {detailNotice(notice)}
       </div>
+
+      {probe !== undefined && probe.length > 0 && probe.every((row) => row.status === 401) && (
+        <p style={{ margin: 0, opacity: 0.7 }}>
+          每一行都是 401，说明不是签名写法的问题：这个网关多半按客户端标识认人。把上面的「客户端标识」填成你的
+          AccessKey 绑定的应用名（数据胶囊控制台里创建 key 时选的那个），再自检一次。
+        </p>
+      )}
 
       {probe !== undefined && (
         <pre

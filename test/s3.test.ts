@@ -17,7 +17,9 @@ import {
   rfc1123,
   signRequestV2,
   signRequest,
+  signRequestV4Minimal,
   signer,
+  userAgentOf,
   type S3Deps,
   type S3FetchLike,
 } from '../src/host/s3/client.js'
@@ -97,6 +99,30 @@ describe('signing', () => {
       .signature
 
     for (const other of [otherSecret, otherDay, otherRegion]) expect(other).not.toBe(base)
+  })
+
+  it('presents the plugin identity, or the configured one', () => {
+    // 数据胶囊 binds an access key to an application and answers any other
+    // caller with a body-less 401, so this header decides whether anything
+    // works at all — and it must stay out of the signature.
+    for (const signed of [
+      signRequest(CONFIG, deps(), 'GET', ''),
+      signRequestV4Minimal(CONFIG, deps(), 'GET', ''),
+      signRequestV2(CONFIG, deps(), 'GET', ''),
+    ]) {
+      expect(signed.headers['user-agent']).toBe('dsh-inbox')
+      expect(signed.canonicalRequest).not.toContain('dsh-inbox')
+    }
+
+    expect(userAgentOf({ ...CONFIG, userAgent: '  Obsidian/1.8.7  ' })).toBe('Obsidian/1.8.7')
+    expect(signRequest({ ...CONFIG, userAgent: 'Obsidian' }, deps(), 'GET', '').headers['user-agent']).toBe(
+      'Obsidian',
+    )
+    // The signature covers only host, date and the payload hash, so changing
+    // the identity must not change it.
+    expect(signRequest({ ...CONFIG, userAgent: 'Obsidian' }, deps(), 'GET', '').signature).toBe(
+      signRequest(CONFIG, deps(), 'GET', '').signature,
+    )
   })
 })
 
@@ -229,6 +255,22 @@ describe('listing', () => {
         })),
       ),
     ).rejects.toThrow(/HTTP 401.*SignatureDoesNotMatch.*WWW-Authenticate/)
+  })
+
+  it('points at the client identity when the gateway says a bare 401', async () => {
+    // The real 数据胶囊 answer: no body, no challenge, nothing to read.
+    await expect(
+      listPrefix(
+        CONFIG,
+        'inbox/',
+        deps(async () => ({
+          ok: false,
+          status: 401,
+          text: async () => '',
+          arrayBuffer: async () => new ArrayBuffer(0),
+        })),
+      ),
+    ).rejects.toThrow(/客户端标识/)
   })
 
   it('reads one object with its content type', async () => {

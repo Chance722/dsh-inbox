@@ -97,6 +97,7 @@ export async function runPull(
         bucket: settings.bucket,
         region: settings.region,
         signatureVersion: settings.signatureVersion,
+        userAgent: settings.userAgent,
       },
       settings.directory.replace(/^\//, ''),
       {
@@ -116,6 +117,7 @@ export async function runPull(
   const deps: WebdavDeps & { attachments: AttachmentStore } = {
     fetch: webdavFetch,
     attachments,
+    userAgent: settings.userAgent,
     ...(settings.username.length === 0 || password === undefined
       ? {}
       : { auth: { username: settings.username, password } }),

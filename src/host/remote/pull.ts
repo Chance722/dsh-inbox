@@ -19,7 +19,7 @@ import { captureImage, captureText } from '../capture.js'
 import type { S3Config, S3Deps } from '../s3/client.js'
 import { listPrefix, readObject } from '../s3/client.js'
 import type { Vault } from '../vault/vault.js'
-import { listFolder, readFile, type FetchLike, type WebdavAuth } from '../webdav/client.js'
+import { listFolder, readFile, type WebdavDeps } from '../webdav/client.js'
 
 export type { PullResult } from '../../shared/panel-wire.js'
 
@@ -164,7 +164,7 @@ export interface WebdavConfig {
 export async function pullRemote(
   vault: Vault,
   config: WebdavConfig,
-  deps: { fetch: FetchLike; attachments: AttachmentStore; auth?: WebdavAuth },
+  deps: WebdavDeps & { attachments: AttachmentStore },
 ): Promise<PullResult> {
   const baseUrl = config.baseUrl.trim()
   if (baseUrl.length === 0) {
