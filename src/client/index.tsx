@@ -650,9 +650,9 @@ type CallHost = (endpoint: string, payload: unknown) => Promise<InboxRpcResult<u
 function describePull(result: PullResult): string {
   if (result.status === 'unconfigured') return result.reason ?? '还没配置地址'
   if (result.status === 'failed') return `拉取失败：${result.reason ?? '未知原因'}`
-  return `拉取完成：新入库 ${String(result.pulled)} 条，跳过 ${String(result.skipped)} 条${
-    result.failed > 0 ? `，失败 ${String(result.failed)} 条` : ''
-  }`
+  return `拉取完成：远端列出 ${String(result.listed)} 项，新入库 ${String(result.pulled)} 条，跳过 ${String(
+    result.skipped,
+  )} 条${result.failed > 0 ? `，失败 ${String(result.failed)} 条` : ''}`
 }
 
 /**

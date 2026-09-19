@@ -117,6 +117,9 @@ export interface PullResult {
   failed: number
   /** Files the server listed but we skipped as already-seen. */
   skipped: number
+  /** How many entries the remote listed at all: distinguishes "empty folder"
+   * from "everything already ingested". */
+  listed: number
   /** Set when the pull completed. */
   lastPullAt?: string
 }

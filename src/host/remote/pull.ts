@@ -88,9 +88,10 @@ export async function ingestFrom(
     entries = await source.list()
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
-    return { status: 'failed', reason, pulled: 0, failed: 0, skipped: 0 }
+    return { status: 'failed', reason, pulled: 0, failed: 0, skipped: 0, listed: 0 }
   }
 
+  const listed = entries.length
   let pulled = 0
   let failed = 0
   let skipped = 0
@@ -149,7 +150,7 @@ export async function ingestFrom(
 
   const now = new Date().toISOString()
   await vault.setSync({ ...vault.global.sync, lastPullAt: now })
-  return { status: 'ok', pulled, failed, skipped, lastPullAt: now }
+  return { status: 'ok', pulled, failed, skipped, listed, lastPullAt: now }
 }
 
 /** What the user configures for WebDAV. */
@@ -167,7 +168,14 @@ export async function pullRemote(
 ): Promise<PullResult> {
   const baseUrl = config.baseUrl.trim()
   if (baseUrl.length === 0) {
-    return { status: 'unconfigured', reason: '还没配置 WebDAV 地址', pulled: 0, failed: 0, skipped: 0 }
+    return {
+      status: 'unconfigured',
+      reason: '还没配置 WebDAV 地址',
+      pulled: 0,
+      failed: 0,
+      skipped: 0,
+      listed: 0,
+    }
   }
   const directory = config.directory ?? DEFAULT_DIRECTORY
 
@@ -200,6 +208,7 @@ export async function pullS3(
       pulled: 0,
       failed: 0,
       skipped: 0,
+      listed: 0,
     }
   }
 

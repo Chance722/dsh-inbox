@@ -64,6 +64,7 @@ export async function runPull(
       pulled: 0,
       failed: 0,
       skipped: 0,
+      listed: 0,
     }
   }
 
@@ -76,6 +77,7 @@ export async function runPull(
         pulled: 0,
         failed: 0,
         skipped: 0,
+        listed: 0,
       }
     }
     if (secret === undefined) {
@@ -85,6 +87,7 @@ export async function runPull(
         pulled: 0,
         failed: 0,
         skipped: 0,
+        listed: 0,
       }
     }
     return pullS3(
@@ -106,7 +109,7 @@ export async function runPull(
   }
 
   if (settings.baseUrl.trim().length === 0) {
-    return { status: 'unconfigured', reason: '还没配置 WebDAV 地址', pulled: 0, failed: 0, skipped: 0 }
+    return { status: 'unconfigured', reason: '还没配置 WebDAV 地址', pulled: 0, failed: 0, skipped: 0, listed: 0 }
   }
 
   const password = await readPassword(ctx)

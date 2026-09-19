@@ -25,10 +25,14 @@ export const inject = ['tools', 'commands', 'storageDomain']
  * @param ctx - host plugin context carrying the tool registry and storage.
  */
 export function apply(ctx: Context): void {
-  // Declare the configuration namespace before anything reads it: an
-  // unregistered namespace answers "no value", which reads as "user configured
-  // nothing" and would let a save overwrite stored settings with defaults.
-  installWebdavSettings(ctx)
+  // Declare the configuration namespace before anything reads it — and *after*
+  // the settings service exists. Registering eagerly at load looked right and
+  // silently did nothing: the service is not live yet, `ctx.get('settings')`
+  // answered undefined, and every read afterwards saw the defaults instead of
+  // the user's stored values.
+  ctx.inject(['settings'], (withSettings) => {
+    installWebdavSettings(withSettings)
+  })
   let vault: Vault | undefined
   let openError: string | undefined
 
