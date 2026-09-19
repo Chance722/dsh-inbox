@@ -27,6 +27,7 @@ import {
   Music,
   Paperclip,
   RefreshCw,
+  RotateCcw,
   Rows3,
   Settings2,
   Tag,
@@ -157,14 +158,63 @@ interface Staged {
 type Scope = 'live' | 'bin'
 
 const panelStyle: React.CSSProperties = {
-  padding: '20px 24px',
+  padding: '16px 20px',
   font: '14px/1.6 system-ui, sans-serif',
   display: 'flex',
   flexDirection: 'column',
-  gap: 14,
+  gap: 12,
   height: '100%',
+  minHeight: 0,
   boxSizing: 'border-box',
-  overflow: 'auto',
+  // No page scroll: the list is the only thing that scrolls, so it gets the
+  // whole screen minus the chrome above it and the pager can sit at its foot.
+  overflow: 'hidden',
+  // Native controls (the select's popup, scrollbars) follow this. Without it
+  // the popup is drawn light while our text is light, which is why the options
+  // were invisible until hovered.
+  colorScheme: 'dark',
+}
+
+/**
+ * A button that looks like one.
+ *
+ * The panel used one faint outline for everything, so "保存描述与标签" and
+ * "删除" read as chips rather than actions. Filled + bordered + roomy, with
+ * `currentColor` as the fill so it inverts correctly in either theme.
+ */
+const actionStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '6px 12px',
+  borderRadius: 8,
+  border: '1px solid color-mix(in srgb, currentColor 22%, transparent)',
+  background: 'color-mix(in srgb, currentColor 9%, transparent)',
+  color: 'inherit',
+  cursor: 'pointer',
+  fontWeight: 500,
+}
+
+/** The one thing a pane most wants you to do. */
+const primaryStyle: React.CSSProperties = {
+  ...actionStyle,
+  background: 'currentColor',
+  color: 'Canvas',
+  fontWeight: 600,
+}
+
+/** Destructive actions say so. */
+const dangerStyle: React.CSSProperties = {
+  ...actionStyle,
+  borderColor: 'color-mix(in srgb, salmon 45%, transparent)',
+  color: 'salmon',
+}
+
+/** A `<select>` that matches the buttons, popup included. */
+const selectStyle: React.CSSProperties = {
+  ...actionStyle,
+  paddingRight: 8,
+  colorScheme: 'dark',
 }
 
 const cardStyle: React.CSSProperties = {
@@ -791,6 +841,9 @@ function InboxPanel(): React.ReactElement {
             ? 'minmax(0, 1fr)'
             : '176px minmax(320px, 1fr) minmax(250px, 300px)',
           gap: 14,
+          // Fill what the chrome above left, so the list can scroll inside it.
+          flex: 1,
+          minHeight: 0,
         }}
       >
         {(!narrow || railOpen) && (
@@ -805,13 +858,14 @@ function InboxPanel(): React.ReactElement {
           }}
         >
           <RailRow
-            active={scope === 'live' && !watchOnly}
+            active={scope === 'live' && !watchOnly && category === undefined}
             icon={<Inbox size={15} />}
             label="全部"
             {...(list === undefined ? {} : { count: list.total })}
             onClick={() => {
               setScope('live')
               setWatchOnly(false)
+              setCategory(undefined)
             }}
           />
           <RailRow
@@ -822,6 +876,7 @@ function InboxPanel(): React.ReactElement {
             onClick={() => {
               setScope('live')
               setWatchOnly(true)
+              setCategory(undefined)
             }}
           />
           <RailRow
@@ -829,7 +884,11 @@ function InboxPanel(): React.ReactElement {
             icon={<Trash2 size={15} />}
             label="回收站"
             {...(list === undefined ? {} : { count: list.deleted })}
-            onClick={() => setScope('bin')}
+            onClick={() => {
+              setScope('bin')
+              setWatchOnly(false)
+              setCategory(undefined)
+            }}
           />
 
           <div style={{ margin: '8px 0 4px', padding: '0 9px', fontSize: 11, opacity: 0.6 }}>
@@ -849,7 +908,13 @@ function InboxPanel(): React.ReactElement {
                 icon={CATEGORY_ICONS[value]}
                 label={CATEGORY_LABELS[value]}
                 {...(list === undefined ? {} : { count: count ?? 0 })}
-                onClick={() => setCategory(category === value ? undefined : value)}
+                onClick={() => {
+                  // Picking a category means "show me this category" — it is not
+                  // a filter *inside* the recycle bin, so the scope resets too.
+                  setCategory(category === value ? undefined : value)
+                  setScope('live')
+                  setWatchOnly(false)
+                }}
               />
             )
           })}
@@ -883,7 +948,15 @@ function InboxPanel(): React.ReactElement {
         </nav>
         )}
 
-        <section style={{ ...cardStyle, minWidth: 0 }}>
+        <section
+          style={{
+            ...cardStyle,
+            minWidth: 0,
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
           <div
             style={{
               display: 'flex',
@@ -915,10 +988,13 @@ function InboxPanel(): React.ReactElement {
             )}
           </div>
 
-          {/* …and the count moves to the top-right of the list itself. */}
-          <div style={{ textAlign: 'right', fontSize: 12, opacity: 0.6, marginBottom: 6 }}>
-            {list === undefined ? '读取中…' : `${String(list.matched)} 条匹配`}
-          </div>
+          {/* …and the count moves to the top-right of the list itself. A zero
+              count says nothing worth a line. */}
+          {(list === undefined || list.matched > 0) && (
+            <div style={{ textAlign: 'right', fontSize: 12, opacity: 0.6, marginBottom: 6 }}>
+              {list === undefined ? '读取中…' : `${String(list.matched)} 条匹配`}
+            </div>
+          )}
 
 
           {list?.entries.length === 0 && (
@@ -935,10 +1011,27 @@ function InboxPanel(): React.ReactElement {
                     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                     gap: 12,
                     alignContent: 'start',
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: 'auto',
                   }
                 : listMode === 'compact'
-                  ? { display: 'flex', flexDirection: 'column', gap: 0 }
-                  : { display: 'flex', flexDirection: 'column', gap: 10 }
+                  ? {
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 0,
+                      flex: 1,
+                      minHeight: 0,
+                      overflowY: 'auto',
+                    }
+                  : {
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 10,
+                      flex: 1,
+                      minHeight: 0,
+                      overflowY: 'auto',
+                    }
             }
           >
             {list?.entries.map((entry) => (
@@ -1235,7 +1328,7 @@ function WebdavSettings({
             setProtocol(next)
             // Leaving the field is not the same as saving it; save applies it.
           }}
-          style={{ ...inputStyle, padding: '4px 6px' }}
+          style={selectStyle}
         >
           <option value="webdav">WebDAV</option>
           <option value="s3">S3</option>
@@ -1334,7 +1427,7 @@ function WebdavSettings({
               value={signatureVersion}
               disabled={busy}
               onChange={(event) => setSignatureVersion(event.target.value)}
-              style={{ ...inputStyle, padding: '4px 6px' }}
+              style={selectStyle}
             >
               <option value="v4">v4</option>
               <option value="v2">v2（老网关多半要这个）</option>
@@ -1827,7 +1920,7 @@ function EntryPane({
           value={detail.category}
           disabled={busy}
           onChange={(event) => void onUpdate({ category: event.target.value })}
-          style={{ ...inputStyle, padding: '4px 6px' }}
+          style={selectStyle}
         >
           {CATEGORIES.map((value) => (
             <option key={value} value={value}>
@@ -1895,7 +1988,7 @@ function EntryPane({
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button
           type="button"
-          style={buttonStyle}
+          style={primaryStyle}
           disabled={busy}
           onClick={() =>
             void onUpdate({
@@ -1907,23 +2000,25 @@ function EntryPane({
             })
           }
         >
+          <Check size={14} />
           保存描述与标签
         </button>
         <button
           type="button"
-          style={buttonStyle}
+          style={actionStyle}
           disabled={busy || inBin}
           onClick={() => void onUpdate({ watchLater: detail.watchLater !== true })}
         >
+          <Bookmark size={14} />
           {detail.watchLater === true ? '取消待看' : '标为待看'}
         </button>
         {inBin ? (
-          <button type="button" style={buttonStyle} disabled={busy} onClick={() => void onRestore()}>
-            恢复
+          <button type="button" style={actionStyle} disabled={busy} onClick={() => void onRestore()}>
+            <RotateCcw size={14} /> 恢复
           </button>
         ) : (
-          <button type="button" style={buttonStyle} disabled={busy} onClick={() => void onDelete()}>
-            删除
+          <button type="button" style={dangerStyle} disabled={busy} onClick={() => void onDelete()}>
+            <Trash2 size={14} /> 删除
           </button>
         )}
       </div>
