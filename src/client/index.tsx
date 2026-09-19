@@ -76,6 +76,7 @@ import {
 import { MILESTONE, PANEL_ID, PACKAGE_NAME } from '../shared/constants.js'
 import { registerToolCards } from './card.js'
 import { registerInboxDock } from './dock.js'
+import { headingOf, headingTooltipOf, isSecret } from './heading.js'
 import {
   CATEGORIES,
   CATEGORY_LABELS,
@@ -228,6 +229,18 @@ const dangerStyle: React.CSSProperties = {
  */
 const WATCH_COLOR = '#6e9ef7'
 
+/**
+ * One row of the detail pane.
+ *
+ * `flex: none` on every row, and it is not decoration: the pane is a scrolling
+ * flex column, and a flex item whose overflow is not `visible` — the record's
+ * text box is one — has an automatic minimum size of zero, so it collapses to
+ * nothing instead of pushing the column into a scrollbar. Measured: the whole
+ * 24-line text box shrank away before this, and the pane reported
+ * `scrollHeight === clientHeight`.
+ */
+const paneRowStyle: React.CSSProperties = { flex: 'none' }
+
 /** A `<select>` that matches the buttons, popup included. */
 const selectStyle: React.CSSProperties = {
   ...actionStyle,
@@ -271,6 +284,9 @@ function SelectBox({
         position: 'relative',
         display: block === true ? 'flex' : 'inline-flex',
         alignItems: 'center',
+        // A control in a scrolling column keeps its own height (see
+        // `paneRowStyle`); without this the popup's box squeezes to nothing.
+        flex: 'none',
         ...(block === true ? { width: '100%' } : {}),
       }}
     >
@@ -1237,7 +1253,12 @@ function InboxPanel(): React.ReactElement {
                 top: '5vh',
                 bottom: '5vh',
                 zIndex: 45,
-                overflow: 'auto',
+                // The same shape as the wide column: a bounded box, a scrolling
+                // content column inside it, and a pinned stamp — so the sheet
+                // scrolls the record rather than the whole overlay.
+                display: 'flex',
+                flexDirection: 'column',
+                minHeight: 0,
                 background: 'Canvas',
                 border: `1px solid ${hairline}`,
                 borderRadius: 12,
@@ -1273,12 +1294,23 @@ function InboxPanel(): React.ReactElement {
           )
         ) : (
           /*
-            `position: relative` is load-bearing: the detail pane's own
-            timestamps are absolutely positioned against this card, so they stay
-            inside the frame and 16px clear of its bottom edge no matter how
-            tall the record's content turns out to be.
+            Two things are load-bearing here. `position: relative` anchors the
+            pane's own timestamps, which are absolutely positioned against this
+            card so they stay inside the frame 16px above its bottom edge. The
+            flex column gives the pane a bounded height to scroll inside: a long
+            record (a 3k-character text, a stack of photos) used to grow the card
+            past the panel, taking the actions and the stamps out of reach.
           */
-          <section style={{ ...cardStyle, minWidth: 0, position: 'relative' }}>
+          <section
+            style={{
+              ...cardStyle,
+              minWidth: 0,
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: 0,
+            }}
+          >
             {detail === undefined ? (
               <p style={{ margin: 0, opacity: 0.7 }}>选左边一条看看详情。</p>
             ) : (
@@ -1797,8 +1829,14 @@ function EntryCard({
    * list broke it — it printed the first line of the secret as the row title.
    * The list is the surface most likely to be on screen when someone walks by.
    */
-  const secret = entry.category === 'secret'
-  const heading = secret ? '密钥 / 账密' : (entry.title ?? entry.url ?? entry.preview ?? '（无标题）')
+  const secret = isSecret(entry)
+  /**
+   * `headingOf` is the same function the dock uses: a credential is named by its
+   * own label plus the user's description (`密钥 / 账密（公司邮箱）`), never by its
+   * text. Hovering gives the whole description; the detail pane gives all of it.
+   */
+  const headingText = headingOf(entry)
+  const headingTitle = headingTooltipOf(entry)
   const compact = mode === 'compact'
   const hairline = 'color-mix(in srgb, currentColor 10%, transparent)'
   const accent = 'color-mix(in srgb, currentColor 45%, transparent)'
@@ -1918,16 +1956,19 @@ function EntryCard({
             deliberate.
           */}
           <span
-            title={heading}
+            title={headingTitle}
             style={{
               display: 'block',
               minWidth: 0,
+              // Width has a ceiling and a tail: no heading may stretch the card
+              // or push the metadata around, it ellipsises instead.
+              maxWidth: '100%',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
             }}
           >
-            {heading}
+            {headingText}
           </span>
           {/*
             待看 sits next to the title, where the eye already is, and it is the
@@ -1954,7 +1995,7 @@ function EntryCard({
             </span>
           )}
         </span>
-        {!compact && !secret && entry.preview !== undefined && entry.preview !== heading && (
+        {!compact && !secret && entry.preview !== undefined && entry.preview !== headingText && (
           <span
             title={entry.preview}
             style={{
@@ -2028,19 +2069,42 @@ function EntryPane({
 
   return (
     /*
-      The form is one column of full-width controls, and the timestamps are hung
-      off the card rather than placed in the flow — see the note at the foot of
-      this component. All this column reserves is the band they occupy.
+      Two siblings rather than one column: the content scrolls inside the card
+      (a long text, a stack of photos, and the form all have to stay reachable),
+      while the timestamps hang off the *frame* — absolutely positioned against
+      the card, 16px above its bottom edge, where neither the content's length
+      nor its scrolling can move them. The content's `paddingBottom` keeps the
+      last control clear of the band they occupy.
     */
-    <div
-      style={{
-        paddingBottom: 40,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 10,
-      }}
-    >
-      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+    <>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          // The band the stamps sit in is reserved structurally rather than as
+          // padding: a scroll container's padding-bottom is *inside* the scroll
+          // area, so the last control would still slide under the stamps while
+          // scrolling. A margin takes the room out of the scrollport instead.
+          marginBottom: 40,
+          // Reserve the scrollbar's lane whether or not this record needs one,
+          // so the controls do not change width as you click from record to
+          // record (354px wide when they fit, 339px once a scrollbar appears).
+          scrollbarGutter: 'stable',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}
+      >
+      <div
+        style={{
+          ...paneRowStyle,
+          display: 'flex',
+          gap: 8,
+          alignItems: 'baseline',
+          flexWrap: 'wrap',
+        }}
+      >
         <strong>{KIND_LABELS[detail.kind]}</strong>
         <span style={{ opacity: 0.6 }}>
           {CATEGORY_LABELS[detail.category]}
@@ -2052,7 +2116,12 @@ function EntryPane({
       </div>
 
       {detail.url !== undefined && (
-        <a href={detail.url} target="_blank" rel="noreferrer" style={{ overflowWrap: 'anywhere' }}>
+        <a
+          href={detail.url}
+          target="_blank"
+          rel="noreferrer"
+          style={{ ...paneRowStyle, overflowWrap: 'anywhere' }}
+        >
           {detail.url}
         </a>
       )}
@@ -2060,6 +2129,7 @@ function EntryPane({
       {detail.text !== undefined && (
         <pre
           style={{
+            ...paneRowStyle,
             ...cardStyle,
             margin: 0,
             whiteSpace: 'pre-wrap',
@@ -2074,7 +2144,15 @@ function EntryPane({
       )}
 
       {detail.attachments.length > 0 && (
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+        <div
+          style={{
+            ...paneRowStyle,
+            display: 'flex',
+            gap: 10,
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+          }}
+        >
           {detail.attachments.map((attachment) => {
             const src = `${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}?id=${encodeURIComponent(attachment.id)}`
             const caption = attachmentCaption(attachment)
@@ -2158,7 +2236,13 @@ function EntryPane({
         aria-label="描述"
         title="你写的永远优先于模型的判断"
         placeholder="输入描述，如：身份证照 / 待看视频 / 这个 key 是测试环境的"
-        style={{ ...inputStyle, resize: 'vertical', width: '100%', boxSizing: 'border-box' }}
+        style={{
+          ...paneRowStyle,
+          ...inputStyle,
+          resize: 'vertical',
+          width: '100%',
+          boxSizing: 'border-box',
+        }}
       />
 
       {/*
@@ -2167,7 +2251,15 @@ function EntryPane({
         row of their own so the input below can run the pane's full width.
       */}
       {detail.tags.length > 0 && (
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div
+          style={{
+            ...paneRowStyle,
+            display: 'flex',
+            gap: 6,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
           {detail.tags.map((value) => (
             <span
               key={value}
@@ -2204,7 +2296,7 @@ function EntryPane({
         onChange={(event) => setTags(event.target.value)}
         aria-label="标签"
         placeholder="输入标签，如：前端, 报销（逗号分隔）"
-        style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+        style={{ ...paneRowStyle, ...inputStyle, width: '100%', boxSizing: 'border-box' }}
       />
 
       {/*
@@ -2212,7 +2304,7 @@ function EntryPane({
         space, and one tap target per column of the form above. Labels stay on
         one line (a verb does not break into two), so the row never wraps.
       */}
-      <div style={{ display: 'flex', gap: 6 }}>
+      <div style={{ ...paneRowStyle, display: 'flex', gap: 6 }}>
         <button
           type="button"
           style={{ ...primaryStyle, flex: 1, justifyContent: 'center', whiteSpace: 'nowrap' }}
@@ -2259,12 +2351,11 @@ function EntryPane({
           </button>
         )}
       </div>
+      </div>
       {/*
-        The timestamps hang off the *frame*, not off the flow: absolutely
-        positioned inside the detail card, 16px above its bottom edge. Nothing
-        above them can push them (the old place was the header row, where a long
-        category wrapped them onto a line of their own) and they stay inside the
-        box even when the record's content grows past it.
+        The timestamps. Outside the scrolling column on purpose, so they stay
+        put while a long record is read — the old place was the header row, where
+        a long category wrapped them onto a line of their own.
       */}
       <div
         style={{
@@ -2282,7 +2373,7 @@ function EntryPane({
           ? ''
           : ` · 更新 ${new Date(detail.updatedAt).toLocaleString()}`}
       </div>
-    </div>
+    </>
   )
 }
 

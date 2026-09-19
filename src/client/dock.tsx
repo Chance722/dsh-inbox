@@ -21,6 +21,7 @@ import {
   CATEGORY_LABELS,
   KIND_LABELS,
 } from '../shared/vocabulary.js'
+import { headingOf } from './heading.js'
 import {
   INBOX_API_PREFIX,
   INBOX_ENDPOINT_LIST,
@@ -157,7 +158,12 @@ function InboxDock(): React.ReactElement {
             }}
           >
             <div style={{ overflowWrap: 'anywhere' }}>
-              {entry.title ?? entry.url ?? entry.preview ?? '（无标题）'}
+              {/*
+                The same heading the panel's cards use — and the same red line:
+                this used to fall through to `entry.preview`, which is the first
+                line of a credential's text when the record is one.
+              */}
+              {headingOf(entry)}
             </div>
             <div style={{ fontSize: 12, opacity: 0.6, marginTop: 2 }}>
               {KIND_LABELS[entry.kind]} · {CATEGORY_LABELS[entry.category]}
