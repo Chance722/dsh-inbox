@@ -30,6 +30,13 @@ export type Status = (typeof STATUSES)[number]
 export const SOURCES = ['panel', 'chat', 'webdav', 'import'] as const
 export type Source = (typeof SOURCES)[number]
 
+/**
+ * Who decided the category. Precedence runs user > model > rule: a category the
+ * user typed is never overwritten, and a rule never overrides a model pass.
+ */
+export const CATEGORY_SOURCES = ['rule', 'model', 'user'] as const
+export type CategorySource = (typeof CATEGORY_SOURCES)[number]
+
 /** Display labels. Chinese is the primary UI language. */
 export const CATEGORY_LABELS: Record<Category, string> = {
   idea: '灵感/待办',
@@ -51,4 +58,10 @@ export const KIND_LABELS: Record<Kind, string> = {
 export const STATUS_LABELS: Record<Status, string> = {
   unread: '未读',
   read: '已读',
+}
+
+export const CATEGORY_SOURCE_LABELS: Record<CategorySource, string> = {
+  rule: '规则',
+  model: '模型',
+  user: '你',
 }

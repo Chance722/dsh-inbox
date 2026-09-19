@@ -5,25 +5,9 @@
  */
 
 import type { Source } from '../shared/vocabulary.js'
+import { classifyImage, classifyLink, classifyText, platformOf } from './classify/rules.js'
 import type { Attachment, Item } from './vault/spec.js'
 import type { NewItem, Vault } from './vault/vault.js'
-
-/** Hostname suffix → platform tag. Small on purpose; extend as real links appear. */
-const PLATFORMS: readonly (readonly [string, string])[] = [
-  ['bilibili.com', 'bilibili'],
-  ['b23.tv', 'bilibili'],
-  ['mp.weixin.qq.com', 'wechat'],
-  ['weixin.qq.com', 'wechat'],
-  ['zhihu.com', 'zhihu'],
-  ['xiaohongshu.com', 'xiaohongshu'],
-  ['xhslink.com', 'xiaohongshu'],
-  ['maimai.cn', 'maimai'],
-  ['github.com', 'github'],
-  ['youtube.com', 'youtube'],
-  ['youtu.be', 'youtube'],
-  ['x.com', 'twitter'],
-  ['twitter.com', 'twitter'],
-]
 
 /** Query parameters that only describe how the link travelled, never what it is. */
 const TRACKING_PARAMS = [
@@ -42,17 +26,6 @@ function parse(raw: string): URL | undefined {
   } catch {
     return undefined
   }
-}
-
-/** The platform a URL belongs to, or undefined when it is just "somewhere". */
-export function platformOf(raw: string): string | undefined {
-  const url = parse(raw)
-  if (url === undefined) return undefined
-  const host = url.hostname.toLowerCase().replace(/^www\./, '')
-  for (const [suffix, platform] of PLATFORMS) {
-    if (host === suffix || host.endsWith(`.${suffix}`)) return platform
-  }
-  return undefined
 }
 
 /**
@@ -140,15 +113,19 @@ export async function captureText(
   note?: string,
 ): Promise<CaptureOutcome> {
   const sniffed = sniff(raw)
+  const verdict =
+    sniffed.kind === 'link' ? classifyLink(raw.trim()) : classifyText(raw)
+  const platform = verdict.platform ?? sniffed.platform
   const candidate: NewItem = {
     kind: sniffed.kind,
-    category: 'other',
+    category: verdict.category,
     source,
+    tags: verdict.tags ?? [],
     ...(note === undefined || note.length === 0 ? {} : { note }),
     ...(sniffed.kind === 'link'
       ? {
           url: sniffed.url,
-          ...(sniffed.platform === undefined ? {} : { platform: sniffed.platform }),
+          ...(platform === undefined ? {} : { platform }),
         }
       : { text: raw }),
   }
@@ -164,6 +141,9 @@ export async function captureText(
   if (existing !== undefined) return absorb(vault, existing, { note })
   return { item: await vault.create(candidate), merged: false }
 }
+
+/** Re-exported so callers do not reach into the rules module for this. */
+export { platformOf }
 
 /**
  * Attachment reference as it arrives from the composer's durable blocks.
@@ -212,10 +192,12 @@ export async function captureImage(
     height: attachment.height,
     sha256: attachment.sha256,
   })
+  const verdict = classifyImage(attachment)
   const item = await vault.create({
     kind: attachment.mime.startsWith('image/') ? 'image' : 'file',
-    category: 'other',
+    category: verdict.category,
     source,
+    tags: verdict.tags ?? [],
     ...(note === undefined || note.length === 0 ? {} : { note }),
     attachmentIds: [record.id],
   })

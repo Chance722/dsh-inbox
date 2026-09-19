@@ -8,7 +8,13 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 
-import type { Category, Kind, Source, Status } from '../../shared/vocabulary.js'
+import type {
+  Category,
+  CategorySource,
+  Kind,
+  Source,
+  Status,
+} from '../../shared/vocabulary.js'
 import { selectItems, type ItemQuery } from './query.js'
 import {
   type Attachment,
@@ -23,6 +29,8 @@ import {
 export interface NewItem {
   kind: Kind
   category: Category
+  /** Defaults to `rule`: the vault files by rule unless told otherwise. */
+  categorySource?: CategorySource
   source: Source
   title?: string
   text?: string
@@ -36,6 +44,8 @@ export interface NewItem {
 /** Fields a later edit may replace. Classification and the note are the point. */
 export interface ItemPatch {
   category?: Category
+  /** Set to `user` when the person editing is the one choosing the category. */
+  categorySource?: CategorySource
   status?: Status
   title?: string
   note?: string
@@ -91,6 +101,7 @@ export class Vault {
       id: randomUUID(),
       kind: input.kind,
       category: input.category,
+      categorySource: input.categorySource ?? 'rule',
       status: 'unread',
       source: input.source,
       createdAt: now,
@@ -139,6 +150,7 @@ export class Vault {
     return this.items.update(id, (current) => {
       const next: Item = { ...current, updatedAt: new Date().toISOString() }
       if (patch.category !== undefined) next.category = patch.category
+      if (patch.categorySource !== undefined) next.categorySource = patch.categorySource
       if (patch.status !== undefined) next.status = patch.status
       if (patch.title !== undefined) next.title = patch.title
       if (patch.note !== undefined) next.note = patch.note

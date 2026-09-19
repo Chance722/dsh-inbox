@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-> **Status: pre-alpha — M0–M4 done.** File things two ways, browse and manage them in the panel, and **ask for them in conversation** — results come back as our own cards, with image thumbnails rendered locally. Automatic classification and sync are still ahead. Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
+> **Status: pre-alpha — M0–M5 (rules) done.** File things two ways, browse and manage them in the panel, ask for them in conversation, and things now arrive **already classified** by rules. Sync is still ahead, and so is the model fallback for text a rule cannot judge. Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
 
 A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`): paste links, images, text and credentials into one local vault, get them classified, browse them from the sidebar, and pull them back through conversation.
 
@@ -19,7 +19,9 @@ A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/de
 | ✅ Ask in conversation | `inbox_search` finds records by words, category, tag, status or kind; `inbox_get` opens one by id (text up to 1000 characters, links, notes, tags, attachment facts) |
 | 🔒 Two hard refusals | A credential record never returns its text, and image bytes never enter the conversation — images come back as markers the UI renders locally |
 | ✅ Own conversation card | Tool results render as dsh-inbox cards: links become clickable, and image markers become thumbnails drawn on this machine |
-| ❌ Not yet | Automatic classification (M5), sync (M6) |
+| ✅ Classification by rule | A video page becomes 视频/音频, a public-account article 文章, a credential-shaped paste 密钥/账密 (and is then never echoed), and a card-shaped image gets a 疑似证件 tag — all decided locally, no bytes or text leaving the machine |
+| ✅ Your word wins | Set the category yourself and it is marked as yours; nothing overwrites it |
+| ❌ Not yet | Model fallback for text no rule can judge, sync (M6) |
 
 ### Where your data lives
 

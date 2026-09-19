@@ -35,6 +35,8 @@ M1 定下来的东西。改这个模型 = 改领域版本号 + 写迁移，别�
 
 `items`：`id` / `kind` / `category` / `status` / `source` / `createdAt` / `updatedAt` / 可选 `title` / `text` / `url` / `platform` / `note` / `deletedAt` / `tags[]` / `attachmentIds[]`。
 
+域版本 **2**（`compatibleVersions: [1]`）只为加一个可选字段 `categorySource`：记录类目是谁定的。优先级 **user > model > rule** —— 用户改过类目就标 `user`，谁也覆盖不了；规则命中的标 `rule`；将来模型兜底成功的标 `model`。版本 1 的记录缺这个字段，仍然通过校验（这正是 `compatibleVersions` 担保的东西）。
+
 - `note` 是**用户追加的描述**——按产品决策，它一旦存在就是权威分类来源，模型不许覆盖。
 - 正文和图片**不进域**，域里只放元数据 + `attachmentIds` 引用；大内容按内容哈希存文件（M2 落地）。
 

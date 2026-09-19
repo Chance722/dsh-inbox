@@ -36,6 +36,7 @@ import { registerToolCards } from './card.js'
 import {
   CATEGORIES,
   CATEGORY_LABELS,
+  CATEGORY_SOURCE_LABELS,
   KIND_LABELS,
   STATUS_LABELS,
   type Category,
@@ -701,7 +702,12 @@ function EntryPane({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
         <strong>{KIND_LABELS[detail.kind]}</strong>
-        <span style={{ opacity: 0.6 }}>{CATEGORY_LABELS[detail.category]}</span>
+        <span style={{ opacity: 0.6 }}>
+          {CATEGORY_LABELS[detail.category]}
+          {detail.categorySource === undefined
+            ? ''
+            : `（${CATEGORY_SOURCE_LABELS[detail.categorySource]}判的）`}
+        </span>
         {detail.platform !== undefined && <span style={{ opacity: 0.6 }}>· {detail.platform}</span>}
         <span style={{ marginLeft: 'auto', opacity: 0.6 }}>
           存入 {new Date(detail.createdAt).toLocaleString()}

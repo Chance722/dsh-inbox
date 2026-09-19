@@ -172,6 +172,7 @@ function toSummary(item: Item): EntrySummary {
     id: item.id,
     kind: item.kind,
     category: item.category,
+    ...(item.categorySource === undefined ? {} : { categorySource: item.categorySource }),
     status: item.status,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
@@ -337,7 +338,12 @@ async function handleUpdate(vault: Vault | undefined, payload: unknown): Promise
   if (item === undefined) return failure('inbox/not-found', '这条记录不在了')
 
   try {
-    const updated = await vault.patch(id, patch)
+    // Choosing a category here means the *user* chose it, which outranks both
+    // rules and any model pass — the product rule that a person's word wins.
+    const updated = await vault.patch(id, {
+      ...patch,
+      ...(patch.category === undefined ? {} : { categorySource: 'user' as const }),
+    })
     const value: UpdateResult = { entry: toSummary(updated) }
     return { ok: true, value }
   } catch (error) {

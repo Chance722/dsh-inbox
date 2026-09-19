@@ -13,7 +13,7 @@
  * `InboxRpcResult`, so a refusal is an answer rather than a crash.
  */
 
-import type { Category, Kind, Status } from './vocabulary.js'
+import type { Category, CategorySource, Kind, Status } from './vocabulary.js'
 
 /** Authenticated path prefix every inbox endpoint lives under. */
 export const INBOX_API_PREFIX = '/api/inbox'
@@ -92,6 +92,8 @@ export interface EntrySummary {
   id: string
   kind: Kind
   category: Category
+  /** Who chose the category; absent on records written before M5. */
+  categorySource?: CategorySource
   status: Status
   title?: string
   /** A short excerpt of the stored text, already trimmed by the host. */

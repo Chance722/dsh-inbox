@@ -15,7 +15,13 @@
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { z } from 'zod'
 
-import { CATEGORIES, KINDS, SOURCES, STATUSES } from '../../shared/vocabulary.js'
+import {
+  CATEGORIES,
+  CATEGORY_SOURCES,
+  KINDS,
+  SOURCES,
+  STATUSES,
+} from '../../shared/vocabulary.js'
 
 /** ISO-8601 timestamp. Stored as a string so the medium stays human-readable. */
 const timestamp = z.string().min(1)
@@ -24,6 +30,11 @@ export const itemSchema = z.object({
   id: z.string().min(1),
   kind: z.enum(KINDS),
   category: z.enum(CATEGORIES),
+  /**
+   * Who decided the category — `user` outranks `model`, which outranks `rule`.
+   * Absent on records written before domain version 2.
+   */
+  categorySource: z.enum(CATEGORY_SOURCES).optional(),
   status: z.enum(STATUSES),
   source: z.enum(SOURCES),
   createdAt: timestamp,
@@ -87,7 +98,12 @@ export type VaultGlobal = z.infer<typeof vaultGlobalSchema>
  */
 export const vaultSpec = defineDomain({
   name: 'dsh_inbox',
-  version: 1,
+  /**
+   * Version 2 adds the optional `categorySource`; every version-1 record still
+   * validates, which is exactly what `compatibleVersions` vouches for.
+   */
+  version: 2,
+  compatibleVersions: [1],
   layout: 'per-record',
   global: {
     schema: vaultGlobalSchema,
