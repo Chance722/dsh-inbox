@@ -14,22 +14,16 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 
+import type { WebdavSettings, WebdavStatus } from '../../shared/panel-wire.js'
 import type { Vault } from '../vault/vault.js'
+
+export type { WebdavSettings, WebdavStatus } from '../../shared/panel-wire.js'
 
 /** Namespace this plugin owns in the settings service. */
 export const SETTINGS_NAMESPACE = 'dsh-inbox-webdav'
 
 /** The credential key holding the password. */
 export const PASSWORD_KEY = 'DSH_INBOX_WEBDAV_PASSWORD'
-
-/** What the user configures (everything except the password). */
-export interface WebdavSettings {
-  /** Base URL, e.g. `https://data.cstcloud.cn/dav`. */
-  baseUrl: string
-  /** Folder under the base URL; the convention every device drops into. */
-  directory: string
-  username: string
-}
 
 /** The composed defaults, so a fresh install has a sane shape. */
 export const DEFAULT_SETTINGS: WebdavSettings = {
@@ -65,16 +59,6 @@ interface CredentialsLike {
   set(ref: string, value: string): Promise<void>
   resolve(ref: string): Promise<{ value: string } | undefined>
   unset(ref: string): Promise<void>
-}
-
-/** What the panel needs to render the form and its status. */
-export interface WebdavStatus {
-  settings: WebdavSettings
-  /** Whether a password is stored — never the value itself. */
-  passwordSet: boolean
-  /** Whether the settings service was available at all. */
-  settingsAvailable: boolean
-  credentialsAvailable: boolean
 }
 
 /** Resolve the current settings, falling back to the composed defaults. */

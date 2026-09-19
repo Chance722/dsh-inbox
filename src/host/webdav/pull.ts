@@ -15,6 +15,9 @@
 import { admitEncodedFile, admitEncodedImages, type AttachmentStore } from '@deepseek-ai/dsh-attachment'
 
 import { INBOX_IMAGE_TYPES } from '../../shared/panel-wire.js'
+import type { PullResult } from '../../shared/panel-wire.js'
+
+export type { PullResult } from '../../shared/panel-wire.js'
 import { captureImage, captureText } from '../capture.js'
 import type { Vault } from '../vault/vault.js'
 import { listFolder, readFile, type RemoteFile, type WebdavDeps } from './client.js'
@@ -26,18 +29,6 @@ export interface WebdavConfig {
   /** Folder under the base URL. */
   directory?: string
   username?: string
-}
-
-/** What one pull did, for the panel and for the log. */
-export interface PullResult {
-  status: 'ok' | 'unconfigured' | 'failed'
-  reason?: string
-  pulled: number
-  failed: number
-  /** Files the server listed but we skipped as already-seen. */
-  skipped: number
-  /** Set when the pull completed. */
-  lastPullAt?: string
 }
 
 const DEFAULT_DIRECTORY = '/inbox'

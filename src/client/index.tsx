@@ -19,6 +19,8 @@ import {
   INBOX_ENDPOINT_PURGE,
   INBOX_ENDPOINT_RESTORE,
   INBOX_ENDPOINT_UPDATE,
+  INBOX_ENDPOINT_PULL,
+  INBOX_ENDPOINT_WEBDAV,
   INBOX_IMAGE_TYPES,
   LIST_LIMIT,
   type CaptureResult,
@@ -27,7 +29,10 @@ import {
   type EntrySummary,
   type InboxRpcResult,
   type ListResult,
+  type PullResult,
   type PurgeResult,
+  type WebdavRequest,
+  type WebdavStatus,
   type WireFile,
   type WireImage,
 } from '../shared/panel-wire.js'
@@ -178,6 +183,7 @@ function InboxPanel(): React.ReactElement {
   const [list, setList] = React.useState<ListResult>()
   const [selectedId, setSelectedId] = React.useState<string>()
   const [detail, setDetail] = React.useState<EntryDetail>()
+  const [settingsOpen, setSettingsOpen] = React.useState(false)
 
   /** One POST to the vault channel; see the transport note in panel-wire.ts. */
   const call = React.useCallback(
@@ -377,14 +383,28 @@ function InboxPanel(): React.ReactElement {
   return (
     <div style={panelStyle}>
       <header>
-        <h2 style={{ margin: '0 0 4px' }}>dsh-inbox</h2>
-        <p style={{ margin: 0, opacity: 0.7 }}>
-          {PACKAGE_NAME} · {MILESTONE}
-          {list === undefined
-            ? ''
-            : ` · 共 ${String(list.total)} 条 · 未读 ${String(list.unread)} 条 · 回收站 ${String(list.deleted)} 条`}
-        </p>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div>
+            <h2 style={{ margin: '0 0 4px' }}>dsh-inbox</h2>
+            <p style={{ margin: 0, opacity: 0.7 }}>
+              {PACKAGE_NAME} · {MILESTONE}
+              {list === undefined
+                ? ''
+                : ` · 共 ${String(list.total)} 条 · 未读 ${String(list.unread)} 条 · 回收站 ${String(list.deleted)} 条`}
+            </p>
+          </div>
+          <button
+            type="button"
+            style={{ ...buttonStyle, marginLeft: 'auto' }}
+            aria-expanded={settingsOpen}
+            onClick={() => setSettingsOpen((open) => !open)}
+          >
+            ⚙ 入库设置
+          </button>
+        </div>
       </header>
+
+      {settingsOpen && <WebdavSettings call={call} onClose={() => setSettingsOpen(false)} />}
 
       <div
         style={{
@@ -619,6 +639,180 @@ function InboxPanel(): React.ReactElement {
       </div>
     </div>
   )
+}
+
+/** How the panel talks to the host; shared by the panel and the settings form. */
+type CallHost = (endpoint: string, payload: unknown) => Promise<InboxRpcResult<unknown>>
+
+/** One line describing what a pull did. */
+function describePull(result: PullResult): string {
+  if (result.status === 'unconfigured') return result.reason ?? '还没配置地址'
+  if (result.status === 'failed') return `拉取失败：${result.reason ?? '未知原因'}`
+  return `拉取完成：新入库 ${String(result.pulled)} 条，跳过 ${String(result.skipped)} 条${
+    result.failed > 0 ? `，失败 ${String(result.failed)} 条` : ''
+  }`
+}
+
+/**
+ * The WebDAV form: where other devices drop things, and what the last pull did.
+ *
+ * The password field starts empty on purpose — the host only ever reports
+ * whether one is stored, never the value, so this form cannot show it back.
+ */
+function WebdavSettings({
+  call,
+  onClose,
+}: {
+  call: CallHost
+  onClose: () => void
+}): React.ReactElement {
+  const [status, setStatus] = React.useState<WebdavStatus>()
+  const [baseUrl, setBaseUrl] = React.useState('')
+  const [directory, setDirectory] = React.useState('/inbox')
+  const [username, setUsername] = React.useState('')
+  const [password, setPassword] = React.useState('')
+  const [notice, setNotice] = React.useState<string>()
+  const [busy, setBusy] = React.useState(false)
+
+  const read = React.useCallback(async (): Promise<void> => {
+    const result = await call(INBOX_ENDPOINT_WEBDAV, { action: 'read' })
+    if (!result.ok) {
+      setNotice(`读不到设置：${result.error.message}`)
+      return
+    }
+    const next = result.value as WebdavStatus
+    setStatus(next)
+    setBaseUrl(next.settings.baseUrl)
+    setDirectory(next.settings.directory)
+    setUsername(next.settings.username)
+    setPassword('')
+  }, [call])
+
+  React.useEffect(() => {
+    void read()
+  }, [read])
+
+  const save = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const request: WebdavRequest = {
+        action: 'save',
+        baseUrl,
+        directory,
+        username,
+        // Sending nothing leaves the stored password alone; sending "" clears it.
+        ...(password.length === 0 ? {} : { password }),
+      }
+      const result = await call(INBOX_ENDPOINT_WEBDAV, request)
+      if (!result.ok) {
+        setNotice(`没存上：${result.error.message}`)
+        return
+      }
+      setStatus(result.value as WebdavStatus)
+      setPassword('')
+      setNotice('设置已保存')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const pull = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const result = await call(INBOX_ENDPOINT_PULL, {})
+      setNotice(result.ok ? describePull(result.value as PullResult) : `拉取失败：${result.error.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+        <strong>WebDAV 入库</strong>
+        <span style={{ opacity: 0.65 }}>
+          {status === undefined
+            ? '读取中…'
+            : `${status.settingsAvailable ? '设置服务在' : '没有设置服务'} · ${
+                status.passwordSet ? '密码已存' : '还没存密码'
+              }`}
+        </span>
+        <button type="button" style={{ ...buttonStyle, marginLeft: 'auto' }} onClick={onClose}>
+          关闭
+        </button>
+      </div>
+
+      {status !== undefined && !status.settingsAvailable && (
+        <p style={{ margin: 0, opacity: 0.75 }}>
+          这个组合里没有设置服务，地址改不了——你多半在用 headless 形态开发。
+        </p>
+      )}
+
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span style={{ opacity: 0.7, minWidth: 64 }}>地址</span>
+        <input
+          value={baseUrl}
+          disabled={busy}
+          onChange={(event) => setBaseUrl(event.target.value)}
+          placeholder="https://data.cstcloud.cn/dav"
+          style={{ ...inputStyle, flex: 1 }}
+        />
+      </label>
+
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span style={{ opacity: 0.7, minWidth: 64 }}>目录</span>
+        <input
+          value={directory}
+          disabled={busy}
+          onChange={(event) => setDirectory(event.target.value)}
+          placeholder="/inbox"
+          style={{ ...inputStyle, flex: 1 }}
+        />
+        <span style={{ opacity: 0.6 }}>别的设备往这里扔东西</span>
+      </label>
+
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span style={{ opacity: 0.7, minWidth: 64 }}>用户名</span>
+        <input
+          value={username}
+          disabled={busy}
+          onChange={(event) => setUsername(event.target.value)}
+          style={{ ...inputStyle, flex: 1 }}
+        />
+      </label>
+
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span style={{ opacity: 0.7, minWidth: 64 }}>密码</span>
+        <input
+          type="password"
+          value={password}
+          disabled={busy || status?.credentialsAvailable === false}
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder={status?.passwordSet === true ? '已存（留空则不改）' : '存在 dsh 的凭证库里'}
+          style={{ ...inputStyle, flex: 1 }}
+        />
+      </label>
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button type="button" style={buttonStyle} disabled={busy} onClick={() => void save()}>
+          保存
+        </button>
+        <button type="button" style={buttonStyle} disabled={busy} onClick={() => void pull()}>
+          {busy ? '处理中…' : '立即拉取'}
+        </button>
+        {detailNotice(notice)}
+      </div>
+
+      <p style={{ margin: 0, opacity: 0.6 }}>
+        只做单向：远端往里扔，本机拉下来入库。密码走 dsh 的凭证库，不写进配置。
+      </p>
+    </section>
+  )
+}
+
+/** The settings form's own notice line, or nothing. */
+function detailNotice(notice: string | undefined): React.ReactNode {
+  return notice === undefined ? null : <span style={{ opacity: 0.8 }}>{notice}</span>
 }
 
 /** One stored record as a list row. */

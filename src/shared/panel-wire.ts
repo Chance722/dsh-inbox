@@ -56,6 +56,36 @@ export interface WebdavRequest {
   password?: string
 }
 
+/** The non-secret half of the WebDAV configuration. */
+export interface WebdavSettings {
+  /** Base URL, e.g. `https://data.cstcloud.cn/dav`. */
+  baseUrl: string
+  /** Folder under the base URL; the convention every device drops into. */
+  directory: string
+  username: string
+}
+
+/** What the panel needs to render the form and its status. */
+export interface WebdavStatus {
+  settings: WebdavSettings
+  /** Whether a password is stored — never the value itself. */
+  passwordSet: boolean
+  settingsAvailable: boolean
+  credentialsAvailable: boolean
+}
+
+/** What one pull did, for the panel and for the log. */
+export interface PullResult {
+  status: 'ok' | 'unconfigured' | 'failed'
+  reason?: string
+  pulled: number
+  failed: number
+  /** Files the server listed but we skipped as already-seen. */
+  skipped: number
+  /** Set when the pull completed. */
+  lastPullAt?: string
+}
+
 /** Raster formats dsh's own attachment store accepts, and we therefore pass through. */
 export const INBOX_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const
 export type InboxImageType = (typeof INBOX_IMAGE_TYPES)[number]

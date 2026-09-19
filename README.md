@@ -22,7 +22,7 @@ A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/de
 | ✅ Classification by rule | A video page becomes 视频/音频, a public-account article 文章, a credential-shaped paste 密钥/账密 (and is then never echoed), and a card-shaped image gets a 疑似证件 tag — all decided locally, no bytes or text leaving the machine |
 | ✅ Your word wins | Set the category yourself and it is marked as yours; nothing overwrites it |
 | ✅ Model fallback, capped | Text or a recognised-host link no rule could judge gets one `deepseek-flash` call, redacted first. Capped at 200 calls / 100k tokens per day, recorded in the vault, and a failure leaves the rule's verdict standing. Images are never sent. |
-| ❌ Not yet | Sync (M6) |
+| ✅ Sync, one way | Point it at a WebDAV folder and any device can drop files into `inbox/`; the vault pulls them at startup or on demand, classifies them, and merges repeats. Configuration lives in dsh's settings, the password in dsh's credential store. |
 
 ### Where your data lives
 
@@ -92,6 +92,17 @@ rm -r ~/.dsh/storages/dsh_inbox
 Nothing is installed into `dsh` itself and no global state is touched, so removing the profile directory is a complete uninstall of the plugin.
 
 ## Development
+
+### WebDAV (the phone's way in)
+
+Open the panel, press **⚙ 入库设置**, and fill in the base URL (e.g.
+`https://data.cstcloud.cn/dav`), the folder (default `/inbox`), the username and
+the password. Save, then press **立即拉取**.
+
+Anything another device drops into that folder is pulled, classified and filed —
+text-ish files become text or links, everything else becomes an attachment.
+Pulling happens once per start as well, in the background, and a server that is
+down never delays or fails the boot.
 
 | Purpose | Command |
 |---|---|
