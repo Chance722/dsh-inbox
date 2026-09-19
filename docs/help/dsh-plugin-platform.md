@@ -179,12 +179,13 @@ ctx.inject(['connection', 'attachments'], (scoped) => {
 
 如果将来要放弃 Fetch 路由改用 RPC，**先复现这两条**再定。
 
-## M4 实测补充：工具卡片的槽是 session 作用域的
+## M4 实测补充：工具与自定义卡片
 
-- 模型能看见并调用宿主侧注册的工具：在 web 会话里问"我仓库里有哪些没看的"，模型直接调了 `inbox_status` + `inbox_search` 并给出结果。**工具归属 preset 的担心不成立**——宿主组合里的注册对会话可见。
+- 模型能看见并调用宿主侧注册的工具：在 web 会话里问"我仓库里有哪些没看的"，模型直接调了 `inbox_status` + `inbox_search` 并给出结果。**"工具必须挂进 preset 才可见"的担心不成立**——宿主组合里的注册对所有会话可见。
 - 工具结果原样进入对话（`output.render` 的文本就是模型看到的内容），带 id，模型可以拿 id 继续调 `inbox_get`。
-- **`tool.call.toolview` 的 scope 是 `session`**（证据：`dsh-client-ui-tool/lib/types/client/contract/slots.d.ts`）。我们在 root 半边的客户端插件里注册自定义卡片，注册没报错、产物里也有这段代码，但**界面仍然用内置通用卡片渲染**——根作用域的注册对这个槽不生效。
-- 结论：要自定义工具卡片，得在 session 作用域里注册（具体怎么进那个作用域还没查）。在那之前，工具结果的展示交给内置通用卡片。
+- **`tool.call.toolview` 虽然声明为 `scope: 'session'`，但 root 侧插件注册它是有效的**（证据：官方 `dsh-client-ui-skill` 就是 root 插件，用 `ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({name, key:'skill'}, Row))` 注册自己的卡片）。我们照做，卡片正常渲染。
+
+**一条给自己和后来者的教训**：我一度以为卡片没生效——因为截图里 `[attachment:…]` 标记显示为纯文本。其实那是**模型在回答里引用了工具结果**，卡片本身折叠在"工具调用"区里。展开后卡片和缩略图都正常。**判断 UI 是否生效前，先把对应区域展开**；模型复述的内容不是证据。
 
 ### 在单测里跑真实存储栈
 
