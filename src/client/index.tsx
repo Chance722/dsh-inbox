@@ -17,6 +17,7 @@ import {
   LayoutGrid,
   Link2,
   Music,
+  PanelRight,
   Paperclip,
   RefreshCw,
   Rows3,
@@ -54,6 +55,7 @@ import {
 } from '../shared/panel-wire.js'
 import { MILESTONE, PANEL_ID, PACKAGE_NAME } from '../shared/constants.js'
 import { registerToolCards } from './card.js'
+import { openVaultDock, registerInboxDock } from './dock.js'
 import {
   CATEGORIES,
   CATEGORY_LABELS,
@@ -100,6 +102,7 @@ export function apply(ctx: Context): void {
   slots.inject('main', () => slots.register({ name: 'main', key: PANEL_ID }, InboxPanel))
 
   registerToolCards(slots)
+  registerInboxDock(ctx)
 }
 
 /** Sidebar row icon: a box glyph sized to the shell's requested square. */
@@ -417,6 +420,14 @@ function InboxPanel(): React.ReactElement {
             onClick={() => setSettingsOpen((open) => !open)}
           >
             <Settings2 size={14} /> 入库设置
+          </button>
+          <button
+            type="button"
+            style={buttonStyle}
+            title="在右侧栏打开仓库（与对话并排）"
+            onClick={() => openVaultDock?.()}
+          >
+            <PanelRight size={14} /> 右栏
           </button>
         </div>
       </header>
