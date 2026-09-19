@@ -2,13 +2,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 import { MILESTONE, PACKAGE_NAME } from '../shared/constants.js'
+import { registerInboxCommand } from './command.js'
 import { Vault } from './vault/vault.js'
 
 /** Stable Cordis plugin name for the host half. */
 export const name = 'dsh-inbox'
 
-/** The tool registry to publish into; the storage domain form to persist through. */
-export const inject = ['tools', 'storageDomain']
+/** Tool registry, command surface, and the storage domain form we persist through. */
+export const inject = ['tools', 'commands', 'storageDomain']
 
 /**
  * Open the vault and publish the tool.
@@ -46,6 +47,8 @@ export function apply(ctx: Context): void {
       await opened?.close()
     }
   }, 'dsh-inbox: vault')
+
+  registerInboxCommand(ctx, () => vault)
 
   ctx.tools.register(
     defineTool({

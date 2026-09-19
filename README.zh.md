@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-> **状态：pre-alpha，M0 与 M1 已完成。** 插件骨架能跑了，仓库也能存能查了。粘贴和分类还没做。进度和验收记录在[开发总线](docs/feature/dev-bus.md)。
+> **状态：pre-alpha，M0 与 M1 已完成，M2 进行中。** 仓库能存能查了，捕获的宿主侧也已就位（`/inbox` 命令、重复合并）。面板自己的粘贴框还差"浏览器半边怎么跟宿主说话"这一环。进度和验收记录在[开发总线](docs/feature/dev-bus.md)。
 
 给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）做的个人收件箱插件：把链接、图片、文本、账密粘进一个本地仓库，自动分类，侧栏里能翻，对话里能取回来。
 

@@ -44,15 +44,20 @@ export const itemSchema = z.object({
 })
 
 export const attachmentSchema = z.object({
+  /**
+   * The owning store's identifier: dsh's attachment id for anything the user
+   * pasted (opaque for images, the sha256 digest for generic files). Bytes stay
+   * wherever that store keeps them; this table only carries metadata.
+   */
   id: z.string().min(1),
-  /** Content hash; identical bytes are stored once. */
-  sha256: z.string().min(1),
   mime: z.string().min(1),
   bytes: z.number().int().nonnegative(),
   createdAt: timestamp,
   filename: z.string().optional(),
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
+  /** Present when the medium identifies the bytes by digest. */
+  sha256: z.string().optional(),
 })
 
 /**

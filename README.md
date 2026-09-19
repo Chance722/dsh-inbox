@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-> **Status: pre-alpha — M0 and M1 done.** The plugin skeleton works and the vault can store and query records. Nothing is pasted or classified yet. Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
+> **Status: pre-alpha — M0 and M1 done, M2 in progress.** The vault stores and queries records, and the host side of capture is in place (`/inbox` command, duplicate merging). The panel's own capture box is still pending the browser→host call mechanism. Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
 
 A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`): paste links, images, text and credentials into one local vault, get them classified, browse them from the sidebar, and pull them back through conversation.
 

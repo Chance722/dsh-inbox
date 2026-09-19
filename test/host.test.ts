@@ -11,12 +11,15 @@ import { MILESTONE, PACKAGE_NAME } from '../src/shared/constants.js'
  */
 function fakeContext() {
   const register = vi.fn()
+  const registerCommand = vi.fn()
   const effect = vi.fn(() => () => {})
   return {
     register,
+    registerCommand,
     effect,
     ctx: {
       tools: { register },
+      commands: { register: registerCommand },
       effect,
       storageDomain: { open: vi.fn() },
     } as never,
@@ -26,13 +29,27 @@ function fakeContext() {
 describe('dsh-inbox host half', () => {
   it('does not depend on the tool registry by name collision', () => {
     expect(name).toBe('dsh-inbox')
-    expect(inject).toEqual(['tools', 'storageDomain'])
+    expect(inject).toEqual(['tools', 'commands', 'storageDomain'])
   })
 
   it('registers exactly one model-facing tool', () => {
     const { register, ctx } = fakeContext()
     apply(ctx)
     expect(register).toHaveBeenCalledTimes(1)
+  })
+
+  it('registers the /inbox command without recording its input', () => {
+    const { registerCommand, ctx } = fakeContext()
+    apply(ctx)
+    expect(registerCommand).toHaveBeenCalledTimes(1)
+    const definition = registerCommand.mock.calls[0]?.[0] as {
+      name: string
+      recordInput?: boolean
+      input?: { attachments?: boolean }
+    }
+    expect(definition.name).toBe('inbox')
+    expect(definition.recordInput).toBe(false)
+    expect(definition.input?.attachments).toBe(true)
   })
 
   it('reports package identity and milestone', async () => {
