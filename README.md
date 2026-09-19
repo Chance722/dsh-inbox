@@ -2,11 +2,11 @@
 
 English | [中文](README.zh.md)
 
-> **Status: pre-alpha — M0–M5 done.** File things two ways, browse and manage them in the panel, ask for them in conversation, and things arrive **already classified**: rules decide what they can prove, and a capped `deepseek-flash` pass judges the rest. Sync (M6) is next. Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
+> **Status: pre-alpha — M0–M6 done.** File things two ways, browse and manage them in the panel, ask for them in conversation, **arrive already classified** (rules first, a capped `deepseek-flash` pass for the rest), and **let another device drop things in over WebDAV or S3**. Packaging and one-command install (M7) is next. Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
 
 A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`): paste links, images, text and credentials into one local vault, get them classified, browse them from the sidebar, and pull them back through conversation.
 
-## What works today (M4)
+## What works today (M6)
 
 | | |
 |---|---|
@@ -22,7 +22,8 @@ A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/de
 | ✅ Classification by rule | A video page becomes 视频/音频, a public-account article 文章, a credential-shaped paste 密钥/账密 (and is then never echoed), and a card-shaped image gets a 疑似证件 tag — all decided locally, no bytes or text leaving the machine |
 | ✅ Your word wins | Set the category yourself and it is marked as yours; nothing overwrites it |
 | ✅ Model fallback, capped | Text or a recognised-host link no rule could judge gets one `deepseek-flash` call, redacted first. Capped at 200 calls / 100k tokens per day, recorded in the vault, and a failure leaves the rule's verdict standing. Images are never sent. |
-| ✅ Sync, one way | Point it at a WebDAV folder and any device can drop files into `inbox/`; the vault pulls them at startup or on demand, classifies them, and merges repeats. Configuration lives in dsh's settings, the password in dsh's credential store. |
+| ✅ Sync, one way | Point it at a remote — a **WebDAV folder** or an **S3 bucket** — and any device can drop files in; the vault pulls them at startup or on demand, classifies them, and merges repeats. Configuration lives in dsh's settings, the password and secret in dsh's credential store. |
+| ✅ Client identity | Some gateways (中科院数据胶囊 among them) bind an access key to an "application" and **tell clients apart by `User-Agent`** — anything else is refused with the same status code a wrong password gets. The settings form can send that identity (empty means the plugin's own name, `dsh-inbox`). |
 
 ### Where your data lives
 
@@ -102,6 +103,12 @@ Open the panel, press **⚙ 入库设置**, and pick a protocol:
 - **S3** — endpoint (e.g. `s3.cstcloud.cn`; the scheme defaults to `https`, and
   an explicit `http://` is kept for a LAN endpoint), bucket, region, signature
   version (v4), AccessKey ID and AccessKey Secret.
+- **Client identity** (shared by both protocols) — empty means `dsh-inbox`. On
+  数据胶囊 this **must** be the application you picked when creating the
+  AccessKey (for example `Obsidian`); without it the S3 door answers 401 and the
+  WebDAV door answers `403 Client type mismatch.`, both of which read like a
+  wrong password. The same key also works over WebDAV: username = AccessKey ID,
+  password = AccessKey Secret.
 
 Save, then press **立即拉取**. Passwords and secrets go to dsh's credential
 store, never into configuration.
@@ -110,6 +117,10 @@ Anything another device drops into that folder is pulled, classified and filed �
 text-ish files become text or links, everything else becomes an attachment.
 Pulling happens once per start as well, in the background, and a server that is
 down never delays or fails the boot.
+
+When a pull fails, press **自检**: it asks the gateway every signature shape at
+once and prints the server's own words. The reasoning and the measured matrix
+are in [docs/help/remote-gateway-compat.md](docs/help/remote-gateway-compat.md).
 
 | Purpose | Command |
 |---|---|

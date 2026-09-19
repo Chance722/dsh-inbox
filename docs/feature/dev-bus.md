@@ -301,3 +301,36 @@
 修法两处：**端点里 catch 住任何 handler 异常并回一个 `inbox/handler-threw` 的 JSON 结果**（无论如何都不该让调用方拿到空 body）；写入改成官方的**命名空间寻址形式** `settings.update(ns, patch)`，注册只作为"声明"、失败就忽略——因为 `ctx.get('settings')` 每次返回的是**新的包装对象**，按对象身份缓存 scope 根本不命中（这是我第一次尝试修复时踩的，第二次才对）。
 
 回归测试：假 settings 现在**和真服务一样拒绝第二次注册**，并断言"同一进程里保存两次都成功、值取最后一次"。实测两次保存都是"设置已保存"。
+
+#### M6c 收尾 — 401 的真凶是"客户端标识"（同日，已验收）
+
+用户填好真实凭证后，**每一种签名形状都回 401**：完整 v4（us-east-1 / cn-north-1 / cn-northwest-1）、只签 host+date 的精简 v4、UNSIGNED-PAYLOAD，全部 401；v2 回 500 `{"msg":"未知运行时异常"}`。401 的响应体是空的，没有 `WWW-Authenticate`，**匿名请求得到的也是同一个 401**——也就是说这个状态码本身不带任何信息。
+
+**排查过程（三步，每步都在缩小范围）**
+
+1. **拿参考签名器打同一个请求**：把官方 `@aws-sdk/client-s3`（Obsidian 的 remotely-save 用的就是它）装到临时目录，用同一组 endpoint/bucket/region/AK/SK 跑 `ListObjectsV2`（`forcePathStyle: true`）。结果**也是 401**——说明问题不在我们自己写的 SigV4。它发出的签名头与我们的完全同形（`host;x-amz-content-sha256;x-amz-date`）。
+2. **拿参考**客户端身份**打同一个请求**：同样的签名，只把 `User-Agent` 改成 `Obsidian/1.8.7` → **200 + ListBucketResult**；改回 `aws-sdk-js/...` 或干脆不发 → 401。变量只剩这一个。
+3. **WebDAV 那条路印证同一件事**：`https://data.cstcloud.cn/dav` 上，`chance722` 账号任何 UA 都回 `403 Client type mismatch.`；把 **S3 的 AccessKey ID / Secret 当 Basic 用户名密码**、UA 写 `Obsidian/1.8.7` → **207 列目录成功**，里面就是桶根，`IMG_9270.jpg` 370680 字节 —— 和 S3 那边列出来的是同一个对象。
+
+**结论**：数据胶囊把 AccessKey 绑在"应用"上（用户创建 key 时选的就是 `Obsidian`），网关按 **`User-Agent`** 认客户端，不在名单里的一律拒绝；S3 门回 401、WebDAV 门回 403，两种都在字面上像"凭证错了"。
+
+**改了什么**
+
+- **新增设置项「客户端标识」**（`userAgent`，存在 `dsh-inbox-webdav` 命名空间里）：留空时发 `dsh-inbox`（插件自己的身份，不冒充别人），填了就用填的值。**S3 与 WebDAV 两个客户端都带这个头**，且它**不进签名**（签名只覆盖 host / date / payload hash），所以换标识不会破坏签名——有单测钉住这一条。
+- **错误信息带上服务器的原话**：WebDAV 以前只报 `HTTP 403`，现在把响应体（最多 200 字）一起带出来，`Client type mismatch.` 才算看得见；S3 侧则在 401/403 时追加一句「这类网关常按客户端标识认人」。
+- **自检结果全 401 时给一句人话**：面板直接说"不是签名写法的问题，把「客户端标识」填成 AccessKey 绑定的应用名"。
+- 顺手修掉里程碑标记停在 `M4` 的问题（`MILESTONE` → `M6c`）。
+
+**端到端验证（真实 web UI + 真实数据胶囊 S3）**
+
+- ⚙ 入库设置 → 客户端标识填 `Obsidian` → **"设置已保存"**（同时确认新字段渲染、保存、回读都对）。
+- 点 **立即拉取** → **"拉取完成：远端列出 1 项，新入库 1 条，跳过 0 条"**；列表顶部多出一条 `图片 · 图片 · 未读 · 1 个附件`，详情里 `IMG_9270.jpg · 1280×1708 · 278.0 KB` 且缩略图正常渲染。
+- 点 **自检** → 8 行里 **6 行 200**（v4 三种 region、UNSIGNED-PAYLOAD、带 prefix，都返回 ListBucketResult）；`v4 精简（只签 host + date）` 仍 401（该网关要求 `x-amz-content-sha256` 必须在签名头里）；`v2` 两行 500（网关不支持 v2）。
+
+**证据**：`pnpm typecheck` 干净、`pnpm test` **12 个文件 134 条**全绿（新增 5 条：S3 的标识头与"改标识不改签名"、S3 裸 401 的提示、WebDAV 的标识头默认值与自定义、WebDAV 403 原文进错误信息）、`pnpm build` 通过。排查脚本与结论另存 `docs/help/remote-gateway-compat.md`。
+
+**遗留**
+
+1. **应用名靠人填**：控制台里的应用下拉有哪些值我们看不到，所以只能由用户把自己选的那个填进设置，插件不做猜测（也不该默认冒充别的客户端）。
+2. **WebDAV 门要填 AK/SK**：`chance722` + 密码那组账号在数据胶囊上任何 UA 都被拒；能用的组合是"用户名 = AccessKey ID，密码 = AccessKey Secret"，README 里已写明。
+3. **没做自动重试**：401 时不会自动换标识重打一遍——静默换身份比报错更糟。

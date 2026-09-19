@@ -71,6 +71,7 @@ prototypes/    原型（*.prototype.html）
 |---|---|
 | dsh 插件平台实测事实（扩展点、限制、证据） | `docs/help/dsh-plugin-platform.md` |
 | 已锁定的产品与架构决策 | `docs/help/product-decisions.md` |
+| 对象存储网关兼容性排查（401/403 的三种可能、客户端标识） | `docs/help/remote-gateway-compat.md` |
 | 开发总线（阶段 / 验收标准 / 状态） | `docs/feature/dev-bus.md` |
 | 知识文档总索引 + 维护记录 | `docs/help/index.md` |
 
