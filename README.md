@@ -13,10 +13,10 @@ A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/de
 | ✅ Sidebar entry | An **Inbox** row appears under *Global panels*; clicking it swaps the main area to the plugin's page |
 | ✅ Tool reaches the model | `inbox_status` reports whether the vault is open and how many records it holds |
 | ✅ Two ways to capture | `/inbox <text or link>` in the composer (attach images to carry them along), or paste/drop/pick inside the panel |
-| ✅ Browse and manage | Filter by unread / category / tag, search across title, text, url and note, open a record's detail with image thumbnails, edit its category, description and tags, mark it read |
+| ✅ Browse and manage | Filter by watch-later / category / tag, search across title, text, url and note, switch the list between two densities (two columns / compact), open a record's detail with image thumbnails, edit its category, description and tags, flag it watch-later |
 | ✅ Recycle bin | Delete is a soft delete; restore from the bin, or empty it to remove the records for good |
 | ✅ Storage and merging | Records persist through dsh's own storage stack; a repeat paste merges into the record you already have |
-| ✅ Ask in conversation | `inbox_search` finds records by words, category, tag, status or kind; `inbox_get` opens one by id (text up to 1000 characters, links, notes, tags, attachment facts) |
+| ✅ Ask in conversation | `inbox_search` finds records by words, category, tag, watch-later flag or kind; `inbox_get` opens one by id (text up to 1000 characters, links, notes, tags, attachment facts) |
 | 🔒 What never happens | A credential record never returns its text, and image bytes never enter the **conversation** — images come back as markers the UI renders locally. (Classification may send a picture to the model; that is a deliberate, capped choice — see below.) |
 | ✅ Own conversation card | Tool results render as dsh-inbox cards: links become clickable, and image markers become thumbnails drawn on this machine |
 | ✅ Classification by rule | A video page becomes 视频/音频, a public-account article 文章, a credential-shaped paste 密钥/账密 (and is then never echoed), and a card-shaped image gets a 疑似证件 tag — all decided locally, no bytes or text leaving the machine |
@@ -39,7 +39,7 @@ It is created on the first write. Nothing in it is ever sent anywhere by this pl
 
 - **Capture** — paste or drag into an inbox panel, or prefix a chat message to file it instead of sending it.
 - **Classify** — rules first (platform and media type from the URL, secrets by pattern, images by local heuristics), with a model as fallback. Your own description always wins.
-- **Browse** — a sidebar switch that swaps the session list for your vault: categories, tags, unread state, soft delete.
+- **Browse** — a sidebar switch that swaps the session list for your vault: categories, tags, watch-later flags, soft delete.
 - **Retrieve** — ask in conversation and get the original content back (text inline, images as thumbnails, links as title cards).
 - **Sync (one-way)** — drop files into a WebDAV `inbox/` folder from any device; the vault pulls and classifies them at startup. Everything leaving the machine is encrypted.
 
