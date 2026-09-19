@@ -38,7 +38,15 @@ export const DOCK_TAB_ID = PACKAGE_NAME
 /** How many records the dock bothers to list. */
 const DOCK_LIMIT = 12
 
-/** A caller the panel reaches to open this tab, set when registration succeeds. */
+/**
+ * A caller that can reveal the tab, set once registration succeeds.
+ *
+ * It cannot be used from the inbox panel: the dock belongs to the *session*
+ * surface, and showing the panel unmounts that surface — calling `openTab` from
+ * there fails with `sidebarRight: no session surface is mounted` (measured).
+ * Whoever opens it has to be standing in a conversation, which is why the tab
+ * ships a guide entry instead of a button here.
+ */
 export let openVaultDock: (() => void) | undefined
 
 interface SlotsLike {
@@ -47,7 +55,15 @@ interface SlotsLike {
 }
 
 interface TabsLike {
-  register(definition: { id: string; kind: string }): unknown
+  register(definition: {
+    id: string
+    kind: string
+    title: (address: string) => string
+    // Copy is thunked and re-read on every use (so a language change needs no
+    // re-registration) — passing plain strings crashes the guide page with
+    // `entry.description is not a function`, measured.
+    guide?: readonly { order: number; title: () => string; description: () => string }[]
+  }): unknown
 }
 
 interface ControllerLike {
@@ -71,7 +87,14 @@ export function registerInboxDock(ctx: Context): void {
     if (slots === undefined || tabs === undefined) return
 
     try {
-      tabs.register({ id: DOCK_TAB_ID, kind: DOCK_KIND })
+      tabs.register({
+        id: DOCK_TAB_ID,
+        kind: DOCK_KIND,
+        title: () => '仓库',
+        guide: [
+          { order: 20, title: () => '仓库', description: () => '把 inbox 放在对话旁边，随手看' },
+        ],
+      })
       slots.inject('sidebar.right.pane.tab', () =>
         slots.register({ name: 'sidebar.right.pane.tab', key: DOCK_TAB_ID }, InboxDock),
       )
