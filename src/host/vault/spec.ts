@@ -20,7 +20,6 @@ import {
   CATEGORY_SOURCES,
   KINDS,
   SOURCES,
-  STATUSES,
 } from '../../shared/vocabulary.js'
 
 /** ISO-8601 timestamp. Stored as a string so the medium stays human-readable. */
@@ -35,7 +34,16 @@ export const itemSchema = z.object({
    * Absent on records written before domain version 2.
    */
   categorySource: z.enum(CATEGORY_SOURCES).optional(),
-  status: z.enum(STATUSES),
+  /**
+   * "I want to come back to this" — the only progress flag, and the user's to
+   * set. Absent means not flagged, which is where every new record starts.
+   *
+   * Domain version 3 replaced the old read/unread pair with this: read/unread
+   * claimed knowledge the software does not have (nothing here knows whether
+   * you *consumed* a link), and it made every capture start as "unread", so the
+   * badge counted your own typing back at you.
+   */
+  watchLater: z.boolean().optional(),
   source: z.enum(SOURCES),
   createdAt: timestamp,
   updatedAt: timestamp,
@@ -110,11 +118,13 @@ export type VaultGlobal = z.infer<typeof vaultGlobalSchema>
 export const vaultSpec = defineDomain({
   name: 'dsh_inbox',
   /**
-   * Version 2 adds the optional `categorySource`; every version-1 record still
-   * validates, which is exactly what `compatibleVersions` vouches for.
+   * Version 2 added the optional `categorySource`; version 3 swaps
+   * `status` for `watchLater` and drops the `待看` tag. Both older shapes still
+   * validate — the removed `status` key is simply ignored, and `watchLater` is
+   * optional — and `Vault.open` rewrites them once so the flag is real.
    */
-  version: 2,
-  compatibleVersions: [1],
+  version: 3,
+  compatibleVersions: [1, 2],
   layout: 'per-record',
   global: {
     schema: vaultGlobalSchema,

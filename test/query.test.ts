@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { countUnread, selectItems } from '../src/host/vault/query.js'
+import { countWatchLater, selectItems } from '../src/host/vault/query.js'
 import type { Item } from '../src/host/vault/spec.js'
 
 function item(overrides: Partial<Item> & { id: string; createdAt: string }): Item {
   return {
     kind: 'text',
     category: 'idea',
-    status: 'unread',
     source: 'panel',
     updatedAt: overrides.createdAt,
     tags: [],
@@ -20,6 +19,7 @@ const vault: Item[] = [
   item({
     id: 'a',
     createdAt: '2026-09-01T10:00:00.000Z',
+    watchLater: true,
     title: 'React 并发渲染笔记',
     tags: ['前端'],
   }),
@@ -30,6 +30,7 @@ const vault: Item[] = [
     category: 'media',
     url: 'https://www.bilibili.com/video/BV1xx',
     platform: 'bilibili',
+    watchLater: true,
     title: '那个讲动画原理的视频',
     tags: ['动画', '待看'],
   }),
@@ -38,7 +39,8 @@ const vault: Item[] = [
     createdAt: '2026-09-03T10:00:00.000Z',
     kind: 'image',
     category: 'document',
-    status: 'read',
+    // Not flagged: this is the "read" one from the old model, which is simply
+    // "not 待看" now.
     note: '身份证照',
   }),
   item({
@@ -48,6 +50,7 @@ const vault: Item[] = [
     category: 'article',
     url: 'https://mp.weixin.qq.com/s/abc',
     platform: 'wechat',
+    watchLater: true,
     title: '一篇关于缓存的公众号文章',
   }),
   item({
@@ -82,7 +85,7 @@ describe('selectItems', () => {
   it('treats categories as an OR set and different fields as AND', () => {
     expect(selectItems(vault, { categories: ['media', 'article'] }).map((r) => r.id)).toEqual(['d', 'b'])
     expect(
-      selectItems(vault, { categories: ['media', 'article'], statuses: ['unread'] }).map((r) => r.id),
+      selectItems(vault, { categories: ['media', 'article'], watchLater: true }).map((r) => r.id),
     ).toEqual(['d', 'b'])
   })
 
@@ -103,8 +106,8 @@ describe('selectItems', () => {
   })
 })
 
-describe('countUnread', () => {
-  it('ignores read and soft-deleted records', () => {
-    expect(countUnread(vault)).toBe(3)
+describe('countWatchLater', () => {
+  it('counts the flagged live records, and ignores soft-deleted ones', () => {
+    expect(countWatchLater(vault)).toBe(3)
   })
 })

@@ -22,10 +22,6 @@ export const CATEGORIES = [
 ] as const
 export type Category = (typeof CATEGORIES)[number]
 
-/** Two states only; "later" is a tag, not a state. */
-export const STATUSES = ['unread', 'read'] as const
-export type Status = (typeof STATUSES)[number]
-
 /** Where the record entered the vault. */
 export const SOURCES = ['panel', 'chat', 'webdav', 'import'] as const
 export type Source = (typeof SOURCES)[number]
@@ -55,10 +51,6 @@ export const KIND_LABELS: Record<Kind, string> = {
   file: '文件',
 }
 
-export const STATUS_LABELS: Record<Status, string> = {
-  unread: '未读',
-  read: '已读',
-}
 
 export const CATEGORY_SOURCE_LABELS: Record<CategorySource, string> = {
   rule: '规则',

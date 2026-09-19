@@ -13,7 +13,7 @@
  * `InboxRpcResult`, so a refusal is an answer rather than a crash.
  */
 
-import type { Category, CategorySource, Kind, Status } from './vocabulary.js'
+import type { Category, CategorySource, Kind } from './vocabulary.js'
 
 /** Authenticated path prefix every inbox endpoint lives under. */
 export const INBOX_API_PREFIX = '/api/inbox'
@@ -51,6 +51,9 @@ export const INBOX_ENDPOINT_PROBE = 'probe'
 
 /** Read or write the panel's own preferences (list mode and friends). */
 export const INBOX_ENDPOINT_UI = 'ui'
+
+/** Operate on tags across records (currently: drop one everywhere). */
+export const INBOX_ENDPOINT_TAGS = 'tags'
 
 /** What the panel sends to `webdav`: read the status, or save a patch. */
 export interface WebdavRequest {
@@ -196,7 +199,8 @@ export type ListScope = 'live' | 'bin'
 export interface ListRequest {
   scope?: ListScope
   categories?: Category[]
-  statuses?: Status[]
+  /** Filter to the records the user flagged for later. */
+  watchLater?: boolean
   kinds?: Kind[]
   /** Every listed tag must be present. */
   tags?: string[]
@@ -213,7 +217,13 @@ export interface EntrySummary {
   category: Category
   /** Who chose the category; absent on records written before M5. */
   categorySource?: CategorySource
-  status: Status
+  /**
+   * The one flag the user manages himself: "I want to come back to this".
+   *
+   * Replaces the old read/unread pair, which claimed to know something the
+   * software cannot know and made every capture start life as "unread".
+   */
+  watchLater: boolean
   title?: string
   /** A short excerpt of the stored text, already trimmed by the host. */
   preview?: string
@@ -260,8 +270,8 @@ export interface ListResult {
   matched: number
   /** Live records overall. */
   total: number
-  /** Live unread records overall. */
-  unread: number
+  /** Live records flagged 待看, overall. */
+  watchLater: number
   /** Records sitting in the recycle bin. */
   deleted: number
   /** Facets are computed over live records only. */
@@ -281,7 +291,7 @@ export interface DetailResult {
 export interface UpdateRequest {
   id: string
   category?: Category
-  status?: Status
+  watchLater?: boolean
   note?: string
   title?: string
   tags?: string[]
@@ -338,6 +348,13 @@ export interface UiPrefs {
 export interface UiRequest {
   action: 'read' | 'save'
   listMode?: UiListMode
+}
+
+/** What the panel sends to `tags`. */
+export interface TagRequest {
+  action: 'remove'
+  /** The exact tag to strip from every record that carries it. */
+  tag: string
 }
 
 /** How much stored text a list row shows before the panel truncates it. */

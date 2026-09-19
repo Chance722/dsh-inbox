@@ -24,7 +24,6 @@ function item(overrides: Partial<Item>): Item {
     id: 'i1',
     kind: 'text',
     category: 'other',
-    status: 'unread',
     source: 'panel',
     createdAt: '2026-09-19T00:00:00.000Z',
     updatedAt: '2026-09-19T00:00:00.000Z',

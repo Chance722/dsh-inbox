@@ -39,6 +39,7 @@ import {
   INBOX_ENDPOINT_PULL,
   INBOX_ENDPOINT_PROBE,
   INBOX_ENDPOINT_UI,
+  INBOX_ENDPOINT_TAGS,
   type CaptureResult,
   type DetailResult,
   type InboxRpcResult,
@@ -189,7 +190,8 @@ describe('capture', () => {
 
     const listed = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {}))
     expect(listed.total).toBe(1)
-    expect(listed.unread).toBe(1)
+    // Capturing does not flag anything: 待看 is the user's mark to make.
+    expect(listed.watchLater).toBe(0)
     expect(listed.entries[0]).toMatchObject({ kind: 'text', preview: '一段灵感' })
   })
 
@@ -258,24 +260,25 @@ describe('list', () => {
         INBOX_ENDPOINT_PULL,
         INBOX_ENDPOINT_PROBE,
         INBOX_ENDPOINT_UI,
+        INBOX_ENDPOINT_TAGS,
       ]
         .map((endpoint) => `${INBOX_API_PREFIX}/${endpoint}`)
         .sort(),
     )
   })
 
-  it('filters by status and reports matching and overall counts separately', async () => {
+  it('filters by the 待看 flag and reports matching and overall counts separately', async () => {
     const first = await file('第一条')
     await file('第二条')
-    await post(INBOX_ENDPOINT_UPDATE, { id: first, status: 'read' })
+    await post(INBOX_ENDPOINT_UPDATE, { id: first, watchLater: true })
 
     const everything = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {}))
     expect(everything.matched).toBe(2)
     expect(everything.total).toBe(2)
-    expect(everything.unread).toBe(1)
+    expect(everything.watchLater).toBe(1)
 
     const unread = value<ListResult>(
-      await post(INBOX_ENDPOINT_LIST, { statuses: ['unread'] }),
+      await post(INBOX_ENDPOINT_LIST, { watchLater: false }),
     )
     expect(unread.matched).toBe(1)
     expect(unread.entries[0]?.preview).toBe('第二条')
@@ -354,7 +357,7 @@ describe('detail, edit and the recycle bin', () => {
   })
 
   it('refuses an edit or a delete for a record that is gone', async () => {
-    expect(codeOf(await post(INBOX_ENDPOINT_UPDATE, { id: 'nope', status: 'read' }))).toBe(
+    expect(codeOf(await post(INBOX_ENDPOINT_UPDATE, { id: 'nope', watchLater: true }))).toBe(
       'inbox/not-found',
     )
     expect(codeOf(await post(INBOX_ENDPOINT_DELETE, { id: 'nope' }))).toBe('inbox/not-found')

@@ -153,7 +153,7 @@ function InboxDock(): React.ReactElement {
               border: '1px solid color-mix(in srgb, currentColor 12%, transparent)',
               borderRadius: 8,
               padding: '6px 8px',
-              opacity: entry.status === 'read' ? 0.7 : 1,
+              opacity: 1,
             }}
           >
             <div style={{ overflowWrap: 'anywhere' }}>
@@ -161,7 +161,7 @@ function InboxDock(): React.ReactElement {
             </div>
             <div style={{ fontSize: 12, opacity: 0.6, marginTop: 2 }}>
               {KIND_LABELS[entry.kind]} · {CATEGORY_LABELS[entry.category]}
-              {entry.status === 'read' ? '' : ' · 未读'}
+              {entry.watchLater ? ' · 待看' : ''}
             </div>
           </li>
         ))}

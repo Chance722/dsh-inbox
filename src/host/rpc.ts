@@ -42,6 +42,7 @@ import {
   INBOX_ENDPOINT_PULL,
   INBOX_ENDPOINT_PROBE,
   INBOX_ENDPOINT_UI,
+  INBOX_ENDPOINT_TAGS,
   INBOX_IMAGE_TYPES,
   LIST_LIMIT,
   MAX_ATTACHMENTS_PER_SUBMISSION,
@@ -63,7 +64,7 @@ import {
   type PurgeResult,
   type UpdateResult,
 } from '../shared/panel-wire.js'
-import { CATEGORIES, KINDS, STATUSES, type Category } from '../shared/vocabulary.js'
+import { CATEGORIES, KINDS, type Category } from '../shared/vocabulary.js'
 import { capture, type CapturedAttachment } from './capture.js'
 import {
   activeUserAgent,
@@ -109,7 +110,7 @@ const tagSchema = z.string().min(1).max(MAX_TAG_CHARS)
 const listRequestSchema = z.object({
   scope: z.enum(['live', 'bin']).optional(),
   categories: z.array(z.enum(CATEGORIES)).max(CATEGORIES.length).optional(),
-  statuses: z.array(z.enum(STATUSES)).max(STATUSES.length).optional(),
+  watchLater: z.boolean().optional(),
   kinds: z.array(z.enum(KINDS)).max(KINDS.length).optional(),
   tags: z.array(tagSchema).max(MAX_TAGS).optional(),
   text: z.string().max(MAX_FILTER_CHARS).optional(),
@@ -121,7 +122,7 @@ const idRequestSchema = z.object({ id: z.string().min(1) })
 
 const updateRequestSchema = idRequestSchema.extend({
   category: z.enum(CATEGORIES).optional(),
-  status: z.enum(STATUSES).optional(),
+  watchLater: z.boolean().optional(),
   note: z.string().max(MAX_NOTE_CHARS).optional(),
   title: z.string().max(MAX_TITLE_CHARS).optional(),
   tags: z.array(tagSchema).max(MAX_TAGS).optional(),
@@ -190,7 +191,7 @@ function toSummary(item: Item): EntrySummary {
     kind: item.kind,
     category: item.category,
     ...(item.categorySource === undefined ? {} : { categorySource: item.categorySource }),
-    status: item.status,
+    watchLater: item.watchLater === true,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
     tags: [...item.tags],
@@ -322,7 +323,7 @@ function handleList(vault: Vault | undefined, payload: unknown): InboxRpcResult<
     entries: matched.slice(offset, offset + limit).map(toSummary),
     matched: matched.length,
     total: live.length,
-    unread: live.filter((item) => item.status === 'unread').length,
+    watchLater: live.filter((item) => item.watchLater === true).length,
     deleted: bin.length,
     ...facetsOf(live),
   }
@@ -507,6 +508,16 @@ async function handleProbe(ctx: Context): Promise<InboxRpcResult<unknown>> {
 }
 
 /** Read or change the panel's own preferences (which list layout it remembers). */
+async function handleTags(vault: Vault | undefined, payload: unknown): Promise<InboxRpcResult<unknown>> {
+  if (vault === undefined) return failure('inbox/vault-closed', '仓库还没打开（或打开失败），稍后再试')
+  const parsed = z
+    .object({ action: z.enum(['remove']).default('remove'), tag: z.string().min(1).max(MAX_TAG_CHARS) })
+    .safeParse(payload)
+  if (!parsed.success) return failure('inbox/bad-tag-request', parsed.error.message)
+  const removed = await vault.removeTag(parsed.data.tag)
+  return { ok: true, value: { removed } }
+}
+
 async function handleUi(ctx: Context, payload: unknown): Promise<InboxRpcResult<unknown>> {
   const parsed = z
     .object({
@@ -667,6 +678,9 @@ export function registerInboxRpc(ctx: Context, vault: () => Vault | undefined): 
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_UI}`, (payload) =>
         serialise(() => handleUi(scoped, payload)),
+      ),
+      endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_TAGS}`, (payload) =>
+        serialise(() => handleTags(vault(), payload)),
       ),
       {
         path: `${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}`,

@@ -45,7 +45,7 @@ describe('vault over the real storage domain', () => {
       title: '一篇公众号文章',
     })
 
-    expect(created.status).toBe('unread')
+    expect(created.watchLater).toBeUndefined()
     expect(created.tags).toEqual([])
     expect(vault.get(created.id)).toEqual(created)
     expect(vault.size).toBe(1)
@@ -73,7 +73,7 @@ describe('vault over the real storage domain', () => {
     expect(vault.get(created.id)?.text).toBe('secretid=AKIDexample')
   })
 
-  it('patches classification and status without dropping the other fields', async () => {
+  it('patches classification and the 待看 flag without dropping the other fields', async () => {
     const created = await vault.create({
       kind: 'image',
       category: 'image',
@@ -81,9 +81,9 @@ describe('vault over the real storage domain', () => {
       note: '看起来像证件照',
     })
 
-    const patched = await vault.patch(created.id, { category: 'document', status: 'read' })
+    const patched = await vault.patch(created.id, { category: 'document', watchLater: true })
     expect(patched.category).toBe('document')
-    expect(patched.status).toBe('read')
+    expect(patched.watchLater).toBe(true)
     expect(patched.note).toBe('看起来像证件照')
     expect(patched.createdAt).toBe(created.createdAt)
   })
@@ -111,6 +111,19 @@ describe('vault over the real storage domain', () => {
   })
 
   it('refuses a patch to a record that does not exist', async () => {
-    await expect(vault.patch('missing', { status: 'read' })).rejects.toThrow()
+    await expect(vault.patch('missing', { watchLater: true })).rejects.toThrow()
+  })
+
+  it('strips one tag from every record that carries it, and only that tag', async () => {
+    const first = await vault.create({ kind: 'text', category: 'other', source: 'panel', tags: ['待看', '缓存'] })
+    const second = await vault.create({ kind: 'text', category: 'other', source: 'panel', tags: ['缓存'] })
+    const third = await vault.create({ kind: 'text', category: 'other', source: 'panel' })
+
+    expect(await vault.removeTag('缓存')).toBe(2)
+    expect(vault.get(first.id)?.tags).toEqual(['待看'])
+    expect(vault.get(second.id)?.tags).toEqual([])
+    expect(vault.get(third.id)?.tags).toEqual([])
+    // Removing a tag nobody carries is a no-op, not an error.
+    expect(await vault.removeTag('缓存')).toBe(0)
   })
 })

@@ -96,10 +96,11 @@ describe('capture against a real vault', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('files text and links as unread records', async () => {
+  it('files text and links as records, unflagged', async () => {
     const text = await captureText(vault, '记得给 dsh-inbox 写文档', 'panel')
     expect(text.item.kind).toBe('text')
-    expect(text.item.status).toBe('unread')
+    // Nothing is flagged 待看 on the way in any more — that flag is the user's.
+    expect(text.item.watchLater).toBeUndefined()
     expect(text.merged).toBe(false)
 
     const link = await captureText(vault, 'https://mp.weixin.qq.com/s/abc', 'chat')

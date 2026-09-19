@@ -8,14 +8,13 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 
-import type {
-  Category,
-  CategorySource,
-  Kind,
-  Source,
-  Status,
-} from '../../shared/vocabulary.js'
+import type { Category, CategorySource, Kind, Source } from '../../shared/vocabulary.js'
 import { selectItems, type ItemQuery } from './query.js'
+/**
+ * The tag version 1/2 used to carry "not consumed yet". The flag replaced it,
+ * so the migration strips it rather than leaving two ways to say one thing.
+ */
+const RETIRED_TAG = '待看'
 import {
   type Attachment,
   type Item,
@@ -46,7 +45,7 @@ export interface ItemPatch {
   category?: Category
   /** Set to `user` when the person editing is the one choosing the category. */
   categorySource?: CategorySource
-  status?: Status
+  watchLater?: boolean
   title?: string
   note?: string
   platform?: string
@@ -73,7 +72,33 @@ export class Vault {
    */
   static async open(ctx: Context, unit = ''): Promise<Vault> {
     const domain = await ctx.storageDomain.open(vaultSpec)
-    return new Vault(ctx, domain, unit)
+    const vault = new Vault(ctx, domain, unit)
+    await vault.migrateOnce()
+    return vault
+  }
+
+  /**
+   * Bring records written by version 1/2 into the version-3 shape: strip the
+   * `待看` tag, because the flag now says the same thing.
+   *
+   * The old read/unread pair is **not** converted, on purpose. 待看 is the
+   * user's own mark, and back-filling it would have flagged twelve records on
+   * their behalf at first launch.
+   *
+   * (A note for whoever reads this next: you cannot even see the old `status`
+   * from here. The domain validates on read and zod drops unknown keys, so by
+   * the time a record reaches this loop the field is gone — measured, after the
+   * first version of this migration silently converted nothing and the rail
+   * read 「待看 0」.)
+   */
+  private async migrateOnce(): Promise<void> {
+    for (const [key, stored] of this.items.entries()) {
+      if (!stored.tags.includes(RETIRED_TAG)) continue
+      await this.items.put(key, {
+        ...stored,
+        tags: stored.tags.filter((tag) => tag !== RETIRED_TAG),
+      })
+    }
   }
 
   private get items() {
@@ -102,7 +127,6 @@ export class Vault {
       kind: input.kind,
       category: input.category,
       categorySource: input.categorySource ?? 'rule',
-      status: 'unread',
       source: input.source,
       createdAt: now,
       updatedAt: now,
@@ -151,7 +175,10 @@ export class Vault {
       const next: Item = { ...current, updatedAt: new Date().toISOString() }
       if (patch.category !== undefined) next.category = patch.category
       if (patch.categorySource !== undefined) next.categorySource = patch.categorySource
-      if (patch.status !== undefined) next.status = patch.status
+      if (patch.watchLater !== undefined) {
+        if (patch.watchLater) next.watchLater = true
+        else delete next.watchLater
+      }
       if (patch.title !== undefined) next.title = patch.title
       if (patch.note !== undefined) next.note = patch.note
       if (patch.platform !== undefined) next.platform = patch.platform
@@ -161,9 +188,27 @@ export class Vault {
     })
   }
 
-  /** Mark read/unread. */
-  async setRead(id: string, read = true): Promise<Item> {
-    return this.patch(id, { status: read ? 'read' : 'unread' })
+  /** Flag or unflag a record for later. */
+  async setWatchLater(id: string, on = true): Promise<Item> {
+    return this.patch(id, { watchLater: on })
+  }
+
+  /**
+   * Strip one tag from every record that carries it.
+   *
+   * A tag is not an entity here — it is a word on a record — so "delete this
+   * tag" can only mean "take this word off everything". Returns how many
+   * records changed, so the panel can say so instead of guessing.
+   *
+   * @param tag - the exact tag to remove.
+   * @returns the number of records that carried it.
+   */
+  async removeTag(tag: string): Promise<number> {
+    const touched = [...this.items.entries()].filter(([, item]) => item.tags.includes(tag))
+    for (const [key, item] of touched) {
+      await this.items.put(key, { ...item, tags: item.tags.filter((value) => value !== tag) })
+    }
+    return touched.length
   }
 
   /**

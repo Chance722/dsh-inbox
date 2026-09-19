@@ -88,13 +88,15 @@ describe('inbox_search', () => {
     expect(answer).toContain(link.item.id)
   })
 
-  it('filters by status, category and free text', async () => {
+  it('filters by the 待看 flag, category and free text', async () => {
     const first = await capture(vault!, { text: '第一条' }, 'panel')
     await capture(vault!, { text: '第二条' }, 'panel')
-    await vault!.patch(first.item.id, { status: 'read', category: 'idea' })
+    await vault!.patch(first.item.id, { watchLater: true, category: 'idea' })
 
-    expect(await call('inbox_search', { status: 'unread' })).toContain('第二条')
-    expect(await call('inbox_search', { status: 'unread' })).not.toContain('第一条')
+    // The flag is on the *first* record now — it is the user's mark, not a
+    // "not yet read" default, so nothing else is in that set.
+    expect(await call('inbox_search', { watchLater: true })).toContain('第一条')
+    expect(await call('inbox_search', { watchLater: true })).not.toContain('第二条')
     expect(await call('inbox_search', { category: 'idea' })).toContain('第一条')
     expect(await call('inbox_search', { text: '第二条' })).toContain('匹配 1 条')
   })

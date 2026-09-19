@@ -9,6 +9,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import React from 'react'
 import {
+  Bookmark,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -46,6 +47,7 @@ import {
   INBOX_ENDPOINT_PULL,
   INBOX_ENDPOINT_PROBE,
   INBOX_ENDPOINT_UI,
+  INBOX_ENDPOINT_TAGS,
   INBOX_ENDPOINT_WEBDAV,
   INBOX_IMAGE_TYPES,
   LIST_LIMIT,
@@ -54,6 +56,7 @@ import {
   type UiListMode,
   type UiPrefs,
   type UiRequest,
+  type TagRequest,
   type CaptureResult,
   type DetailResult,
   type EntryDetail,
@@ -76,7 +79,6 @@ import {
   CATEGORY_LABELS,
   CATEGORY_SOURCE_LABELS,
   KIND_LABELS,
-  STATUS_LABELS,
   type Category,
 } from '../shared/vocabulary.js'
 
@@ -209,7 +211,7 @@ function InboxPanel(): React.ReactElement {
   const picker = React.useRef<HTMLInputElement>(null)
 
   const [scope, setScope] = React.useState<Scope>('live')
-  const [unreadOnly, setUnreadOnly] = React.useState(false)
+  const [watchOnly, setWatchOnly] = React.useState(false)
   const [category, setCategory] = React.useState<Category>()
   const [tag, setTag] = React.useState<string>()
   const [search, setSearch] = React.useState('')
@@ -222,6 +224,24 @@ function InboxPanel(): React.ReactElement {
   const [page, setPage] = React.useState(0)
   /** The attachment being looked at full size, if any. */
   const [zoom, setZoom] = React.useState<{ src: string; label: string }>()
+  /** How much room the panel actually got — three columns need about 900px. */
+  const [panelWidth, setPanelWidth] = React.useState(1200)
+  const [railOpen, setRailOpen] = React.useState(false)
+  const panelRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    const element = panelRef.current
+    if (element === null || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) setPanelWidth(entry.contentRect.width)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  /** Narrow means: no room for a detail column, so it becomes a sheet. */
+  const narrow = panelWidth < 900
+  const hairline = 'color-mix(in srgb, currentColor 12%, transparent)'
 
   /** One POST to the vault channel; see the transport note in panel-wire.ts. */
   const call = React.useCallback(
@@ -262,7 +282,7 @@ function InboxPanel(): React.ReactElement {
     async (keepSelection = true): Promise<void> => {
       const result = await call(INBOX_ENDPOINT_LIST, {
         scope,
-        ...(unreadOnly ? { statuses: ['unread'] } : {}),
+        ...(watchOnly ? { watchLater: true } : {}),
         ...(category === undefined ? {} : { categories: [category] }),
         ...(tag === undefined ? {} : { tags: [tag] }),
         ...(query.trim().length === 0 ? {} : { text: query.trim() }),
@@ -280,7 +300,7 @@ function InboxPanel(): React.ReactElement {
         setDetail(undefined)
       }
     },
-    [call, category, page, query, scope, selectedId, tag, unreadOnly],
+    [call, category, page, query, scope, selectedId, tag, watchOnly],
   )
 
   React.useEffect(() => {
@@ -290,7 +310,7 @@ function InboxPanel(): React.ReactElement {
   /** Any filter change sends you back to the first page. */
   React.useEffect(() => {
     setPage(0)
-  }, [scope, unreadOnly, category, tag, query])
+  }, [scope, watchOnly, category, tag, query])
 
   /** Escape closes whatever is stacked on top of the panel. */
   React.useEffect(() => {
@@ -325,6 +345,69 @@ function InboxPanel(): React.ReactElement {
       void call(INBOX_ENDPOINT_UI, { action: 'save', listMode: mode } satisfies UiRequest)
     },
     [call],
+  )
+
+  /**
+   * Refresh: re-read the list, and pull the remote first when one is configured.
+   *
+   * A refresh that only re-reads the local list is indistinguishable from
+   * nothing happening, and the interesting number is usually "did the phone's
+   * stuff arrive" — so it pulls, then re-reads, then says what changed.
+   */
+  const refreshAll = React.useCallback(async (): Promise<void> => {
+    setBusy(true)
+    setNotice('刷新中…')
+    try {
+      const pulled = await call(INBOX_ENDPOINT_PULL, {})
+      let suffix = ''
+      if (pulled.ok) {
+        const result = pulled.value as PullResult
+        if (result.status === 'ok') {
+          suffix =
+            result.pulled > 0
+              ? ` · 远端新入库 ${String(result.pulled)} 条`
+              : result.listed > 0
+                ? ' · 远端没有新内容'
+                : ' · 远端是空的'
+        } else if (result.status === 'unconfigured') {
+          suffix = ' · 未配置远端'
+        } else {
+          suffix = ` · 远端失败：${result.reason ?? '未知原因'}`
+        }
+      }
+      await refresh()
+      const total = list?.matched
+      setNotice(`已刷新${total === undefined ? '' : `（${String(total)} 条）`}${suffix}`)
+    } finally {
+      setBusy(false)
+    }
+  }, [call, list?.matched, refresh])
+
+  /** Drop one tag from every record that carries it, after saying how many. */
+  const removeTagEverywhere = React.useCallback(
+    async (name: string, count: number): Promise<void> => {
+      if (
+        !window.confirm(`把标签「${name}」从 ${String(count)} 条记录上移除？记录本身不会被删除。`)
+      )
+        return
+      setBusy(true)
+      try {
+        const result = await call(INBOX_ENDPOINT_TAGS, {
+          action: 'remove',
+          tag: name,
+        } satisfies TagRequest)
+        if (!result.ok) {
+          setNotice(`删标签失败：${result.error.message}`)
+          return
+        }
+        setTag(undefined)
+        await refresh(false)
+        setNotice(`标签「${name}」已移除`)
+      } finally {
+        setBusy(false)
+      }
+    },
+    [call, refresh],
   )
 
   /** Debounce the search box so typing does not spam the host. */
@@ -460,7 +543,7 @@ function InboxPanel(): React.ReactElement {
   }
 
   return (
-    <div style={panelStyle}>
+    <div ref={panelRef} style={panelStyle}>
       <header>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <div>
@@ -469,7 +552,7 @@ function InboxPanel(): React.ReactElement {
               {PACKAGE_NAME} · {MILESTONE}
               {list === undefined
                 ? ''
-                : ` · 共 ${String(list.total)} 条 · 未读 ${String(list.unread)} 条 · 回收站 ${String(list.deleted)} 条`}
+                : ` · 共 ${String(list.total)} 条 · 待看 ${String(list.watchLater)} 条 · 回收站 ${String(list.deleted)} 条`}
             </p>
           </div>
           <button
@@ -649,6 +732,16 @@ function InboxPanel(): React.ReactElement {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {narrow && (
+          <button
+            type="button"
+            style={{ ...buttonStyle, ...(railOpen ? { borderColor: 'currentColor' } : {}) }}
+            aria-expanded={railOpen}
+            onClick={() => setRailOpen((open) => !open)}
+          >
+            <Layers size={13} /> 筛选
+          </button>
+        )}
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
@@ -683,8 +776,8 @@ function InboxPanel(): React.ReactElement {
             </button>
           ))}
         </span>
-        <button type="button" style={buttonStyle} onClick={() => void refresh()}>
-          <RefreshCw size={13} /> 刷新
+        <button type="button" style={buttonStyle} disabled={busy} onClick={() => void refreshAll()}>
+          <RefreshCw size={13} /> {busy ? '刷新中…' : '刷新'}
         </button>
       </div>
 
@@ -692,11 +785,15 @@ function InboxPanel(): React.ReactElement {
         style={{
           display: 'grid',
           // The list is the working surface; the detail is a reader pane beside
-          // it, so it gets a width rather than half the room.
-          gridTemplateColumns: '176px minmax(320px, 1fr) minmax(250px, 300px)',
+          // it, so it gets a width rather than half the room — and below 900px
+          // the whole thing collapses to one column.
+          gridTemplateColumns: narrow
+            ? 'minmax(0, 1fr)'
+            : '176px minmax(320px, 1fr) minmax(250px, 300px)',
           gap: 14,
         }}
       >
+        {(!narrow || railOpen) && (
         <nav
           aria-label="筛选"
           style={{
@@ -708,23 +805,23 @@ function InboxPanel(): React.ReactElement {
           }}
         >
           <RailRow
-            active={scope === 'live' && !unreadOnly}
+            active={scope === 'live' && !watchOnly}
             icon={<Inbox size={15} />}
             label="全部"
             {...(list === undefined ? {} : { count: list.total })}
             onClick={() => {
               setScope('live')
-              setUnreadOnly(false)
+              setWatchOnly(false)
             }}
           />
           <RailRow
-            active={scope === 'live' && unreadOnly}
+            active={scope === 'live' && watchOnly}
             icon={<Circle size={15} />}
-            label="未读"
-            {...(list === undefined ? {} : { count: list.unread })}
+            label="待看"
+            {...(list === undefined ? {} : { count: list.watchLater })}
             onClick={() => {
               setScope('live')
-              setUnreadOnly(true)
+              setWatchOnly(true)
             }}
           />
           <RailRow
@@ -763,18 +860,28 @@ function InboxPanel(): React.ReactElement {
                 标签
               </div>
               {list.tags.map((facet) => (
-                <RailRow
-                  key={facet.value}
-                  active={tag === facet.value}
-                  icon={<Tag size={14} />}
-                  label={`#${facet.value}`}
-                  count={facet.count}
-                  onClick={() => setTag(tag === facet.value ? undefined : facet.value)}
-                />
+                <div key={facet.value} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <RailRow
+                    active={tag === facet.value}
+                    icon={<Tag size={14} />}
+                    label={`#${facet.value}`}
+                    count={facet.count}
+                    onClick={() => setTag(tag === facet.value ? undefined : facet.value)}
+                  />
+                  <button
+                    type="button"
+                    title={`把标签「${facet.value}」从所有记录上移除（记录本身不删）`}
+                    onClick={() => void removeTagEverywhere(facet.value, facet.count)}
+                    style={{ ...buttonStyle, border: 'none', padding: '4px 5px', opacity: 0.6 }}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
               ))}
             </>
           )}
         </nav>
+        )}
 
         <section style={{ ...cardStyle, minWidth: 0 }}>
           <div
@@ -880,20 +987,78 @@ function InboxPanel(): React.ReactElement {
           )}
         </section>
 
-        <section style={{ ...cardStyle, minWidth: 0 }}>
-          {detail === undefined ? (
-            <p style={{ margin: 0, opacity: 0.7 }}>选左边一条看看详情。</p>
-          ) : (
-            <EntryPane
-              detail={detail}
-              busy={busy}
-              onUpdate={(patch) => mutate(INBOX_ENDPOINT_UPDATE, { id: detail.id, ...patch })}
-              onDelete={() => mutate(INBOX_ENDPOINT_DELETE, { id: detail.id }, { dropSelection: true })}
-              onRestore={() => mutate(INBOX_ENDPOINT_RESTORE, { id: detail.id }, { dropSelection: true })}
-              onZoom={(src, label) => setZoom({ src, label })}
-            />
-          )}
-        </section>
+        {/*
+          Three columns need room. Below that the detail stops being a column
+          and becomes a sheet over the list — the alternative was three columns
+          squeezed into a phone-width panel, which is what the screenshot of a
+          narrow window showed.
+        */}
+        {narrow ? (
+          detail !== undefined && (
+            <div
+              role="dialog"
+              aria-label="记录详情"
+              style={{
+                position: 'fixed',
+                left: 12,
+                right: 12,
+                top: '5vh',
+                bottom: '5vh',
+                zIndex: 45,
+                overflow: 'auto',
+                background: 'Canvas',
+                border: `1px solid ${hairline}`,
+                borderRadius: 12,
+                padding: 12,
+                boxShadow: '0 18px 40px #0007',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+                <button
+                  type="button"
+                  style={buttonStyle}
+                  onClick={() => {
+                    setSelectedId(undefined)
+                    setDetail(undefined)
+                  }}
+                >
+                  <X size={13} /> 关闭
+                </button>
+              </div>
+              <EntryPane
+                detail={detail}
+                busy={busy}
+                onUpdate={(patch) => mutate(INBOX_ENDPOINT_UPDATE, { id: detail.id, ...patch })}
+                onDelete={() =>
+                  mutate(INBOX_ENDPOINT_DELETE, { id: detail.id }, { dropSelection: true })
+                }
+                onRestore={() =>
+                  mutate(INBOX_ENDPOINT_RESTORE, { id: detail.id }, { dropSelection: true })
+                }
+                onZoom={(src, label) => setZoom({ src, label })}
+              />
+            </div>
+          )
+        ) : (
+          <section style={{ ...cardStyle, minWidth: 0 }}>
+            {detail === undefined ? (
+              <p style={{ margin: 0, opacity: 0.7 }}>选左边一条看看详情。</p>
+            ) : (
+              <EntryPane
+                detail={detail}
+                busy={busy}
+                onUpdate={(patch) => mutate(INBOX_ENDPOINT_UPDATE, { id: detail.id, ...patch })}
+                onDelete={() =>
+                  mutate(INBOX_ENDPOINT_DELETE, { id: detail.id }, { dropSelection: true })
+                }
+                onRestore={() =>
+                  mutate(INBOX_ENDPOINT_RESTORE, { id: detail.id }, { dropSelection: true })
+                }
+                onZoom={(src, label) => setZoom({ src, label })}
+              />
+            )}
+          </section>
+        )}
       </div>
     </div>
   )
@@ -1456,7 +1621,7 @@ function EntryCard({
             }),
         padding: 0,
         cursor: 'pointer',
-        opacity: entry.status === 'read' ? 0.72 : 1,
+        opacity: 1,
       }}
     >
       {selected && !compact && (
@@ -1533,9 +1698,11 @@ function EntryCard({
               #{tag}
             </span>
           ))}
-          <span style={{ marginLeft: 'auto', flex: 'none' }}>
-            {entry.status === 'read' ? <Check size={13} /> : '未读'}
-          </span>
+          {entry.watchLater && (
+            <span style={{ marginLeft: 'auto', flex: 'none', opacity: 1 }}>
+              <Bookmark size={13} /> 待看
+            </span>
+          )}
         </span>
       </span>
     </button>
@@ -1684,13 +1851,43 @@ function EntryPane({
         />
       </label>
 
-      <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ opacity: 0.7, minWidth: 44 }}>标签</span>
+        {/*
+          Each chip can be dropped on its own — the fine-grained half of tag
+          management; the rail's ✕ does the same word everywhere.
+        */}
+        {detail.tags.map((value) => (
+          <span
+            key={value}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
+              borderRadius: 999,
+              padding: '1px 4px 1px 8px',
+              fontSize: 12,
+            }}
+          >
+            #{value}
+            <button
+              type="button"
+              title={`从这条记录上移除「${value}」`}
+              style={{ ...buttonStyle, border: 'none', padding: '2px 4px', opacity: 0.7 }}
+              onClick={() =>
+                void onUpdate({ tags: detail.tags.filter((tag) => tag !== value) })
+              }
+            >
+              <X size={11} />
+            </button>
+          </span>
+        ))}
         <input
           value={tags}
           disabled={busy}
           onChange={(event) => setTags(event.target.value)}
-          placeholder="逗号分隔，比如：前端, 待看"
+          placeholder="加标签：逗号分隔，比如：前端, 报销"
           style={{ ...inputStyle, flex: 1 }}
         />
       </label>
@@ -1716,9 +1913,9 @@ function EntryPane({
           type="button"
           style={buttonStyle}
           disabled={busy || inBin}
-          onClick={() => void onUpdate({ status: detail.status === 'read' ? 'unread' : 'read' })}
+          onClick={() => void onUpdate({ watchLater: detail.watchLater !== true })}
         >
-          {detail.status === 'read' ? '标为未读' : '标为已读'}
+          {detail.watchLater === true ? '取消待看' : '标为待看'}
         </button>
         {inBin ? (
           <button type="button" style={buttonStyle} disabled={busy} onClick={() => void onRestore()}>

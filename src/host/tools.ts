@@ -25,10 +25,8 @@ import {
 import {
   CATEGORY_LABELS,
   KIND_LABELS,
-  STATUS_LABELS,
   type Category,
   type Kind,
-  type Status,
 } from '../shared/vocabulary.js'
 import type { Attachment, Item } from './vault/spec.js'
 import type { Vault } from './vault/vault.js'
@@ -49,7 +47,7 @@ function when(item: Item): string {
 }
 
 function labelOf(item: Item): string {
-  return `[${KIND_LABELS[item.kind]} · ${CATEGORY_LABELS[item.category]} · ${STATUS_LABELS[item.status]}${
+  return `[${KIND_LABELS[item.kind]} · ${CATEGORY_LABELS[item.category]}${
     item.platform === undefined ? '' : ` · ${item.platform}`
   }]`
 }
@@ -175,7 +173,7 @@ export function summaryOf(item: Item): EntrySummary {
     id: item.id,
     kind: item.kind,
     category: item.category,
-    status: item.status,
+    watchLater: item.watchLater === true,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
     tags: [...item.tags],
@@ -207,7 +205,6 @@ export function attachmentsOf(vault: Vault, item: Item): AttachmentSummary[] {
 }
 
 const CATEGORY_VALUES = ['idea', 'article', 'media', 'image', 'document', 'secret', 'other'] as const
-const STATUS_VALUES = ['unread', 'read'] as const
 const KIND_VALUES = ['text', 'link', 'image', 'file'] as const
 
 /** Best-effort narrowing of a model-supplied string to one of our vocabularies. */
@@ -229,7 +226,7 @@ export function registerInboxTools(ctx: Context, vault: () => Vault | undefined)
       name: 'inbox_search',
       description:
         "Search the user's local dsh-inbox vault — the personal store where they paste links, text, images and credentials. " +
-        'Use it whenever they ask what they saved, want a link they stored earlier, or want to know what is still unread. ' +
+        'Use it whenever they ask what they saved, want a link they stored earlier, or want the ones they flagged 待看. ' +
         'Returns at most ten matches with their ids, newest first; records classified as secrets are listed but their text is never returned.',
       parameters: {
         text: { type: 'string', description: 'Words to look for in title, text, url, note or tags.' },
@@ -237,7 +234,7 @@ export function registerInboxTools(ctx: Context, vault: () => Vault | undefined)
           type: 'string',
           description: `One of: ${CATEGORY_VALUES.join(', ')}.`,
         },
-        status: { type: 'string', description: 'unread or read.' },
+        watchLater: { type: 'boolean', description: 'true for only the records the user flagged 待看.' },
         kind: { type: 'string', description: 'text, link, image or file.' },
         tag: { type: 'string', description: 'Only records carrying this exact tag.' },
       },
@@ -250,13 +247,12 @@ export function registerInboxTools(ctx: Context, vault: () => Vault | undefined)
         if (open === undefined) return '仓库没有打开（或打开失败），暂时查不了。'
 
         const category = narrow(CATEGORY_VALUES, args.category) as Category | undefined
-        const status = narrow(STATUS_VALUES, args.status) as Status | undefined
         const kind = narrow(KIND_VALUES, args.kind) as Kind | undefined
 
         const matched = open.list({
           ...(args.text === undefined ? {} : { text: args.text.slice(0, MAX_FILTER_CHARS) }),
           ...(category === undefined ? {} : { categories: [category] }),
-          ...(status === undefined ? {} : { statuses: [status] }),
+          ...(args.watchLater === undefined ? {} : { watchLater: args.watchLater }),
           ...(kind === undefined ? {} : { kinds: [kind] }),
           ...(args.tag === undefined ? {} : { tags: [args.tag] }),
         })

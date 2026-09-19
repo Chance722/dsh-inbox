@@ -7,7 +7,7 @@
  * whole rule set is testable without any storage at all.
  */
 
-import type { Category, Kind, Status } from '../../shared/vocabulary.js'
+import type { Category, Kind } from '../../shared/vocabulary.js'
 import type { Item } from './spec.js'
 
 export interface ItemQuery {
@@ -15,7 +15,8 @@ export interface ItemQuery {
   text?: string
   categories?: readonly Category[]
   kinds?: readonly Kind[]
-  statuses?: readonly Status[]
+  /** Filter to records flagged 待看 (or explicitly to those not flagged). */
+  watchLater?: boolean
   /** Every listed tag must be present (AND). */
   tags?: readonly string[]
   /** Soft-deleted items are excluded unless this is true. */
@@ -36,7 +37,7 @@ function matches(item: Item, query: ItemQuery, needle: string): boolean {
   if (item.deletedAt !== undefined && query.includeDeleted !== true) return false
   if (query.categories !== undefined && !query.categories.includes(item.category)) return false
   if (query.kinds !== undefined && !query.kinds.includes(item.kind)) return false
-  if (query.statuses !== undefined && !query.statuses.includes(item.status)) return false
+  if (query.watchLater !== undefined && (item.watchLater === true) !== query.watchLater) return false
   if (query.tags !== undefined) {
     for (const tag of query.tags) {
       if (!item.tags.includes(tag)) return false
@@ -71,7 +72,7 @@ export function selectItems(items: readonly Item[], query: ItemQuery = {}): Item
   return matched.slice(offset, offset + query.limit)
 }
 
-/** Count unread, non-deleted items — the number the sidebar badge would show. */
-export function countUnread(items: readonly Item[]): number {
-  return items.filter((item) => item.deletedAt === undefined && item.status === 'unread').length
+/** Count the records flagged 待看 — the number the sidebar badge would show. */
+export function countWatchLater(items: readonly Item[]): number {
+  return items.filter((item) => item.deletedAt === undefined && item.watchLater === true).length
 }
