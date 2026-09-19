@@ -12,6 +12,7 @@
 
 | 时间 | 维护时 HEAD | 变更摘要 |
 |---|---|---|
-| 2026-09-19 | —（仓库尚无提交） | 初始化：AGENTS.md / CLAUDE.md / docs 骨架 / 两份知识文档 |
+| 2026-09-19 | `c7103ec` | 初始化：AGENTS.md / CLAUDE.md / docs 骨架 / 两份知识文档 |
+| 2026-09-19 | `077bb9b` | M0 验收：新增 `dev-setup.md`，`dsh-plugin-platform.md` 补 8 条实测结论，dev-bus 记 M0 验收 |
 
-> 锚点必须是**已提交的 HEAD**；首次提交后回填 commit id，之后每次维护最多保留 5 条。
+> 锚点必须是**已提交的 HEAD**；每次维护最多保留 5 条。
