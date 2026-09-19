@@ -35,6 +35,9 @@
   - **B 右侧 dock 的一个 tab**（日常）：与对话并排常驻，官方一等扩展点（`ctx.sidebarRightTabs.register` + `sidebar.right.pane.tab`）。
 - **否掉「左侧切换」（用户最初的设想）**：左侧会话列表那一格是 `sidebar.workspaces`，**single 坑位且已被官方 ui-workspace 占用**（合同注释原话 "declaring is claiming"），接管等于自己实现会话列表、搜索、workspace 对话框与状态点，且 dsh 一升级我们就要跟。右侧 dock 能给出同样的"和入口一样在侧边"体验，代价小一个数量级。
 - **界面先做原型再动手**：四个结构不同的方案放在 `docs/prototype/2026-09-19-inbox-ui.prototype.html`，由用户敲定后再进实现。
+- **用户选 A（三栏分诊）**，并要求（2026-09-19）：类目内容用**卡片列表**、**点卡片才在右侧 dock 出详情**（卡片有高亮态）、**卡片外框统一但内容按类别不同**、**图片与视频可放大查看**、**入库设置改弹窗**。v2 原型：`docs/prototype/2026-09-19-inbox-ui-v2.prototype.html`（三种卡片密度待选）。
+- **图标库用 Lucide**（`lucide-react`，ISC，圆润线性风格）：客户端半边把它当普通依赖打进产物即可，不需要进平台静态模块表；待 spike 验证打包结果。
+- **详情永远在右侧 dock，不在列表里内联展开**：列表保持"一屏能扫多少条"的密度，详情给固定位置，避免列表高度跳变。
 
 ## 隐私红线
 
