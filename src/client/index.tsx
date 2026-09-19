@@ -218,6 +218,16 @@ const dangerStyle: React.CSSProperties = {
   fontWeight: 600,
 }
 
+/**
+ * The accent the one tinted thing on a card uses.
+ *
+ * A `currentColor` mix cannot say "this one is flagged" — every mix of grey is
+ * grey. The prototype's own accent (`--accent: #6e9ef7`, see
+ * `docs/prototype/2026-09-19-inbox-ui-v2.prototype.html`) is the design source,
+ * so the 待看 capsule borrows it the way 删除 borrows `salmon`.
+ */
+const WATCH_COLOR = '#6e9ef7'
+
 /** A `<select>` that matches the buttons, popup included. */
 const selectStyle: React.CSSProperties = {
   ...actionStyle,
@@ -242,20 +252,34 @@ function SelectBox({
   value,
   options,
   disabled,
+  block,
+  label,
   onChange,
 }: {
   value: string
   options: readonly (readonly [string, string])[]
   disabled?: boolean
+  /** Stretch to the container's width; the detail pane has no room for labels. */
+  block?: boolean
+  /** Accessible name, for the places where the visible label is gone. */
+  label?: string
   onChange: (next: string) => void
 }): React.ReactElement {
   return (
-    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+    <span
+      style={{
+        position: 'relative',
+        display: block === true ? 'flex' : 'inline-flex',
+        alignItems: 'center',
+        ...(block === true ? { width: '100%' } : {}),
+      }}
+    >
       <select
         value={value}
         disabled={disabled}
+        aria-label={label}
         onChange={(event) => onChange(event.target.value)}
-        style={selectStyle}
+        style={{ ...selectStyle, ...(block === true ? { flex: 1, minWidth: 0 } : {}) }}
       >
         {options.map(([id, label]) => (
           <option key={id} value={id}>
@@ -930,6 +954,11 @@ function InboxPanel(): React.ReactElement {
               onClick={() => chooseListMode(mode.id)}
               style={{
                 ...buttonStyle,
+                // A bare glyph in a button has to be a flex item: left inline it
+                // lands on the text baseline and reads as sitting low in its box.
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 border: 'none',
                 borderRadius: 0,
                 opacity: listMode === mode.id ? 1 : 0.5,
@@ -1243,7 +1272,13 @@ function InboxPanel(): React.ReactElement {
             </div>
           )
         ) : (
-          <section style={{ ...cardStyle, minWidth: 0 }}>
+          /*
+            `position: relative` is load-bearing: the detail pane's own
+            timestamps are absolutely positioned against this card, so they stay
+            inside the frame and 16px clear of its bottom edge no matter how
+            tall the record's content turns out to be.
+          */
+          <section style={{ ...cardStyle, minWidth: 0, position: 'relative' }}>
             {detail === undefined ? (
               <p style={{ margin: 0, opacity: 0.7 }}>选左边一条看看详情。</p>
             ) : (
@@ -1773,7 +1808,8 @@ function EntryCard({
    *
    * It is the record's *type*, and it answers a different question than the
    * picture does — so a record with a thumbnail shows both, side by side,
-   * instead of one replacing the other.
+   * instead of one replacing the other. One size in both densities: at 28px the
+   * compact row's glyph read as a smudge next to the title.
    */
   const glyph = (
     <span
@@ -1783,8 +1819,8 @@ function EntryCard({
         display: 'grid',
         placeItems: 'center',
         background: tileBackground(entry),
-        width: compact ? 28 : 34,
-        height: compact ? 28 : 34,
+        width: 34,
+        height: 34,
         borderRadius: 8,
         border: `1px solid ${hairline}`,
       }}
@@ -1846,20 +1882,18 @@ function EntryCard({
         opacity: 1,
       }}
     >
-      {selected && !compact && (
-        <span
-          aria-hidden
-          style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: accent }}
-        />
-      )}
       {glyph}
       <span
         style={{
           minWidth: 0,
           flex: 1,
           display: 'flex',
-          flexDirection: 'column',
-          gap: 3,
+          // Grid stacks title / preview / metadata; compact puts the title and
+          // the right-hand category-and-date on one line, all centred on the
+          // same axis as the glyph.
+          flexDirection: compact ? 'row' : 'column',
+          alignItems: compact ? 'center' : 'stretch',
+          gap: compact ? 8 : 3,
         }}
       >
         {/*
@@ -1868,23 +1902,57 @@ function EntryCard({
           the glyph on the left names the kind as well. One line less per card
           is one more card on screen.
         */}
-        {/*
-          One line each, ellipsised. A card whose height depends on how long its
-          URL is turns the list into a ragged column you cannot scan — and in a
-          three-column panel there is never room for the wrapping to look
-          deliberate.
-        */}
         <span
-          title={heading}
           style={{
-            display: 'block',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
             minWidth: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            ...(compact ? { flex: 1 } : {}),
           }}
         >
-          {heading}
+          {/*
+            One line each, ellipsised. A card whose height depends on how long
+            its URL is turns the list into a ragged column you cannot scan — and
+            in a three-column panel there is never room for the wrapping to look
+            deliberate.
+          */}
+          <span
+            title={heading}
+            style={{
+              display: 'block',
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {heading}
+          </span>
+          {/*
+            待看 sits next to the title, where the eye already is, and it is the
+            one tinted thing on the card: the user put that flag there himself,
+            and a grey chip among grey metadata reads as decoration.
+          */}
+          {entry.watchLater && (
+            <span
+              style={{
+                flex: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 3,
+                padding: '0 7px',
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: 600,
+                background: `color-mix(in srgb, ${WATCH_COLOR} 20%, transparent)`,
+                border: `1px solid color-mix(in srgb, ${WATCH_COLOR} 55%, transparent)`,
+                color: WATCH_COLOR,
+              }}
+            >
+              <Bookmark size={11} /> 待看
+            </span>
+          )}
         </span>
         {!compact && !secret && entry.preview !== undefined && entry.preview !== heading && (
           <span
@@ -1909,7 +1977,7 @@ function EntryCard({
             minWidth: 0,
             overflow: 'hidden',
             whiteSpace: 'nowrap',
-            ...(compact ? { marginLeft: 'auto' } : { marginTop: 4 }),
+            ...(compact ? {} : { marginTop: 4 }),
             fontSize: 12,
             opacity: 0.6,
           }}
@@ -1924,11 +1992,6 @@ function EntryCard({
               #{tag}
             </span>
           ))}
-          {entry.watchLater && (
-            <span style={{ marginLeft: 'auto', flex: 'none', opacity: 1 }}>
-              <Bookmark size={13} /> 待看
-            </span>
-          )}
         </span>
       </span>
       {thumbnail}
@@ -1965,23 +2028,13 @@ function EntryPane({
 
   return (
     /*
-      The pane is a column with its timestamps pinned to the bottom, out of the
-      flow. They used to share the header row (`marginLeft: auto`), where one
-      long category or platform string wrapped them onto a line of their own —
-      and in what was a 250–300px column "存入 2026/9/19 17:00:40 · 更新 …"
-      always wrapped. Absolute positioning ends that argument: nothing above
-      can push them, and they never push anything. `paddingBottom` keeps the
-      actions clear of the band they occupy.
+      The form is one column of full-width controls, and the timestamps are hung
+      off the card rather than placed in the flow — see the note at the foot of
+      this component. All this column reserves is the band they occupy.
     */
     <div
       style={{
-        position: 'relative',
-        // 100% of the card (or the sheet) rather than of the content, so the
-        // line sits at the pane's bottom even when the record is short. Where
-        // the parent's height is not definite the percentage resolves to auto,
-        // which lands the line right under the actions instead — still fine.
-        minHeight: '100%',
-        paddingBottom: 22,
+        paddingBottom: 40,
         display: 'flex',
         flexDirection: 'column',
         gap: 10,
@@ -2083,86 +2136,86 @@ function EntryPane({
         </div>
       )}
 
-      <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ opacity: 0.7, minWidth: 44 }}>类目</span>
-        <SelectBox
-          value={detail.category}
-          options={CATEGORIES.map((value) => [value, CATEGORY_LABELS[value]] as const)}
-          disabled={busy}
-          onChange={(next) => void onUpdate({ category: next })}
-        />
-      </label>
+      {/*
+        No labels in the form: in a 380px column a 「类目 / 描述 / 标签」 gutter
+        stole a third of every field's width and repeated what the field already
+        says. The placeholder carries the hint, and every control fills the pane.
+      */}
+      <SelectBox
+        block
+        label="类目"
+        value={detail.category}
+        options={CATEGORIES.map((value) => [value, CATEGORY_LABELS[value]] as const)}
+        disabled={busy}
+        onChange={(next) => void onUpdate({ category: next })}
+      />
 
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ opacity: 0.7 }} title="你写的永远优先于模型的判断">
-          描述
-        </span>
-        <textarea
-          value={note}
-          disabled={busy}
-          onChange={(event) => setNote(event.target.value)}
-          rows={2}
-          placeholder="比如：身份证照 / 待看视频 / 这个 api key 是测试环境的"
-          style={{ ...inputStyle, resize: 'vertical', width: '100%', boxSizing: 'border-box' }}
-        />
-      </label>
-
-      <label style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ opacity: 0.7, minWidth: 44 }}>标签</span>
-        {/*
-          Each chip can be dropped on its own — the fine-grained half of tag
-          management; the rail's ✕ does the same word everywhere.
-        */}
-        {detail.tags.map((value) => (
-          <span
-            key={value}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              // Never let the flex row squeeze the chips to nothing: the input
-              // next to them grows, and these were collapsing to zero width.
-              flex: 'none',
-              background: 'color-mix(in srgb, currentColor 9%, transparent)',
-              border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
-              borderRadius: 999,
-              padding: '1px 4px 1px 8px',
-              fontSize: 12,
-            }}
-          >
-            #{value}
-            <button
-              type="button"
-              title={`从这条记录上移除「${value}」`}
-              style={{ ...actionStyle, padding: '2px 6px', gap: 2 }}
-              onClick={() =>
-                void onUpdate({ tags: detail.tags.filter((tag) => tag !== value) })
-              }
-            >
-              <X size={11} />
-            </button>
-          </span>
-        ))}
-        <input
-          value={tags}
-          disabled={busy}
-          onChange={(event) => setTags(event.target.value)}
-          placeholder="加标签：逗号分隔，比如：前端, 报销"
-          style={{ ...inputStyle, flex: 1 }}
-        />
-      </label>
+      <textarea
+        value={note}
+        disabled={busy}
+        onChange={(event) => setNote(event.target.value)}
+        rows={2}
+        aria-label="描述"
+        title="你写的永远优先于模型的判断"
+        placeholder="输入描述，如：身份证照 / 待看视频 / 这个 key 是测试环境的"
+        style={{ ...inputStyle, resize: 'vertical', width: '100%', boxSizing: 'border-box' }}
+      />
 
       {/*
-        The three actions want one line — that is half of what the wider detail
-        column is for. Each label is `nowrap` (a verb does not break into two)
-        and the gap is 6 instead of 8; together with the 380px column the row
-        「保存描述与标签 / 标为待看 / 删除」 fits with room to spare. Wrapping
-        stays on as the fallback for a pane squeezed to its minimum.
+        Each chip can be dropped on its own — the fine-grained half of tag
+        management; the rail's ✕ does the same word everywhere. The chips get a
+        row of their own so the input below can run the pane's full width.
       */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {detail.tags.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          {detail.tags.map((value) => (
+            <span
+              key={value}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                // Never let a flex row squeeze a chip to nothing: they collapsed
+                // to zero width once, which is why nobody could see them.
+                flex: 'none',
+                background: 'color-mix(in srgb, currentColor 9%, transparent)',
+                border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
+                borderRadius: 999,
+                padding: '1px 4px 1px 8px',
+                fontSize: 12,
+              }}
+            >
+              #{value}
+              <button
+                type="button"
+                title={`从这条记录上移除「${value}」`}
+                style={{ ...actionStyle, padding: '2px 6px', gap: 2 }}
+                onClick={() => void onUpdate({ tags: detail.tags.filter((tag) => tag !== value) })}
+              >
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        value={tags}
+        disabled={busy}
+        onChange={(event) => setTags(event.target.value)}
+        aria-label="标签"
+        placeholder="输入标签，如：前端, 报销（逗号分隔）"
+        style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+      />
+
+      {/*
+        Three actions, three equal thirds of the pane: no ragged tail of empty
+        space, and one tap target per column of the form above. Labels stay on
+        one line (a verb does not break into two), so the row never wraps.
+      */}
+      <div style={{ display: 'flex', gap: 6 }}>
         <button
           type="button"
-          style={{ ...primaryStyle, whiteSpace: 'nowrap' }}
+          style={{ ...primaryStyle, flex: 1, justifyContent: 'center', whiteSpace: 'nowrap' }}
           disabled={busy}
           onClick={() =>
             void onUpdate({
@@ -2175,11 +2228,11 @@ function EntryPane({
           }
         >
           <Check size={14} />
-          保存描述与标签
+          保存以上
         </button>
         <button
           type="button"
-          style={{ ...actionStyle, whiteSpace: 'nowrap' }}
+          style={{ ...actionStyle, flex: 1, justifyContent: 'center', whiteSpace: 'nowrap' }}
           disabled={busy || inBin}
           onClick={() => void onUpdate({ watchLater: detail.watchLater !== true })}
         >
@@ -2189,7 +2242,7 @@ function EntryPane({
         {inBin ? (
           <button
             type="button"
-            style={{ ...actionStyle, whiteSpace: 'nowrap' }}
+            style={{ ...actionStyle, flex: 1, justifyContent: 'center', whiteSpace: 'nowrap' }}
             disabled={busy}
             onClick={() => void onRestore()}
           >
@@ -2198,7 +2251,7 @@ function EntryPane({
         ) : (
           <button
             type="button"
-            style={{ ...dangerStyle, whiteSpace: 'nowrap' }}
+            style={{ ...dangerStyle, flex: 1, justifyContent: 'center', whiteSpace: 'nowrap' }}
             disabled={busy}
             onClick={() => void onDelete()}
           >
@@ -2206,13 +2259,19 @@ function EntryPane({
           </button>
         )}
       </div>
-      {/* The timestamps: absolute, so nothing above and nothing below moves. */}
+      {/*
+        The timestamps hang off the *frame*, not off the flow: absolutely
+        positioned inside the detail card, 16px above its bottom edge. Nothing
+        above them can push them (the old place was the header row, where a long
+        category wrapped them onto a line of their own) and they stay inside the
+        box even when the record's content grows past it.
+      */}
       <div
         style={{
           position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
+          left: 12,
+          right: 12,
+          bottom: 16,
           fontSize: 12,
           opacity: 0.6,
           overflowWrap: 'anywhere',
