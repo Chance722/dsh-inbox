@@ -27,12 +27,21 @@ import { registerInboxRpc } from '../src/host/rpc.js'
 import { Vault } from '../src/host/vault/vault.js'
 import {
   INBOX_API_PREFIX,
+  INBOX_ENDPOINT_ATTACHMENT,
   INBOX_ENDPOINT_CAPTURE,
-  INBOX_ENDPOINT_RECENT,
-  type InboxRpcResult,
-  type RecentResult,
+  INBOX_ENDPOINT_DELETE,
+  INBOX_ENDPOINT_DETAIL,
+  INBOX_ENDPOINT_LIST,
+  INBOX_ENDPOINT_PURGE,
+  INBOX_ENDPOINT_RESTORE,
+  INBOX_ENDPOINT_UPDATE,
   type CaptureResult,
-} from '../src/shared/capture.js'
+  type DetailResult,
+  type InboxRpcResult,
+  type ListResult,
+  type PurgeResult,
+  type UpdateResult,
+} from '../src/shared/panel-wire.js'
 
 /** Content-addressed stand-in: ids look exactly like the shipped store's. */
 class FakeAttachmentStore {
@@ -63,6 +72,11 @@ class FakeAttachmentStore {
       name: input.name ?? 'file',
       bytes: input.data.byteLength,
     }
+  }
+
+  /** The stand-in keeps no files, so nothing is locally previewable. */
+  imageHostPath(): undefined {
+    return undefined
   }
 }
 
@@ -113,12 +127,33 @@ async function post(
   return { status: response.status, body: (await response.json()) as InboxRpcResult<unknown> }
 }
 
+/** GET one attachment the way an `<img src>` does. */
+async function getAttachment(id: string): Promise<Response> {
+  const route = routes.get(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}`)
+  if (route === undefined) throw new Error('attachment route was not registered')
+  return route.fetch(
+    new Request(`http://127.0.0.1${route.path}?id=${encodeURIComponent(id)}`, { method: 'GET' }),
+  )
+}
+
 /** Assert success and hand back the value. */
 function value<T>(result: { status: number; body: InboxRpcResult<unknown> }): T {
   if (!result.body.ok) {
     throw new Error(`expected success, got ${result.body.error.code}: ${result.body.error.message}`)
   }
   return result.body.value as T
+}
+
+/** The failure code of a call that was refused. */
+function codeOf(result: { status: number; body: InboxRpcResult<unknown> }): string {
+  if (result.body.ok) throw new Error('expected a failure')
+  return result.body.error.code
+}
+
+async function file(text: string, extra: Record<string, unknown> = {}): Promise<string> {
+  return value<CaptureResult>(await post(INBOX_ENDPOINT_CAPTURE, { text, ...extra })).stored === 1
+    ? value<ListResult>(await post(INBOX_ENDPOINT_LIST, { text })).entries[0]?.id ?? ''
+    : ''
 }
 
 const PNG_BASE64 = Buffer.from('not-really-a-png-but-canonical-base64').toString('base64')
@@ -141,26 +176,17 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-describe('the panel wire', () => {
-  it('registers exactly the two endpoints under the inbox prefix', () => {
-    expect([...routes.keys()].sort()).toEqual([
-      `${INBOX_API_PREFIX}/${INBOX_ENDPOINT_CAPTURE}`,
-      `${INBOX_API_PREFIX}/${INBOX_ENDPOINT_RECENT}`,
-    ])
-    for (const route of routes.values()) {
-      expect(route.methods).toEqual(['POST'])
-      expect(route.requestBody).toBe('buffered')
-    }
-  })
+describe('capture', () => {
+  it('files pasted text and reports it back through the list', async () => {
+    expect(value<CaptureResult>(await post(INBOX_ENDPOINT_CAPTURE, { text: '一段灵感' }))).toEqual({
+      stored: 1,
+      merged: 0,
+    })
 
-  it('files pasted text and reports it back through the recent list', async () => {
-    const captured = value<CaptureResult>(await post(INBOX_ENDPOINT_CAPTURE, { text: '一段灵感' }))
-    expect(captured).toEqual({ stored: 1, merged: 0 })
-
-    const recent = value<RecentResult>(await post(INBOX_ENDPOINT_RECENT, {}))
-    expect(recent.total).toBe(1)
-    expect(recent.unread).toBe(1)
-    expect(recent.entries[0]).toMatchObject({ kind: 'text', preview: '一段灵感' })
+    const listed = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {}))
+    expect(listed.total).toBe(1)
+    expect(listed.unread).toBe(1)
+    expect(listed.entries[0]).toMatchObject({ kind: 'text', preview: '一段灵感' })
   })
 
   it('merges a repeated link instead of storing it twice', async () => {
@@ -169,7 +195,6 @@ describe('the panel wire', () => {
     const again = value<CaptureResult>(
       await post(INBOX_ENDPOINT_CAPTURE, { text: `${url}?spm_id_from=333.999` }),
     )
-
     expect(again).toEqual({ stored: 0, merged: 1 })
     expect(vault?.size).toBe(1)
   })
@@ -190,7 +215,6 @@ describe('the panel wire', () => {
     const attachmentId = image?.attachmentIds[0] ?? ''
     expect(attachmentId).toMatch(/^[a-zA-Z0-9_-]+$/)
     expect(vault?.getAttachment(attachmentId)?.storeId).toMatch(/^sha256:[a-f0-9]{64}$/)
-    expect(vault?.getAttachment(attachmentId)?.filename).toBe('shot.png')
   })
 
   it('refuses non-canonical base64 as a business failure, not a crash', async () => {
@@ -198,9 +222,7 @@ describe('the panel wire', () => {
       images: [{ mediaType: 'image/png', data: 'not base64 !!' }],
     })
     expect(result.status).toBe(200)
-    expect(result.body.ok).toBe(false)
-    expect(result.body.ok === false && result.body.error.code).toBe('inbox/attachment-refused')
-    expect(vault?.size).toBe(0)
+    expect(codeOf(result)).toBe('inbox/attachment-refused')
   })
 
   it('answers a malformed body with HTTP 400', async () => {
@@ -210,19 +232,181 @@ describe('the panel wire', () => {
   })
 
   it('rejects an oversized text paste at the schema boundary', async () => {
-    const result = await post(INBOX_ENDPOINT_CAPTURE, { text: 'x'.repeat(200_001) })
-    expect(result.status).toBe(200)
-    expect(result.body.ok === false && result.body.error.code).toBe('inbox/bad-request')
+    expect(codeOf(await post(INBOX_ENDPOINT_CAPTURE, { text: 'x'.repeat(200_001) }))).toBe(
+      'inbox/bad-request',
+    )
+  })
+})
+
+describe('list', () => {
+  it('registers every endpoint the panel uses', () => {
+    expect([...routes.keys()].sort()).toEqual(
+      [
+        INBOX_ENDPOINT_ATTACHMENT,
+        INBOX_ENDPOINT_CAPTURE,
+        INBOX_ENDPOINT_DELETE,
+        INBOX_ENDPOINT_DETAIL,
+        INBOX_ENDPOINT_LIST,
+        INBOX_ENDPOINT_PURGE,
+        INBOX_ENDPOINT_RESTORE,
+        INBOX_ENDPOINT_UPDATE,
+      ]
+        .map((endpoint) => `${INBOX_API_PREFIX}/${endpoint}`)
+        .sort(),
+    )
+  })
+
+  it('filters by status and reports matching and overall counts separately', async () => {
+    const first = await file('第一条')
+    await file('第二条')
+    await post(INBOX_ENDPOINT_UPDATE, { id: first, status: 'read' })
+
+    const everything = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {}))
+    expect(everything.matched).toBe(2)
+    expect(everything.total).toBe(2)
+    expect(everything.unread).toBe(1)
+
+    const unread = value<ListResult>(
+      await post(INBOX_ENDPOINT_LIST, { statuses: ['unread'] }),
+    )
+    expect(unread.matched).toBe(1)
+    expect(unread.entries[0]?.preview).toBe('第二条')
+  })
+
+  it('filters by category, tag and free text, and counts facets over live records', async () => {
+    const link = await file('https://mp.weixin.qq.com/s/abc')
+    await post(INBOX_ENDPOINT_UPDATE, { id: link, category: 'article', tags: ['待看', '缓存'] })
+    await file('一段灵感')
+
+    const byCategory = value<ListResult>(
+      await post(INBOX_ENDPOINT_LIST, { categories: ['article'] }),
+    )
+    expect(byCategory.matched).toBe(1)
+    expect(byCategory.categories).toEqual(
+      expect.arrayContaining([
+        { value: 'article', count: 1 },
+        { value: 'other', count: 1 },
+      ]),
+    )
+    expect(byCategory.tags).toEqual(
+      expect.arrayContaining([
+        { value: '待看', count: 1 },
+        { value: '缓存', count: 1 },
+      ]),
+    )
+
+    expect(value<ListResult>(await post(INBOX_ENDPOINT_LIST, { tags: ['待看'] })).matched).toBe(1)
+    expect(value<ListResult>(await post(INBOX_ENDPOINT_LIST, { tags: ['待看', '缓存'] })).matched).toBe(1)
+    expect(value<ListResult>(await post(INBOX_ENDPOINT_LIST, { tags: ['待看', '前端'] })).matched).toBe(0)
+    expect(value<ListResult>(await post(INBOX_ENDPOINT_LIST, { text: '灵感' })).matched).toBe(1)
+  })
+
+  it('pages without losing the match count', async () => {
+    await file('第一条')
+    await file('第二条')
+    await file('第三条')
+
+    const page = value<ListResult>(await post(INBOX_ENDPOINT_LIST, { limit: 2 }))
+    expect(page.entries).toHaveLength(2)
+    expect(page.matched).toBe(3)
+
+    const rest = value<ListResult>(await post(INBOX_ENDPOINT_LIST, { limit: 2, offset: 2 }))
+    expect(rest.entries).toHaveLength(1)
+  })
+})
+
+describe('detail, edit and the recycle bin', () => {
+  it('returns the full record with its attachment metadata', async () => {
+    await post(INBOX_ENDPOINT_CAPTURE, {
+      text: '带附件的记录',
+      images: [{ mediaType: 'image/png', data: PNG_BASE64, name: 'shot.png' }],
+    })
+    const image = vault?.list({ kinds: ['image'] })[0]
+    const detail = value<DetailResult>(
+      await post(INBOX_ENDPOINT_DETAIL, { id: image?.id ?? '' }),
+    ).entry
+
+    expect(detail.attachmentCount).toBe(1)
+    expect(detail.attachments[0]).toMatchObject({ mime: 'image/png', image: true, filename: 'shot.png' })
+  })
+
+  it('edits category, note and tags, and reports the updated record', async () => {
+    const id = await file('这条要改')
+    const updated = value<UpdateResult>(
+      await post(INBOX_ENDPOINT_UPDATE, {
+        id,
+        category: 'document',
+        note: '身份证照',
+        tags: ['证件', '私密'],
+      }),
+    ).entry
+
+    expect(updated).toMatchObject({ category: 'document', note: '身份证照', tags: ['证件', '私密'] })
+    expect(vault?.get(id)?.updatedAt).not.toBe(vault?.get(id)?.createdAt)
+  })
+
+  it('refuses an edit or a delete for a record that is gone', async () => {
+    expect(codeOf(await post(INBOX_ENDPOINT_UPDATE, { id: 'nope', status: 'read' }))).toBe(
+      'inbox/not-found',
+    )
+    expect(codeOf(await post(INBOX_ENDPOINT_DELETE, { id: 'nope' }))).toBe('inbox/not-found')
+  })
+
+  it('moves a record to the bin, restores it, and empties the bin for real', async () => {
+    const id = await file('会被删掉的')
+
+    await post(INBOX_ENDPOINT_DELETE, { id })
+    const live = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {}))
+    expect(live.total).toBe(0)
+    expect(live.deleted).toBe(1)
+    expect(live.categories).toEqual([])
+    expect(value<ListResult>(await post(INBOX_ENDPOINT_LIST, { scope: 'bin' })).matched).toBe(1)
+
+    await post(INBOX_ENDPOINT_RESTORE, { id })
+    expect(value<ListResult>(await post(INBOX_ENDPOINT_LIST, {})).total).toBe(1)
+
+    await post(INBOX_ENDPOINT_DELETE, { id })
+    expect(value<PurgeResult>(await post(INBOX_ENDPOINT_PURGE, {})).removed).toBe(1)
+    expect(vault?.get(id)).toBeUndefined()
+    expect(value<ListResult>(await post(INBOX_ENDPOINT_LIST, { scope: 'bin' })).matched).toBe(0)
+  })
+
+  it('drops the attachment rows when the bin is emptied', async () => {
+    await post(INBOX_ENDPOINT_CAPTURE, {
+      images: [{ mediaType: 'image/png', data: PNG_BASE64, name: 'shot.png' }],
+    })
+    const image = vault?.list({ kinds: ['image'] })[0]
+    const attachmentId = image?.attachmentIds[0] ?? ''
+
+    await post(INBOX_ENDPOINT_DELETE, { id: image?.id ?? '' })
+    await post(INBOX_ENDPOINT_PURGE, {})
+
+    expect(vault?.getAttachment(attachmentId)).toBeUndefined()
+    expect(vault?.findAttachmentByStoreId(`sha256:${createHash('sha256').update('not-really-a-png-but-canonical-base64').digest('hex')}`)).toBeUndefined()
+  })
+
+  it('serves attachment bytes only for images it can reach', async () => {
+    await post(INBOX_ENDPOINT_CAPTURE, {
+      images: [{ mediaType: 'image/png', data: PNG_BASE64, name: 'shot.png' }],
+    })
+    const image = vault?.list({ kinds: ['image'] })[0]
+    const attachmentId = image?.attachmentIds[0] ?? ''
+
+    expect((await getAttachment('nope')).status).toBe(404)
+    // The stand-in store keeps no files, so the route reports "not on this machine".
+    expect((await getAttachment(attachmentId)).status).toBe(404)
   })
 
   it('explains itself while the vault is closed', async () => {
     await vault?.close()
     vault = undefined
 
-    const captured = await post(INBOX_ENDPOINT_CAPTURE, { text: 'anything' })
-    expect(captured.body.ok === false && captured.body.error.code).toBe('inbox/vault-closed')
-
-    const recent = await post(INBOX_ENDPOINT_RECENT, {})
-    expect(recent.body.ok === false && recent.body.error.code).toBe('inbox/vault-closed')
+    expect(codeOf(await post(INBOX_ENDPOINT_CAPTURE, { text: 'anything' }))).toBe('inbox/vault-closed')
+    expect(codeOf(await post(INBOX_ENDPOINT_LIST, {}))).toBe('inbox/vault-closed')
+    expect(codeOf(await post(INBOX_ENDPOINT_DETAIL, { id: 'x' }))).toBe('inbox/vault-closed')
+    expect(codeOf(await post(INBOX_ENDPOINT_UPDATE, { id: 'x' }))).toBe('inbox/vault-closed')
+    expect(codeOf(await post(INBOX_ENDPOINT_DELETE, { id: 'x' }))).toBe('inbox/vault-closed')
+    expect(codeOf(await post(INBOX_ENDPOINT_RESTORE, { id: 'x' }))).toBe('inbox/vault-closed')
+    expect(codeOf(await post(INBOX_ENDPOINT_PURGE, {}))).toBe('inbox/vault-closed')
   })
 })

@@ -2,20 +2,21 @@
 
 English | [中文](README.zh.md)
 
-> **Status: pre-alpha — M0–M2 done.** You can file things two ways (the `/inbox` command in the composer, or the panel's own capture box), repeats merge, and the vault stores and lists what you saved. Classification, filtering and sync are still ahead. Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
+> **Status: pre-alpha — M0–M3 done.** You can file things two ways, browse and manage them in the panel (filters, detail, edit, read/unread, recycle bin), and repeats merge. Classification, chat retrieval and sync are still ahead. Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
 
 A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`): paste links, images, text and credentials into one local vault, get them classified, browse them from the sidebar, and pull them back through conversation.
 
-## What works today (M2)
+## What works today (M3)
 
 | | |
 |---|---|
 | ✅ Sidebar entry | An **Inbox** row appears under *Global panels*; clicking it swaps the main area to the plugin's page |
 | ✅ Tool reaches the model | `inbox_status` reports whether the vault is open and how many records it holds |
 | ✅ Two ways to capture | `/inbox <text or link>` in the composer (attach images to carry them along), or paste/drop/pick inside the panel |
-| ✅ Storage, query, merging | Records persist through dsh's own storage stack; a repeat paste merges into the record you already have |
-| ✅ Recent list | The panel lists what you stored, newest first, with kind / category / status / platform |
-| ❌ Not yet | Classification, filtering, detail view, recycle bin (M3–M5), sync (M6) |
+| ✅ Browse and manage | Filter by unread / category / tag, search across title, text, url and note, open a record's detail with image thumbnails, edit its category, description and tags, mark it read |
+| ✅ Recycle bin | Delete is a soft delete; restore from the bin, or empty it to remove the records for good |
+| ✅ Storage and merging | Records persist through dsh's own storage stack; a repeat paste merges into the record you already have |
+| ❌ Not yet | Automatic classification (M5), pulling records back through conversation (M4), sync (M6) |
 
 ### Where your data lives
 

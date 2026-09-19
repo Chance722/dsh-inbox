@@ -1,9 +1,9 @@
 /**
- * The browser half: the sidebar entry, the capture box, and the recent list.
+ * The browser half: the sidebar entry, the capture box, the filter bar, the
+ * list, and the detail pane.
  *
  * Everything the vault knows lives on the host side; this half only renders and
- * submits through the Connection RPC channel declared in
- * `src/shared/capture.ts`.
+ * calls the Fetch routes declared in `src/shared/panel-wire.ts`.
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -11,18 +11,34 @@ import React from 'react'
 
 import {
   INBOX_API_PREFIX,
+  INBOX_ENDPOINT_ATTACHMENT,
   INBOX_ENDPOINT_CAPTURE,
-  INBOX_ENDPOINT_RECENT,
+  INBOX_ENDPOINT_DELETE,
+  INBOX_ENDPOINT_DETAIL,
+  INBOX_ENDPOINT_LIST,
+  INBOX_ENDPOINT_PURGE,
+  INBOX_ENDPOINT_RESTORE,
+  INBOX_ENDPOINT_UPDATE,
   INBOX_IMAGE_TYPES,
+  LIST_LIMIT,
   type CaptureResult,
+  type DetailResult,
+  type EntryDetail,
+  type EntrySummary,
   type InboxRpcResult,
-  type RecentEntry,
-  type RecentResult,
+  type ListResult,
+  type PurgeResult,
   type WireFile,
   type WireImage,
-} from '../shared/capture.js'
+} from '../shared/panel-wire.js'
 import { MILESTONE, PANEL_ID, PACKAGE_NAME } from '../shared/constants.js'
-import { CATEGORY_LABELS, KIND_LABELS, STATUS_LABELS } from '../shared/vocabulary.js'
+import {
+  CATEGORIES,
+  CATEGORY_LABELS,
+  KIND_LABELS,
+  STATUS_LABELS,
+  type Category,
+} from '../shared/vocabulary.js'
 
 /** Stable Cordis plugin name for the browser half. */
 export const name = 'dsh-inbox-client'
@@ -45,7 +61,7 @@ interface PanelIconProps {
  * Both slots belong to other packages, so each registration waits for the
  * declaration through `slots.inject` instead of assuming an order.
  *
- * @param ctx - browser plugin context carrying the slot registry and the wire client.
+ * @param ctx - browser plugin context carrying the slot registry.
  */
 export function apply(ctx: Context): void {
   const slots = ctx.get('slots')
@@ -58,9 +74,7 @@ export function apply(ctx: Context): void {
     ),
   )
 
-  slots.inject('main', () =>
-    slots.register({ name: 'main', key: PANEL_ID }, () => <InboxPanel ctx={ctx} />),
-  )
+  slots.inject('main', () => slots.register({ name: 'main', key: PANEL_ID }, InboxPanel))
 }
 
 /** Sidebar row icon: a box glyph sized to the shell's requested square. */
@@ -83,7 +97,7 @@ function InboxPanelIcon({ size, active }: PanelIconProps): React.ReactElement {
   )
 }
 
-/** One file the user pasted or dropped, held until they submit. */
+/** One file the user pasted, dropped or picked, held until they submit. */
 interface Staged {
   id: string
   name: string
@@ -94,12 +108,15 @@ interface Staged {
   previewUrl?: string
 }
 
+/** Which shelf the list is showing. */
+type Scope = 'live' | 'bin'
+
 const panelStyle: React.CSSProperties = {
-  padding: '24px',
+  padding: '20px 24px',
   font: '14px/1.6 system-ui, sans-serif',
   display: 'flex',
   flexDirection: 'column',
-  gap: '16px',
+  gap: 14,
   height: '100%',
   boxSizing: 'border-box',
   overflow: 'auto',
@@ -107,37 +124,58 @@ const panelStyle: React.CSSProperties = {
 
 const cardStyle: React.CSSProperties = {
   border: '1px solid color-mix(in srgb, currentColor 18%, transparent)',
-  borderRadius: '10px',
-  padding: '12px',
+  borderRadius: 10,
+  padding: 12,
 }
 
 const buttonStyle: React.CSSProperties = {
   font: 'inherit',
-  padding: '6px 14px',
-  borderRadius: '8px',
+  padding: '5px 12px',
+  borderRadius: 8,
   border: '1px solid color-mix(in srgb, currentColor 25%, transparent)',
   background: 'transparent',
   color: 'inherit',
   cursor: 'pointer',
 }
 
-/** The panel body: capture on top, what is already stored underneath. */
-function InboxPanel({ ctx }: { ctx: Context }): React.ReactElement {
+const chipStyle = (active: boolean): React.CSSProperties => ({
+  ...buttonStyle,
+  padding: '2px 10px',
+  borderRadius: 999,
+  opacity: active ? 1 : 0.7,
+  fontWeight: active ? 600 : 400,
+  borderColor: active ? 'currentColor' : 'color-mix(in srgb, currentColor 20%, transparent)',
+})
+
+const inputStyle: React.CSSProperties = {
+  font: 'inherit',
+  color: 'inherit',
+  background: 'transparent',
+  border: '1px solid color-mix(in srgb, currentColor 20%, transparent)',
+  borderRadius: 8,
+  padding: '5px 8px',
+}
+
+/** The panel body: capture, then filter, list and detail. */
+function InboxPanel(): React.ReactElement {
   const [text, setText] = React.useState('')
   const [staged, setStaged] = React.useState<Staged[]>([])
   const [notice, setNotice] = React.useState<string>()
   const [busy, setBusy] = React.useState(false)
   const [dragging, setDragging] = React.useState(false)
-  const [recent, setRecent] = React.useState<RecentResult>()
   const picker = React.useRef<HTMLInputElement>(null)
 
-  /**
-   * One POST to the vault channel.
-   *
-   * Plain `fetch` is enough: the panel runs on the authenticated page, and
-   * Connection's fence reads the signed cookie the launch URL minted. No client
-   * service is involved, so the browser half needs no host-facing import.
-   */
+  const [scope, setScope] = React.useState<Scope>('live')
+  const [unreadOnly, setUnreadOnly] = React.useState(false)
+  const [category, setCategory] = React.useState<Category>()
+  const [tag, setTag] = React.useState<string>()
+  const [search, setSearch] = React.useState('')
+  const [query, setQuery] = React.useState('')
+  const [list, setList] = React.useState<ListResult>()
+  const [selectedId, setSelectedId] = React.useState<string>()
+  const [detail, setDetail] = React.useState<EntryDetail>()
+
+  /** One POST to the vault channel; see the transport note in panel-wire.ts. */
   const call = React.useCallback(
     async (endpoint: string, payload: unknown): Promise<InboxRpcResult<unknown>> => {
       try {
@@ -172,15 +210,83 @@ function InboxPanel({ ctx }: { ctx: Context }): React.ReactElement {
     [],
   )
 
-  const refresh = React.useCallback(async (): Promise<void> => {
-    const result = await call(INBOX_ENDPOINT_RECENT, {})
-    if (result.ok) setRecent(result.value as RecentResult)
-    else setNotice(`读取列表失败：${result.error.message}`)
-  }, [call])
+  const refresh = React.useCallback(
+    async (keepSelection = true): Promise<void> => {
+      const result = await call(INBOX_ENDPOINT_LIST, {
+        scope,
+        ...(unreadOnly ? { statuses: ['unread'] } : {}),
+        ...(category === undefined ? {} : { categories: [category] }),
+        ...(tag === undefined ? {} : { tags: [tag] }),
+        ...(query.trim().length === 0 ? {} : { text: query.trim() }),
+        limit: LIST_LIMIT,
+      })
+      if (!result.ok) {
+        setNotice(`读取列表失败：${result.error.message}`)
+        return
+      }
+      const next = result.value as ListResult
+      setList(next)
+      if (!keepSelection || !next.entries.some((entry) => entry.id === selectedId)) {
+        setSelectedId(undefined)
+        setDetail(undefined)
+      }
+    },
+    [call, category, query, scope, selectedId, tag, unreadOnly],
+  )
 
   React.useEffect(() => {
     void refresh()
   }, [refresh])
+
+  /** Debounce the search box so typing does not spam the host. */
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setQuery(search), 250)
+    return () => window.clearTimeout(timer)
+  }, [search])
+
+  const openDetail = React.useCallback(
+    async (id: string): Promise<void> => {
+      setSelectedId(id)
+      const result = await call(INBOX_ENDPOINT_DETAIL, { id })
+      if (!result.ok) {
+        setNotice(`读取详情失败：${result.error.message}`)
+        setDetail(undefined)
+        return
+      }
+      setDetail((result.value as DetailResult).entry)
+    },
+    [call],
+  )
+
+  /** Run one mutation, then re-read both the detail and the list. */
+  const mutate = React.useCallback(
+    async (
+      endpoint: string,
+      payload: unknown,
+      { dropSelection = false }: { dropSelection?: boolean } = {},
+    ): Promise<boolean> => {
+      setBusy(true)
+      try {
+        const result = await call(endpoint, payload)
+        if (!result.ok) {
+          setNotice(`${result.error.message}`)
+          return false
+        }
+        setNotice(undefined)
+        if (dropSelection) {
+          setSelectedId(undefined)
+          setDetail(undefined)
+        } else if (selectedId !== undefined && !dropSelection) {
+          await openDetail(selectedId)
+        }
+        await refresh()
+        return true
+      } finally {
+        setBusy(false)
+      }
+    },
+    [call, openDetail, refresh, selectedId],
+  )
 
   /** Stage files; a text part that arrived with them rides along into the box. */
   const stage = (files: FileList | File[], extraText?: string): void => {
@@ -251,7 +357,7 @@ function InboxPanel({ ctx }: { ctx: Context }): React.ReactElement {
         if (entry.previewUrl !== undefined) URL.revokeObjectURL(entry.previewUrl)
       }
       setStaged([])
-      await refresh()
+      await refresh(false)
     } finally {
       setBusy(false)
     }
@@ -269,7 +375,10 @@ function InboxPanel({ ctx }: { ctx: Context }): React.ReactElement {
       <header>
         <h2 style={{ margin: '0 0 4px' }}>dsh-inbox</h2>
         <p style={{ margin: 0, opacity: 0.7 }}>
-          {PACKAGE_NAME} · {MILESTONE} · 先存下来，分类和整理随后到
+          {PACKAGE_NAME} · {MILESTONE}
+          {list === undefined
+            ? ''
+            : ` · 共 ${String(list.total)} 条 · 未读 ${String(list.unread)} 条 · 回收站 ${String(list.deleted)} 条`}
         </p>
       </header>
 
@@ -292,7 +401,7 @@ function InboxPanel({ ctx }: { ctx: Context }): React.ReactElement {
           onPaste={onPaste}
           onKeyDown={onKeyDown}
           placeholder="粘贴文字、链接，或把图片/文件拖到这里（Ctrl+Enter 存入）"
-          rows={5}
+          rows={3}
           style={{
             width: '100%',
             boxSizing: 'border-box',
@@ -353,7 +462,7 @@ function InboxPanel({ ctx }: { ctx: Context }): React.ReactElement {
           </ul>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
           <input
             ref={picker}
             type="file"
@@ -374,84 +483,356 @@ function InboxPanel({ ctx }: { ctx: Context }): React.ReactElement {
             选择文件…
           </button>
           <button type="button" style={buttonStyle} disabled={busy} onClick={() => void submit()}>
-            {busy ? '存入中…' : '存入仓库'}
+            {busy ? '处理中…' : '存入仓库'}
           </button>
           {notice !== undefined && <span style={{ opacity: 0.8 }}>{notice}</span>}
         </div>
       </div>
 
-      <section style={cardStyle}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-          <strong>最近存入</strong>
-          <span style={{ opacity: 0.7 }}>
-            {recent === undefined ? '读取中…' : `共 ${recent.total} 条 · 未读 ${recent.unread} 条`}
-            <button
-              type="button"
-              style={{ ...buttonStyle, marginLeft: 10, padding: '2px 8px' }}
-              onClick={() => void refresh()}
-            >
-              刷新
-            </button>
-          </span>
-        </div>
-
-        {recent !== undefined && recent.entries.length === 0 && (
-          <p style={{ margin: '10px 0 0', opacity: 0.7 }}>仓库还是空的。</p>
-        )}
-
-        <ul
-          style={{
-            listStyle: 'none',
-            margin: '10px 0 0',
-            padding: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 10,
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          style={chipStyle(scope === 'live' && !unreadOnly)}
+          onClick={() => {
+            setScope('live')
+            setUnreadOnly(false)
           }}
         >
-          {recent?.entries.map((entry) => (
-            <RecentRow key={entry.id} entry={entry} />
-          ))}
-        </ul>
+          全部 {list === undefined ? '' : list.total}
+        </button>
+        <button
+          type="button"
+          style={chipStyle(scope === 'live' && unreadOnly)}
+          onClick={() => {
+            setScope('live')
+            setUnreadOnly(true)
+          }}
+        >
+          未读 {list === undefined ? '' : list.unread}
+        </button>
+        <button
+          type="button"
+          style={chipStyle(scope === 'bin')}
+          onClick={() => setScope('bin')}
+        >
+          回收站 {list === undefined ? '' : list.deleted}
+        </button>
 
-        <p style={{ margin: '12px 0 0', opacity: 0.6 }}>
-          这一版只做入库与查看；筛选、详情、改类目、回收站跟着 M3 到。
-        </p>
-      </section>
+        <span style={{ width: 1, height: 18, background: 'currentColor', opacity: 0.2 }} />
+
+        {list?.categories.map((facet) => (
+          <button
+            key={facet.value}
+            type="button"
+            style={chipStyle(category === facet.value)}
+            onClick={() => setCategory(category === facet.value ? undefined : facet.value)}
+          >
+            {CATEGORY_LABELS[facet.value]} {facet.count}
+          </button>
+        ))}
+
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="搜标题、正文、链接、备注…"
+          style={{ ...inputStyle, marginLeft: 'auto', minWidth: 180 }}
+        />
+        <button type="button" style={buttonStyle} onClick={() => void refresh()}>
+          刷新
+        </button>
+      </div>
+
+      {list !== undefined && list.tags.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ opacity: 0.6 }}>标签</span>
+          {list.tags.map((facet) => (
+            <button
+              key={facet.value}
+              type="button"
+              style={chipStyle(tag === facet.value)}
+              onClick={() => setTag(tag === facet.value ? undefined : facet.value)}
+            >
+              #{facet.value} {facet.count}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 1fr) 1.4fr', gap: 14 }}>
+        <section style={{ ...cardStyle, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <strong>{scope === 'bin' ? '回收站' : '存入的'}</strong>
+            <span style={{ opacity: 0.6 }}>
+              {list === undefined ? '读取中…' : `${String(list.matched)} 条匹配`}
+            </span>
+          </div>
+
+          {scope === 'bin' && (list?.deleted ?? 0) > 0 && (
+            <button
+              type="button"
+              style={{ ...buttonStyle, marginBottom: 8 }}
+              disabled={busy}
+              onClick={() => {
+                if (!window.confirm('清空回收站会真的删掉这些记录，不能撤销。附件字节仍留在 dsh 的附件仓库里。继续？')) return
+                void mutate(INBOX_ENDPOINT_PURGE, {}, { dropSelection: true })
+              }}
+            >
+              清空回收站
+            </button>
+          )}
+
+          {list?.entries.length === 0 && (
+            <p style={{ margin: '8px 0 0', opacity: 0.7 }}>
+              {scope === 'bin' ? '回收站是空的。' : '没有匹配的记录。'}
+            </p>
+          )}
+
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {list?.entries.map((entry) => (
+              <EntryRow
+                key={entry.id}
+                entry={entry}
+                selected={entry.id === selectedId}
+                onOpen={() => void openDetail(entry.id)}
+              />
+            ))}
+          </ul>
+        </section>
+
+        <section style={{ ...cardStyle, minWidth: 0 }}>
+          {detail === undefined ? (
+            <p style={{ margin: 0, opacity: 0.7 }}>选左边一条看看详情。</p>
+          ) : (
+            <EntryPane
+              detail={detail}
+              busy={busy}
+              onUpdate={(patch) => mutate(INBOX_ENDPOINT_UPDATE, { id: detail.id, ...patch })}
+              onDelete={() => mutate(INBOX_ENDPOINT_DELETE, { id: detail.id }, { dropSelection: true })}
+              onRestore={() => mutate(INBOX_ENDPOINT_RESTORE, { id: detail.id }, { dropSelection: true })}
+            />
+          )}
+        </section>
+      </div>
     </div>
   )
 }
 
 /** One stored record as a list row. */
-function RecentRow({ entry }: { entry: RecentEntry }): React.ReactElement {
+function EntryRow({
+  entry,
+  selected,
+  onOpen,
+}: {
+  entry: EntrySummary
+  selected: boolean
+  onOpen: () => void
+}): React.ReactElement {
   const heading = entry.title ?? entry.url ?? entry.preview ?? '（无标题）'
   return (
-    <li
-      style={{
-        borderTop: '1px solid color-mix(in srgb, currentColor 12%, transparent)',
-        paddingTop: 8,
-      }}
-    >
+    <li>
+      <button
+        type="button"
+        onClick={onOpen}
+        style={{
+          display: 'block',
+          width: '100%',
+          textAlign: 'left',
+          font: 'inherit',
+          color: 'inherit',
+          background: selected ? 'color-mix(in srgb, currentColor 10%, transparent)' : 'transparent',
+          border: 'none',
+          borderTop: '1px solid color-mix(in srgb, currentColor 12%, transparent)',
+          padding: '8px 6px',
+          cursor: 'pointer',
+        }}
+      >
+        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+          <span style={{ opacity: 0.6 }}>{KIND_LABELS[entry.kind]}</span>
+          <span style={{ opacity: 0.6 }}>· {CATEGORY_LABELS[entry.category]}</span>
+          <span style={{ opacity: entry.status === 'unread' ? 1 : 0.6 }}>
+            · {STATUS_LABELS[entry.status]}
+          </span>
+          {entry.platform !== undefined && <span style={{ opacity: 0.6 }}>· {entry.platform}</span>}
+          {entry.attachmentCount > 0 && (
+            <span style={{ opacity: 0.6 }}>· {entry.attachmentCount} 个附件</span>
+          )}
+          {entry.deletedAt !== undefined && <span style={{ color: 'salmon' }}>· 已删</span>}
+          <span style={{ marginLeft: 'auto', opacity: 0.5 }}>
+            {new Date(entry.createdAt).toLocaleString()}
+          </span>
+        </div>
+        <div style={{ marginTop: 2, overflowWrap: 'anywhere' }}>{heading}</div>
+        {entry.tags.length > 0 && (
+          <div style={{ marginTop: 2, opacity: 0.6 }}>{entry.tags.map((t) => `#${t}`).join(' ')}</div>
+        )}
+      </button>
+    </li>
+  )
+}
+
+/** The detail pane: the record in full, plus every action M3 offers. */
+function EntryPane({
+  detail,
+  busy,
+  onUpdate,
+  onDelete,
+  onRestore,
+}: {
+  detail: EntryDetail
+  busy: boolean
+  onUpdate: (patch: Record<string, unknown>) => Promise<boolean>
+  onDelete: () => Promise<boolean>
+  onRestore: () => Promise<boolean>
+}): React.ReactElement {
+  const [note, setNote] = React.useState(detail.note ?? '')
+  const [tags, setTags] = React.useState(detail.tags.join(', '))
+
+  React.useEffect(() => {
+    setNote(detail.note ?? '')
+    setTags(detail.tags.join(', '))
+  }, [detail])
+
+  const inBin = detail.deletedAt !== undefined
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <span style={{ opacity: 0.6 }}>{KIND_LABELS[entry.kind]}</span>
-        <span style={{ opacity: 0.6 }}>· {CATEGORY_LABELS[entry.category]}</span>
-        <span style={{ opacity: 0.6 }}>· {STATUS_LABELS[entry.status]}</span>
-        {entry.platform !== undefined && <span style={{ opacity: 0.6 }}>· {entry.platform}</span>}
-        {entry.attachments > 0 && <span style={{ opacity: 0.6 }}>· {entry.attachments} 个附件</span>}
-        <span style={{ marginLeft: 'auto', opacity: 0.5 }}>
-          {new Date(entry.createdAt).toLocaleString()}
+        <strong>{KIND_LABELS[detail.kind]}</strong>
+        <span style={{ opacity: 0.6 }}>{CATEGORY_LABELS[detail.category]}</span>
+        {detail.platform !== undefined && <span style={{ opacity: 0.6 }}>· {detail.platform}</span>}
+        <span style={{ marginLeft: 'auto', opacity: 0.6 }}>
+          存入 {new Date(detail.createdAt).toLocaleString()}
+          {detail.updatedAt === detail.createdAt
+            ? ''
+            : ` · 更新 ${new Date(detail.updatedAt).toLocaleTimeString()}`}
         </span>
       </div>
-      <div style={{ marginTop: 2, overflowWrap: 'anywhere' }}>
-        {entry.url === undefined ? (
-          heading
+
+      {detail.url !== undefined && (
+        <a href={detail.url} target="_blank" rel="noreferrer" style={{ overflowWrap: 'anywhere' }}>
+          {detail.url}
+        </a>
+      )}
+
+      {detail.text !== undefined && (
+        <pre
+          style={{
+            ...cardStyle,
+            margin: 0,
+            whiteSpace: 'pre-wrap',
+            overflowWrap: 'anywhere',
+            font: '13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace',
+            maxHeight: 260,
+            overflow: 'auto',
+          }}
+        >
+          {detail.text}
+        </pre>
+      )}
+
+      {detail.attachments.length > 0 && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {detail.attachments.map((attachment) => (
+            <figure
+              key={attachment.id}
+              style={{ ...cardStyle, margin: 0, padding: 8, textAlign: 'center' }}
+            >
+              {attachment.image ? (
+                <img
+                  src={`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}?id=${encodeURIComponent(attachment.id)}`}
+                  alt={attachment.filename ?? ''}
+                  style={{ maxWidth: 220, maxHeight: 220, borderRadius: 6, display: 'block' }}
+                />
+              ) : (
+                <div style={{ opacity: 0.7 }}>📄</div>
+              )}
+              <figcaption style={{ opacity: 0.7, marginTop: 4, fontSize: 12 }}>
+                {attachment.filename ?? attachment.mime}
+                {attachment.width === undefined || attachment.height === undefined
+                  ? ''
+                  : ` · ${String(attachment.width)}×${String(attachment.height)}`}
+                {` · ${formatBytes(attachment.bytes)}`}
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
+
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span style={{ opacity: 0.7, minWidth: 44 }}>类目</span>
+        <select
+          value={detail.category}
+          disabled={busy}
+          onChange={(event) => void onUpdate({ category: event.target.value })}
+          style={{ ...inputStyle, padding: '4px 6px' }}
+        >
+          {CATEGORIES.map((value) => (
+            <option key={value} value={value}>
+              {CATEGORY_LABELS[value]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ opacity: 0.7 }}>描述（你写的永远优先于模型的判断）</span>
+        <textarea
+          value={note}
+          disabled={busy}
+          onChange={(event) => setNote(event.target.value)}
+          rows={2}
+          placeholder="比如：身份证照 / 待看视频 / 这个 api key 是测试环境的"
+          style={{ ...inputStyle, resize: 'vertical', width: '100%', boxSizing: 'border-box' }}
+        />
+      </label>
+
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span style={{ opacity: 0.7, minWidth: 44 }}>标签</span>
+        <input
+          value={tags}
+          disabled={busy}
+          onChange={(event) => setTags(event.target.value)}
+          placeholder="逗号分隔，比如：前端, 待看"
+          style={{ ...inputStyle, flex: 1 }}
+        />
+      </label>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          style={buttonStyle}
+          disabled={busy}
+          onClick={() =>
+            void onUpdate({
+              note,
+              tags: tags
+                .split(',')
+                .map((value) => value.trim())
+                .filter((value) => value.length > 0),
+            })
+          }
+        >
+          保存描述与标签
+        </button>
+        <button
+          type="button"
+          style={buttonStyle}
+          disabled={busy || inBin}
+          onClick={() => void onUpdate({ status: detail.status === 'read' ? 'unread' : 'read' })}
+        >
+          {detail.status === 'read' ? '标为未读' : '标为已读'}
+        </button>
+        {inBin ? (
+          <button type="button" style={buttonStyle} disabled={busy} onClick={() => void onRestore()}>
+            恢复
+          </button>
         ) : (
-          <a href={entry.url} target="_blank" rel="noreferrer">
-            {heading}
-          </a>
+          <button type="button" style={buttonStyle} disabled={busy} onClick={() => void onDelete()}>
+            删除
+          </button>
         )}
       </div>
-    </li>
+    </div>
   )
 }
 

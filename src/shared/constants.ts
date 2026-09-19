@@ -7,4 +7,4 @@ export const PACKAGE_NAME = '@duoyu/dsh-inbox'
 export const PANEL_ID = 'inbox'
 
 /** Milestone marker surfaced by the status tool; see docs/feature/dev-bus.md. */
-export const MILESTONE = 'M2'
+export const MILESTONE = 'M3'

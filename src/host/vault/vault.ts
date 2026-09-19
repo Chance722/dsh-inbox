@@ -112,6 +112,11 @@ export class Vault {
     return this.items.get(id)
   }
 
+  /** Records sitting in the recycle bin, newest first. */
+  getBin(): Item[] {
+    return this.list({ includeDeleted: true }).filter((item) => item.deletedAt !== undefined)
+  }
+
   /**
    * List records matching a query, newest first.
    *
@@ -167,6 +172,31 @@ export class Vault {
       const { deletedAt: _dropped, ...rest } = current
       return { ...rest, updatedAt: new Date().toISOString() }
     })
+  }
+
+  /**
+   * Delete one record for good, together with its attachment rows.
+   *
+   * The bytes behind an attachment live in dsh's own store, which never deletes
+   * automatically — emptying the recycle bin drops our references, not their
+   * objects. A row another record still references is left alone.
+   *
+   * @param id - record key.
+   * @returns whether the record existed.
+   */
+  async remove(id: string): Promise<boolean> {
+    const item = this.items.get(id)
+    if (item === undefined) return false
+
+    const stillReferenced = new Set<string>()
+    for (const [, other] of this.items.entries()) {
+      if (other.id === id) continue
+      for (const attachmentId of other.attachmentIds) stillReferenced.add(attachmentId)
+    }
+    for (const attachmentId of item.attachmentIds) {
+      if (!stillReferenced.has(attachmentId)) await this.attachments.delete(attachmentId)
+    }
+    return this.items.delete(id)
   }
 
   /**

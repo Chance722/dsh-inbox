@@ -1,0 +1,212 @@
+/**
+ * The wire contract between the inbox panel (browser half) and the vault (host
+ * half).
+ *
+ * Types and constants only: the browser bundle must not pull a schema library
+ * or a host package (AGENTS.md constraint 11), so runtime validation lives in
+ * `src/host/rpc.ts` and the shapes here stay structural.
+ *
+ * Transport: exact Fetch routes on the shared `/api` channel, registered
+ * through `ctx.connection.fetch.register`, which the physical carrier only
+ * dispatches after its Host/Origin trust fence and the signed browser cookie.
+ * The panel posts with plain same-origin `fetch`; every answer is an
+ * `InboxRpcResult`, so a refusal is an answer rather than a crash.
+ */
+
+import type { Category, Kind, Status } from './vocabulary.js'
+
+/** Authenticated path prefix every inbox endpoint lives under. */
+export const INBOX_API_PREFIX = '/api/inbox'
+
+/** File one submission (text, image bytes, generic file bytes). */
+export const INBOX_ENDPOINT_CAPTURE = 'capture'
+
+/** Page through records with filters. */
+export const INBOX_ENDPOINT_LIST = 'list'
+
+/** One record in full, including its attachment metadata. */
+export const INBOX_ENDPOINT_DETAIL = 'detail'
+
+/** Replace the editable fields of one record. */
+export const INBOX_ENDPOINT_UPDATE = 'update'
+
+/** Soft delete (the recycle bin) and undo. */
+export const INBOX_ENDPOINT_DELETE = 'delete'
+export const INBOX_ENDPOINT_RESTORE = 'restore'
+
+/** Empty the recycle bin for real. */
+export const INBOX_ENDPOINT_PURGE = 'purge'
+
+/** Stream one attachment's bytes back to the panel. */
+export const INBOX_ENDPOINT_ATTACHMENT = 'attachment'
+
+/** Raster formats dsh's own attachment store accepts, and we therefore pass through. */
+export const INBOX_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const
+export type InboxImageType = (typeof INBOX_IMAGE_TYPES)[number]
+
+/** One browser-submitted image: base64 bytes plus the declared media type. */
+export interface WireImage {
+  mediaType: InboxImageType
+  data: string
+  name?: string
+}
+
+/** One browser-submitted generic file, stored byte-for-byte. */
+export interface WireFile {
+  data: string
+  name?: string
+}
+
+/** Everything one panel submission can carry. */
+export interface CaptureRequest {
+  text?: string
+  images?: WireImage[]
+  files?: WireFile[]
+}
+
+/** How many records a submission stored, and how many merged into existing ones. */
+export interface CaptureResult {
+  stored: number
+  merged: number
+}
+
+/** Which shelf a list is asking about. */
+export type ListScope = 'live' | 'bin'
+
+/** Filters and paging for one list call. */
+export interface ListRequest {
+  scope?: ListScope
+  categories?: Category[]
+  statuses?: Status[]
+  kinds?: Kind[]
+  /** Every listed tag must be present. */
+  tags?: string[]
+  /** Case-insensitive substring over title, text, url, note and tags. */
+  text?: string
+  limit?: number
+  offset?: number
+}
+
+/** One row of the panel's list. */
+export interface EntrySummary {
+  id: string
+  kind: Kind
+  category: Category
+  status: Status
+  title?: string
+  /** A short excerpt of the stored text, already trimmed by the host. */
+  preview?: string
+  url?: string
+  platform?: string
+  note?: string
+  tags: string[]
+  createdAt: string
+  updatedAt: string
+  /** How many attachments the record references. */
+  attachmentCount: number
+  /** Present while the record sits in the recycle bin. */
+  deletedAt?: string
+}
+
+/** One attachment's metadata, as the detail view shows it. */
+export interface AttachmentSummary {
+  id: string
+  mime: string
+  bytes: number
+  filename?: string
+  width?: number
+  height?: number
+  /** True when the panel can render a thumbnail through the attachment route. */
+  image: boolean
+}
+
+/** One record in full. */
+export interface EntryDetail extends EntrySummary {
+  text?: string
+  attachments: AttachmentSummary[]
+}
+
+/** A filter value and how many records carry it. */
+export interface FacetCount<T> {
+  value: T
+  count: number
+}
+
+/** One page of records plus the numbers the header and filter bar show. */
+export interface ListResult {
+  entries: EntrySummary[]
+  /** Records matching the filters, paging ignored. */
+  matched: number
+  /** Live records overall. */
+  total: number
+  /** Live unread records overall. */
+  unread: number
+  /** Records sitting in the recycle bin. */
+  deleted: number
+  /** Facets are computed over live records only. */
+  categories: FacetCount<Category>[]
+  tags: FacetCount<string>[]
+}
+
+export interface DetailRequest {
+  id: string
+}
+
+export interface DetailResult {
+  entry: EntryDetail
+}
+
+/** The editable fields. Omitted fields keep their stored value. */
+export interface UpdateRequest {
+  id: string
+  category?: Category
+  status?: Status
+  note?: string
+  title?: string
+  tags?: string[]
+}
+
+export interface UpdateResult {
+  entry: EntrySummary
+}
+
+export interface IdRequest {
+  id: string
+}
+
+export interface IdResult {
+  entry: EntrySummary
+}
+
+export interface PurgeResult {
+  removed: number
+}
+
+/** Carrier-neutral failure, mirroring Connection's `ConnectionRpcFailure`. */
+export interface InboxRpcFailure {
+  code: string
+  message: string
+  details: Record<string, unknown>
+}
+
+/** Business outcome of one call: a refused request is an answer, not a crash. */
+export type InboxRpcResult<T> = { ok: true; value: T } | { ok: false; error: InboxRpcFailure }
+
+/** How many records one page holds. */
+export const LIST_LIMIT = 50
+
+/** How much stored text a list row shows before the panel truncates it. */
+export const PREVIEW_CHARS = 140
+
+/** Most attachments one submission may carry; mirrors the composer's own ceiling. */
+export const MAX_ATTACHMENTS_PER_SUBMISSION = 20
+
+/** Ceiling on the user's own note, so one edit cannot bloat the domain. */
+export const MAX_NOTE_CHARS = 2_000
+
+/** Tag limits: a filter list nobody can read is worse than no tags. */
+export const MAX_TAGS = 20
+export const MAX_TAG_CHARS = 40
+
+/** Ceiling on one filter's free text. */
+export const MAX_FILTER_CHARS = 200
