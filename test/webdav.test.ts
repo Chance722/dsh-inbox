@@ -167,6 +167,16 @@ describe('the WebDAV client', () => {
     expect(files[0]?.lastModified).toContain('2026')
   })
 
+  it('lists a folder when the configured directory is the root', () => {
+    // Regression, caught against the real gateway: `endsWith('')` is true for
+    // every path, so `/` used to filter out the entire listing.
+    const root = LISTING.replace(/\/dav\/inbox\//g, '/dav/')
+    const files = parseListing(root, '/')
+    expect(files.map((file) => file.path)).toEqual(['/dav/note.txt', '/dav/shot.png'])
+    // And a folder named `/inbox` still drops only its own entry.
+    expect(parseListing(LISTING, '/inbox').length).toBe(2)
+  })
+
   it('joins URLs without doubling the slash', () => {
     expect(joinUrl('https://data.cstcloud.cn/dav', '/inbox')).toBe('https://data.cstcloud.cn/dav/inbox')
     expect(joinUrl('https://data.cstcloud.cn/dav/', 'inbox')).toBe('https://data.cstcloud.cn/dav/inbox')

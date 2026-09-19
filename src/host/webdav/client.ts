@@ -103,12 +103,17 @@ function decode(value: string): string {
  */
 export function parseListing(xml: string, directory: string): RemoteFile[] {
   const files: RemoteFile[] = []
+  // The requested folder's own entry has to go. Compare against the folder
+  // path, and treat the root as "nothing to compare" rather than as an empty
+  // string — `endsWith('')` is true for every path, so a root listing used to
+  // come back empty.
+  const folder = directory.replace(/\/+$/, '')
   for (const block of xml.match(RESPONSE_BLOCK) ?? []) {
     if (IS_COLLECTION.test(block)) continue
     const href = HREF.exec(block)?.[1]
     if (href === undefined) continue
     const path = decode(href)
-    if (path.replace(/\/$/, '').endsWith(directory.replace(/\/$/, ''))) continue
+    if (folder.length > 0 && path.replace(/\/+$/, '').endsWith(folder)) continue
     const lastModified = LAST_MODIFIED.exec(block)?.[1]
     const contentType = CONTENT_TYPE.exec(block)?.[1]
     files.push({
@@ -140,7 +145,7 @@ async function refusal(what: string, response: FetchResponseLike): Promise<Error
   }
   const identity =
     response.status === 401 || response.status === 403
-      ? '\n（这类网关常按客户端标识认人：AccessKey 绑定的应用名要填进设置的「客户端标识」）'
+      ? '\n（这类网关常按客户端标识认人：这个账号绑定的应用名要填进设置的「客户端标识」）'
       : ''
   return new Error(
     `${what}失败：HTTP ${String(response.status)}${body.length === 0 ? '' : ` — ${body.replace(/\s+/g, ' ')}`}${identity}`,

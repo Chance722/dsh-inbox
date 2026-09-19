@@ -679,7 +679,10 @@ function WebdavSettings({
   const [region, setRegion] = React.useState('us-east-1')
   const [signatureVersion, setSignatureVersion] = React.useState('v4')
   const [accessKeyId, setAccessKeyId] = React.useState('')
-  const [userAgent, setUserAgent] = React.useState('')
+  // One identity per protocol: the gate is bound to the credential, and each
+  // protocol has its own, so switching doors must not carry the other's over.
+  const [s3UserAgent, setS3UserAgent] = React.useState('')
+  const [webdavUserAgent, setWebdavUserAgent] = React.useState('')
   const [accessKeySecret, setAccessKeySecret] = React.useState('')
   const [probe, setProbe] = React.useState<ProbeRow[]>()
   const [notice, setNotice] = React.useState<string>()
@@ -702,7 +705,8 @@ function WebdavSettings({
     setRegion(next.settings.region)
     setSignatureVersion(next.settings.signatureVersion)
     setAccessKeyId(next.settings.accessKeyId)
-    setUserAgent(next.settings.userAgent)
+    setS3UserAgent(next.settings.userAgent)
+    setWebdavUserAgent(next.settings.webdavUserAgent)
     setPassword('')
     setAccessKeySecret('')
   }, [call])
@@ -710,6 +714,13 @@ function WebdavSettings({
   React.useEffect(() => {
     void read()
   }, [read])
+
+  /** The identity field always edits whichever protocol the form is showing. */
+  const userAgent = protocol === 's3' ? s3UserAgent : webdavUserAgent
+  const setUserAgent = (value: string): void => {
+    if (protocol === 's3') setS3UserAgent(value)
+    else setWebdavUserAgent(value)
+  }
 
   const save = async (): Promise<void> => {
     setBusy(true)
@@ -817,7 +828,11 @@ function WebdavSettings({
           value={userAgent}
           disabled={busy}
           onChange={(event) => setUserAgent(event.target.value)}
-          placeholder="留空即 dsh-inbox；有些网关按它认人，填成 AccessKey 绑定的应用名"
+          placeholder={
+            protocol === 's3'
+              ? '留空即 dsh-inbox；有些网关按它认人，填成这个 AccessKey 绑定的应用名'
+              : '留空即 dsh-inbox；有些网关按它认人，填成这个 WebDAV 账号绑定的应用名'
+          }
           style={{ ...inputStyle, flex: 1 }}
         />
       </label>

@@ -13,7 +13,7 @@ import type { S3FetchLike } from '../s3/client.js'
 import type { Vault } from '../vault/vault.js'
 import { pullRemote, pullS3, type PullResult } from '../remote/pull.js'
 import type { FetchLike, WebdavDeps } from './client.js'
-import { readPassword, readS3Secret, readSettings } from './config.js'
+import { activeUserAgent, readPassword, readS3Secret, readSettings } from './config.js'
 
 /** The global fetch, adapted to the client's injected-fetch shape. */
 export const webdavFetch: FetchLike = async (url, init) => {
@@ -97,7 +97,7 @@ export async function runPull(
         bucket: settings.bucket,
         region: settings.region,
         signatureVersion: settings.signatureVersion,
-        userAgent: settings.userAgent,
+        userAgent: activeUserAgent(settings),
       },
       settings.directory.replace(/^\//, ''),
       {
@@ -117,7 +117,7 @@ export async function runPull(
   const deps: WebdavDeps & { attachments: AttachmentStore } = {
     fetch: webdavFetch,
     attachments,
-    userAgent: settings.userAgent,
+    userAgent: activeUserAgent(settings),
     ...(settings.username.length === 0 || password === undefined
       ? {}
       : { auth: { username: settings.username, password } }),

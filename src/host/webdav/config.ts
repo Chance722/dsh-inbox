@@ -41,6 +41,7 @@ export const DEFAULT_SETTINGS: WebdavSettings = {
   signatureVersion: 'v4',
   accessKeyId: '',
   userAgent: '',
+  webdavUserAgent: '',
 }
 
 /** The namespace's schema: every field optional, so a partial user layer is valid. */
@@ -55,6 +56,7 @@ export const WebdavSettingsSchema = z.object({
   signatureVersion: z.string().default('v4'),
   accessKeyId: z.string().default(''),
   userAgent: z.string().default(''),
+  webdavUserAgent: z.string().default(''),
 })
 
 /** The slice of the settings service this file uses. */
@@ -161,8 +163,24 @@ export interface WebdavPatch {
   accessKeyId?: string
   /** Empty string clears the stored S3 secret; undefined leaves it. */
   accessKeySecret?: string
-  /** The `User-Agent` to send; empty string means the plugin's own identity. */
+  /**
+   * The `User-Agent` to send for this patch's protocol; empty string means the
+   * plugin's own identity. Lands in the protocol's own slot.
+   */
   userAgent?: string
+}
+
+/**
+ * The client identity configured for whichever protocol is active.
+ *
+ * Two slots, one answer: the identity is bound to the credential, and each
+ * protocol carries its own credential.
+ *
+ * @param settings - the resolved settings.
+ * @returns the `User-Agent` to send, empty when the user configured nothing.
+ */
+export function activeUserAgent(settings: WebdavSettings): string {
+  return settings.protocol === 's3' ? settings.userAgent : settings.webdavUserAgent
 }
 
 /**
@@ -221,7 +239,17 @@ export async function saveWebdav(
     config.signatureVersion = version
   }
   if (patch.accessKeyId !== undefined) config.accessKeyId = patch.accessKeyId.trim()
-  if (patch.userAgent !== undefined) config.userAgent = patch.userAgent.trim()
+  if (patch.userAgent !== undefined) {
+    // The patch carries one identity, for the protocol it is changing. Writing
+    // it to the active protocol's slot keeps the other door's identity intact
+    // for when the user switches back.
+    const protocol =
+      patch.protocol === 'webdav' || patch.protocol === 's3'
+        ? patch.protocol
+        : readSettings(ctx).protocol
+    if (protocol === 'webdav') config.webdavUserAgent = patch.userAgent.trim()
+    else config.userAgent = patch.userAgent.trim()
+  }
 
   if (Object.keys(config).length > 0) {
     if (settings === undefined) {

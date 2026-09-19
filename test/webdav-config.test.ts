@@ -11,6 +11,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  activeUserAgent,
   DEFAULT_SETTINGS,
   PASSWORD_KEY,
   SETTINGS_NAMESPACE,
@@ -166,16 +167,42 @@ describe('saving the configuration', () => {
     expect(settings.current().endpoint).toBe('')
   })
 
-  it('stores the client identity as typed, trimmed, and empty by default', async () => {
+  it('keeps one client identity per protocol', async () => {
+    // The gate is bound to the credential, not to the plugin: an S3 key and a
+    // WebDAV account can be bound to different applications, so one shared
+    // field would silently break whichever door the user switched to.
     expect(DEFAULT_SETTINGS.userAgent).toBe('')
+    expect(DEFAULT_SETTINGS.webdavUserAgent).toBe('')
 
     const settings = fakeSettings()
     const ctx = context({ settings })
-    await saveWebdav(ctx, undefined, DEFAULT_SETTINGS, { userAgent: '  Obsidian/1.8.7 ' })
+
+    await saveWebdav(ctx, undefined, DEFAULT_SETTINGS, {
+      protocol: 's3',
+      userAgent: '  Obsidian/1.8.7 ',
+    })
+    expect(settings.current().userAgent).toBe('Obsidian/1.8.7')
+    expect(settings.current().webdavUserAgent).toBe('')
+
+    await saveWebdav(ctx, undefined, DEFAULT_SETTINGS, { protocol: 'webdav', userAgent: 'Zotero' })
+    expect(settings.current().webdavUserAgent).toBe('Zotero')
+    // Switching doors must not overwrite the other door's identity.
     expect(settings.current().userAgent).toBe('Obsidian/1.8.7')
 
-    await saveWebdav(ctx, undefined, DEFAULT_SETTINGS, { userAgent: '' })
-    expect(settings.current().userAgent).toBe('')
+    const both = { ...DEFAULT_SETTINGS, userAgent: 'Obsidian', webdavUserAgent: 'Zotero' }
+    expect(activeUserAgent({ ...both, protocol: 's3' })).toBe('Obsidian')
+    expect(activeUserAgent({ ...both, protocol: 'webdav' })).toBe('Zotero')
+
+    await saveWebdav(ctx, undefined, DEFAULT_SETTINGS, { protocol: 'webdav', userAgent: '' })
+    expect(settings.current().webdavUserAgent).toBe('')
+    expect(settings.current().userAgent).toBe('Obsidian/1.8.7')
+  })
+
+  it('files the identity under the protocol already in effect when the patch omits it', async () => {
+    const settings = fakeSettings({ protocol: 's3' })
+    await saveWebdav(context({ settings }), undefined, DEFAULT_SETTINGS, { userAgent: 'Obsidian' })
+    expect(settings.current().userAgent).toBe('Obsidian')
+    expect(settings.current().webdavUserAgent).toBe('')
   })
 
   it('clears a stored password on an empty string, and leaves it alone when omitted', async () => {

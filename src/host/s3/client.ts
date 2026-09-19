@@ -97,7 +97,7 @@ async function refused(response: S3ResponseLike, what: string): Promise<Error> {
   // from the settings form.
   const identity =
     response.status === 401 || response.status === 403
-      ? '\n（这类网关常按客户端标识认人：AccessKey 创建时绑定的应用名，要填进设置的「客户端标识」）'
+      ? '\n（这类网关常按客户端标识认人：这把 AccessKey 绑定的应用名，要填进设置的「客户端标识」）'
       : ''
   return new Error(
     `${what}失败：HTTP ${String(response.status)}${hints.length === 0 ? '' : ` — ${hints.join(' ')}`}${identity}`,

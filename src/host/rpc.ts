@@ -65,6 +65,7 @@ import {
 import { CATEGORIES, KINDS, STATUSES, type Category } from '../shared/vocabulary.js'
 import { capture, type CapturedAttachment } from './capture.js'
 import {
+  activeUserAgent,
   describeWebdav,
   readSettings,
   saveWebdav,
@@ -495,7 +496,7 @@ async function handleProbe(ctx: Context): Promise<InboxRpcResult<unknown>> {
       bucket: settings.bucket,
       region: settings.region,
       signatureVersion: settings.signatureVersion,
-      userAgent: settings.userAgent,
+      userAgent: activeUserAgent(settings),
     },
     { fetch: s3Fetch, accessKeyId: settings.accessKeyId, accessKeySecret: secret },
     settings.directory.replace(/^\//, ''),

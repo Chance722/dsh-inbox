@@ -65,7 +65,11 @@ export interface WebdavRequest {
   accessKeyId?: string
   /** Empty string clears the stored S3 secret; absent leaves it alone. */
   accessKeySecret?: string
-  /** Identity sent as `User-Agent`; empty string means "the plugin's own". */
+  /**
+   * Identity sent as `User-Agent` for the protocol in this same patch; empty
+   * string means "the plugin's own". Stored per protocol, because the identity
+   * belongs to the *credential* and each protocol has its own.
+   */
   userAgent?: string
 }
 
@@ -99,7 +103,7 @@ export interface WebdavSettings {
   /** S3: the identifier, which is not a secret. */
   accessKeyId: string
   /**
-   * What we call ourselves in the `User-Agent` header, for both protocols.
+   * What we call ourselves in the S3 request's `User-Agent` header.
    *
    * Empty means "use the plugin's own identity". Some gateways (数据胶囊 among
    * them) bind an access key to an application and reject every request whose
@@ -107,6 +111,15 @@ export interface WebdavSettings {
    * rather than decoration.
    */
   userAgent: string
+  /**
+   * The same thing for the WebDAV request.
+   *
+   * A separate value on purpose: the gate is bound to the *credential*, and a
+   * user may well have an S3 key bound to one application and a WebDAV account
+   * bound to another. Sharing one field made switching protocols silently break
+   * both, with an error that reads like a wrong password.
+   */
+  webdavUserAgent: string
 }
 
 /** What the panel needs to render the form and its status. */
