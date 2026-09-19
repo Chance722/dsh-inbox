@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import React from 'react'
 
-import { PANEL_ID, PACKAGE_NAME } from '../shared/constants.js'
+import { MILESTONE, PANEL_ID, PACKAGE_NAME } from '../shared/constants.js'
 
 /** Stable Cordis plugin name for the browser half. */
 export const name = 'dsh-inbox-client'
@@ -67,9 +67,11 @@ function InboxPanel(): React.ReactElement {
   return (
     <div style={{ padding: '24px', font: '14px/1.6 system-ui, sans-serif' }}>
       <h2 style={{ margin: '0 0 8px' }}>dsh-inbox</h2>
-      <p style={{ margin: '0 0 4px', opacity: 0.7 }}>{PACKAGE_NAME} · M0 skeleton</p>
+      <p style={{ margin: '0 0 4px', opacity: 0.7 }}>
+        {PACKAGE_NAME} · {MILESTONE}
+      </p>
       <p style={{ margin: 0, opacity: 0.7 }}>
-        Vault list, capture box and classification arrive with M1–M5.
+        Storage and query are in place. Capture, the vault list and classification arrive with M2–M5.
       </p>
     </div>
   )

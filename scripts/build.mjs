@@ -21,6 +21,13 @@ const pkg = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 /** Everything the browser kernel or the profile supplies at runtime. */
 const PLATFORM_EXTERNALS = ['react', 'react/jsx-runtime', 'react-dom', '@deepseek-ai/*']
 
+/**
+ * Host-side externals: the profile supplies the `@deepseek-ai/*` packages, and
+ * zod stays a real dependency of this package (bundling a second copy into the
+ * host half would waste ~100 KB and risk two zod instances disagreeing).
+ */
+const HOST_EXTERNALS = ['@deepseek-ai/*', 'node:*', 'zod']
+
 await mkdir(resolve(root, 'lib'), { recursive: true })
 
 // ── host half ───────────────────────────────────────────────────────────────
@@ -31,7 +38,7 @@ await build({
   format: 'esm',
   platform: 'node',
   target: 'node22',
-  external: ['@deepseek-ai/*', 'node:*'],
+  external: HOST_EXTERNALS,
   logLevel: 'warning',
 })
 

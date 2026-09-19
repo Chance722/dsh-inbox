@@ -1,18 +1,32 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { apply, inject, name } from '../src/host/index.js'
-import { PACKAGE_NAME } from '../src/shared/constants.js'
+import { MILESTONE, PACKAGE_NAME } from '../src/shared/constants.js'
 
-/** Minimal stand-in for the Cordis context: we only assert the registration. */
+/**
+ * Stand-in for the Cordis context. `effect` deliberately never runs its
+ * callback, so these tests cover the registration surface without opening a
+ * domain — the vault itself is covered against the real storage stack in
+ * `vault.test.ts`.
+ */
 function fakeContext() {
   const register = vi.fn()
-  return { register, ctx: { tools: { register } } as never }
+  const effect = vi.fn(() => () => {})
+  return {
+    register,
+    effect,
+    ctx: {
+      tools: { register },
+      effect,
+      storageDomain: { open: vi.fn() },
+    } as never,
+  }
 }
 
 describe('dsh-inbox host half', () => {
   it('does not depend on the tool registry by name collision', () => {
     expect(name).toBe('dsh-inbox')
-    expect(inject).toEqual(['tools'])
+    expect(inject).toEqual(['tools', 'storageDomain'])
   })
 
   it('registers exactly one model-facing tool', () => {
@@ -33,7 +47,9 @@ describe('dsh-inbox host half', () => {
     await expect(tool.execute({}, {})).resolves.toEqual({
       ok: true,
       package: PACKAGE_NAME,
-      milestone: 'M0',
+      milestone: MILESTONE,
+      vaultOpen: false,
+      items: 0,
     })
   })
 })

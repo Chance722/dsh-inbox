@@ -8,7 +8,7 @@
 | # | 模块 | 目标 | 验收标准 | 状态 |
 |---|---|---|---|---|
 | M0 | 插件骨架 spike | 打掉最大不确定性：第三方插件到底能不能长出 UI 和工具 | ① `dsh --profile inbox` 起得来；② 左栏出现 Inbox 图标，点开是占满主区域的页面；③ 对话里模型能调用一个最小工具并拿到结果；④ 实测到的真实 API 形态回写 `docs/help/dsh-plugin-platform.md` | 已验收 |
-| M1 | 数据模型与存储 | 仓库的持久层 | SQLite schema（items / attachments / tags / sync_state）+ CRUD + 关键词查询；vitest 单测全绿；库文件落在 DSH_HOME 下 | 未开始 |
+| M1 | 数据模型与存储 | 仓库的持久层 | 域 spec（items / attachments / global）+ CRUD + 关键词查询；vitest 单测全绿；库落在 DSH_HOME 的 storages 下 | 已验收 |
 | M2 | 捕获入库 | 东西进得来 | 面板粘贴/拖拽文本、图片、链接各一条能入库；聊天框前缀转存能入库；重复项按规则合并 | 未开始 |
 | M3 | 侧栏面板 | 看得见、管得动 | 列表 + 按类目/标签/未读筛选 + 详情 + 改备注与类目 + 标记已读 + 软删/回收站 | 未开始 |
 | M4 | 对话工具与卡片 | 对话里取得到 | 检索/取回接口按约定返回（文本截断 1000 字、图片缩略图、链接卡、列表 10 条 + 还有 N 条）；截图留证 | 未开始 |
@@ -46,3 +46,24 @@
 
 - 客户端 `ctx.get('slots')` 目前没有强类型（未引入 `@deepseek-ai/dsh-client-ui-slots` 类型包），M1 前评估是否补上。
 - preset 的自动装配（复制 standard + 追加行 + 切默认）还没做成 `init` 命令，属 M7 范围；开发期用手工步骤，见 `docs/help/dev-setup.md`。
+
+### M1 — 数据模型与存储（2026-09-19，已验收）
+
+**做到了什么**
+
+- 存储改用官方 `ctx.storageDomain`（产品决策变更：原计划自建 SQLite 作废，理由见 `docs/help/vault-data-model.md`）。域 `dsh_inbox`，`per-record` 布局，zod 校验，版本 1。
+- 三张声明：`items`（元数据 + 分类 + 标签 + 附件引用）、`attachments`（sha256/mime/bytes，字节存哪由 M2 定）、`global.sync`（M6 用）。
+- `Vault` 门面：create / get / list / patch / setRead / softDelete / restore / addAttachment / global / close。
+- 纯函数查询层 `selectItems`：跨字段 AND、同字段 OR、标签全命中、软删默认排除、createdAt 倒序 + limit/offset（排序后分页）。
+- 词表拆到 `src/shared/vocabulary.ts`（无 zod），因为客户端半边不能把 schema 库拖进浏览器产物。
+
+**证据**
+
+- `pnpm test`：3 个文件 18 条全绿，其中 `test/vault.test.ts` 的 7 条跑的是**真实存储栈**（Cordis + storage hub + json 后端 + domain form，临时目录），覆盖写入、重开持久化、per-record 一记录一文档、软删/恢复、附件元数据、global 槽、缺 key 报错。
+- `pnpm typecheck` 干净；`pnpm build` 产出 `lib/index.js` 10.2 KB、`lib/client.js` 3.2 KB，zod 保持 external（产物里没有 zod 代码）。
+- 端到端：`dsh --profile inbox-m0 "Call the inbox_status tool..."` → `dsh-inbox (M1): vault open, 0 record(s).`，且 `--dump-config` 确认 web 形态的 `inbox` profile 里挂着 storage / storage-json / storage-domain 三行。
+
+**遗留问题**
+
+- 空库不落盘（第一次写入才物化 `~/.dsh/storages/dsh_inbox/`），M2 首次入库时验证这个目录真的出现。
+- 标签目前只是 item 上的字符串数组，没有独立标签表——等到需要"重命名标签""标签颜色"这类元数据再加，加了要动域版本。

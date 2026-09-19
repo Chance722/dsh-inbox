@@ -48,6 +48,8 @@ prototypes/    原型（*.prototype.html）
 7. **同步红线**：上云只有密文；主密码永不上传；附件（在 DSH_HOME 下）必须随同步包一起走。
 8. **数据事实只认实测**：dsh 处于 rc 阶段（本机 0.1.5-rc.2），API 会变。写 dsh 相关代码前先查 `docs/help/dsh-plugin-platform.md`；该文档与代码冲突时以 `.research/` 里的官方源码为准，并回改文档。
 9. **文档语言**：代码与标识符英文，代码注释中文；文档中英双份（`README.md` + `README.zh.md`），`AGENTS.md`/`docs/` 用中文。
+10. **持久化只走 `ctx.storageDomain`**：不自己开文件、SQLite 或别的存储；域 spec 的 schema 演进见 `docs/help/vault-data-model.md`。
+11. **客户端半边不许引入宿主依赖**：`src/client/**` 只能 import React、平台静态模块表里的包，以及 `src/shared/` 下的纯常量（不许 zod、不许 `node:*`、不许 `@deepseek-ai/dsh-*`），否则浏览器产物会在加载期炸。
 
 ## 常用命令
 

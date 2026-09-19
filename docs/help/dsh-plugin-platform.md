@@ -117,3 +117,37 @@ window.__ModuleLoader__.load({
 ### pnpm 11 的构建脚本白名单
 
 `package.json` 里的 `pnpm` 字段已不再被读取；`onlyBuiltDependencies` 必须写进 **`pnpm-workspace.yaml`**。否则 esbuild 的原生二进制装不上，且每次 `pnpm run` 都会因依赖状态检查失败而报 `ERR_PNPM_IGNORED_BUILDS`。
+
+## M1 实测补充（存储栈，2026-09-19）
+
+### 存储三件套不用我们挂
+
+`dsh-base` 已经挂了 `storage` + `storage-json`（`root: dshHomePath('storages')`）+ `storage-domain`（`backend: json`）。第三方插件只要声明 `inject: ['storageDomain']`，就能直接 `await ctx.storageDomain.open(spec)`——**零配置**，数据落在 `~/.dsh/storages/<域名>/`。
+
+### 域名规则是硬的
+
+`defineDomain` 在**模块加载时**就校验，域名必须匹配 `/^[a-z][a-z0-9_]*$/`——**连字符会被拒**（`dsh-inbox` 直接抛错，`dsh_inbox` 才行）。表名同规则。同理它会拒绝"接受 null 的 global schema"（因为后端用 `null` 当"从未写入"的哨兵）。
+
+### 域 API 的真实形状
+
+- `domain.table(name)` → `get(key)` / `entries()` / `keys()` / `size` / `put(key, value)` / `delete(key)` / `update(key, fn)`
+- `domain.global.get()` / `set(value)`
+- 读是**同步**的（来自内存）；写排队走单条写链 → **先落盘** → 再改内存 → 发 `domain/changed`
+- 没有查询语言，没有索引，没有跨表事务
+- 域记录的 schema 用 **zod**（`^4.4.3`），而插件的 `Config` 用 schemastery——两套库并存，别搞混
+
+### 在单测里跑真实存储栈
+
+不用起 dsh，直接在 vitest 里组一个 Cordis 应用即可（实测可行）：
+
+```ts
+const ctx = new Context()
+await ctx.plugin(Storage).await()                            // 默认导出就是 Service 类
+await ctx.plugin(storageJson, { root: tmpdir }).await()      // 命名空间对象（apply/inject/Config）
+await ctx.plugin(storageDomain, { backend: 'json' }).await()
+const vault = await Vault.open(ctx)
+```
+
+注意 `@deepseek-ai/dsh-storage` 是**默认导出**（Service 类），另外两个是带 `apply` 的插件对象——传错形状 TypeScript 会当场报 `Plugin` 不匹配。
+
+宿主半边的构建要把 `zod` 也设为 external：它是我们自己的运行时依赖，打两份 zod 进产物既浪费又可能出现两个实例。

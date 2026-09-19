@@ -2,17 +2,28 @@
 
 English | [中文](README.zh.md)
 
-> **Status: pre-alpha — M0 done.** The plugin skeleton works: a sidebar entry, a full-page panel, and one tool the model can call. There is no vault yet. Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
+> **Status: pre-alpha — M0 and M1 done.** The plugin skeleton works and the vault can store and query records. Nothing is pasted or classified yet. Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
 
 A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`): paste links, images, text and credentials into one local vault, get them classified, browse them from the sidebar, and pull them back through conversation.
 
-## What works today (M0)
+## What works today (M1)
 
 | | |
 |---|---|
 | ✅ Sidebar entry | An **Inbox** row appears under *Global panels*; clicking it swaps the main area to the plugin's page |
-| ✅ Tool reaches the model | `inbox_status` is registered and callable in conversation |
-| ❌ Not yet | Capture, storage, classification, search — these arrive with M1–M6 |
+| ✅ Tool reaches the model | `inbox_status` reports whether the vault is open and how many records it holds |
+| ✅ Storage and query | Records persist through dsh's own storage stack; filtering, soft delete and restore are implemented and unit-tested |
+| ❌ Not yet | Capture, classification, the vault list UI, sync — these arrive with M2–M6 |
+
+### Where your data lives
+
+The vault is a domain (`dsh_inbox`) on dsh's JSON storage backend, one document per record:
+
+```
+~/.dsh/storages/dsh_inbox/
+```
+
+It is created on the first write. Nothing in it is ever sent anywhere by this plugin — see the privacy rules below.
 
 ## What it will do
 
@@ -63,7 +74,13 @@ rm -r ~/.dsh/profiles/inbox        # the isolated profile
 rm -r ~/.dsh/.agent-presets/inbox-m0   # only if you created the test preset
 ```
 
-Nothing is installed into `dsh` itself and no global state is touched, so removing those two directories is a complete uninstall.
+**Uninstalling does not delete your vault.** If you also want the records gone:
+
+```powershell
+rm -r ~/.dsh/storages/dsh_inbox
+```
+
+Nothing is installed into `dsh` itself and no global state is touched, so removing the profile directory is a complete uninstall of the plugin.
 
 ## Development
 
