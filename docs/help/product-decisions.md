@@ -20,12 +20,21 @@
 
 ## 存储与同步
 
-- 本地为准（自建 SQLite）；导出/备份是兜底。
+- 本地为准：**走 dsh 自己的存储域 `dsh_inbox`**（`ctx.storageDomain`，JSON 后端），不自己开文件或 SQLite——2026-09-19 修正，此前这条写的是"自建 SQLite"，与实现和 `AGENTS.md` 第 10 条都矛盾。导出/备份仍留作兜底。
 - WebDAV 走**单向摄取**（远端 `inbox/` 目录 → PC 启动拉取 → 分类入库）进 v1；双向同步二期。
 - 上云只有密文；**主密码永不上传**，初始化生成恢复码让用户抄下来。
 - 附件必须随同步包一起走。
 - **不依赖 WebDAV 自定义属性（PROPPATCH）**——手机端文件管理器不会实现它；用目录约定 + sidecar 元数据。
-- 数据胶囊只是"一个支持 WebDAV 的地方"，设计只绑协议（其 WebDAV 能力由用户侧确认，我方未能独立验证）。
+- 远端是**两条协议同一件事**：WebDAV 与 S3 共用一条摄取链路，都只读、单向。数据胶囊已实测通过（S3 与 WebDAV 指向同一份存储）；其网关**按 `User-Agent` 认客户端**，AccessKey 绑在哪个"应用"上就得自称哪个应用——标识因此是设置项、且**按协议各存一份**。实测矩阵见 `docs/help/remote-gateway-compat.md`。
+
+## 界面形态（2026-09-19 决定，M7）
+
+- **v1 现状**：仓库是主区域的一个面板（`sidebar.panellist` 图标入口 + `main` keyed slot 整页）。
+- **M7 定为「B + A」**：
+  - **A 主区域管理页**：全屏管理（分页、批量、编辑）。
+  - **B 右侧 dock 的一个 tab**（日常）：与对话并排常驻，官方一等扩展点（`ctx.sidebarRightTabs.register` + `sidebar.right.pane.tab`）。
+- **否掉「左侧切换」（用户最初的设想）**：左侧会话列表那一格是 `sidebar.workspaces`，**single 坑位且已被官方 ui-workspace 占用**（合同注释原话 "declaring is claiming"），接管等于自己实现会话列表、搜索、workspace 对话框与状态点，且 dsh 一升级我们就要跟。右侧 dock 能给出同样的"和入口一样在侧边"体验，代价小一个数量级。
+- **界面先做原型再动手**：四个结构不同的方案放在 `docs/prototype/2026-09-19-inbox-ui.prototype.html`，由用户敲定后再进实现。
 
 ## 隐私红线
 
@@ -63,6 +72,6 @@
 ## 工程选择（我方决定，用户已认可）
 
 - 中英双 README（跟官方 `README.md` + `README.zh.md` 惯例）；MIT；pnpm。
-- 存储自建 SQLite（`node:sqlite`），不塞进 dsh 的 JSON 存储层。
+- 存储走 dsh 的存储域（JSON 后端），不自己开 SQLite——见上面「存储与同步」的修正。
 - 打包 tsdown，测试 vitest（官方同款）。
 - 开发总线 `docs/feature/dev-bus.md`。

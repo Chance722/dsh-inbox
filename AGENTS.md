@@ -6,7 +6,7 @@
 
 - **一句话**：dsh-inbox 是 DeepSeek Harness（dsh）的插件，把日常复制粘贴的链接、图片、文本、账密收进一个本地仓库，自动分类、可在侧栏浏览、可在 dsh 对话里检索取回。
 - **面向谁**：公开 npm 包 `@duoyu/dsh-inbox`，任何人都能像装社区插件一样安装。
-- **当前阶段**：M0 之前（spike 未跑）。阶段与验收标准见 `docs/feature/dev-bus.md`。
+- **当前阶段**：M0–M6 已验收；**M7（界面升级）进行中**，M8（打包与一键安装）未开始。阶段与验收标准见 `docs/feature/dev-bus.md`。
 - **平台**：代码跨平台；**v1 只在 Windows 实测验收**，macOS/Linux 未验证（README 需如实写明）。
 - **包名**：`@duoyu/dsh-inbox`。
 
@@ -33,7 +33,7 @@ docs/
   help/        知识文档（单点主题）+ index.md
   feature/     特性开发文档（dev-bus.md、阶段验收记录）
   handoff/     交接文档
-prototypes/    原型（*.prototype.html）
+  prototype/   界面原型（*.prototype.html，一次性，双击预览）
 .research/     官方 dsh 分发的临时参考副本（已 gitignore，用完删除）
 ```
 
@@ -91,7 +91,7 @@ prototypes/    原型（*.prototype.html）
 - `docs/help/` — 知识文档（单点主题 `{topic}.md` + 索引 `index.md`），AGENTS.md 只记「主题 → 路径」，按需读取
 - `docs/feature/` — 特性开发文档（开发总线、阶段验收记录）
 - `docs/handoff/` — 交接文档（`{YYYY-MM-DD}-{topic}.md`，由 handoff 流程生成）
-- `prototypes/` — 根目录原型设计文件（`*.prototype.html`，文件名带日期，本地双击预览）
+- `docs/prototype/` — 界面原型（`*.prototype.html`，文件名带日期，本地双击预览；一次性代码，不是产品的一部分）
 
 ### 通用工作方式（独立判断基线）
 

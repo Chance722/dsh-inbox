@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-> **状态：pre-alpha，M0–M6 已完成。** 两个口能存、面板里能翻能管、对话里能直接问、**存进来的东西已经分好类**（规则优先，`deepseek-flash` 兜底），**别的设备还能通过 WebDAV 或 S3 往里扔**。下一步是打包与一键安装（M7）。进度和验收记录在[开发总线](docs/feature/dev-bus.md)。
+> **状态：pre-alpha，M0–M6 已完成，正在做 M7（界面升级）。** 两个口能存、面板里能翻能管、对话里能直接问、**存进来的东西已经分好类**（规则优先，`deepseek-flash` 兜底），**别的设备还能通过 WebDAV 或 S3 往里扔**。M7 会把仓库同时挂到右侧 dock 并重做主区域管理页（含分页），打包与一键安装顺延为 M8。进度和验收记录在[开发总线](docs/feature/dev-bus.md)。
 
 给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）做的个人收件箱插件：把链接、图片、文本、账密粘进一个本地仓库，自动分类，侧栏里能翻，对话里能取回来。
 
