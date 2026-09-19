@@ -199,8 +199,13 @@ const actionStyle: React.CSSProperties = {
 /** The one thing a pane most wants you to do. */
 const primaryStyle: React.CSSProperties = {
   ...actionStyle,
-  background: 'currentColor',
-  color: 'Canvas',
+  // Deliberately *not* an inverted fill. `background: currentColor; color:
+  // Canvas` looked right until it rendered white-on-white: `Canvas` is the
+  // canvas colour, which is white in a document that never declared a dark
+  // scheme. Text stays the inherited colour, on a fill strong enough to read as
+  // the primary action.
+  background: 'color-mix(in srgb, currentColor 20%, transparent)',
+  borderColor: 'color-mix(in srgb, currentColor 55%, transparent)',
   fontWeight: 600,
 }
 
@@ -1746,13 +1751,17 @@ function EntryCard({
   const secret = entry.category === 'secret'
   const heading = secret ? '密钥 / 账密' : (entry.title ?? entry.url ?? entry.preview ?? '（无标题）')
   const compact = mode === 'compact'
-  const grid = mode === 'grid'
-  /** Only things that have a picture get a poster; a text note gets a band. */
-  const visual = entry.kind === 'image' || entry.platform === 'bilibili' || entry.platform === 'xiaoyuzhou'
   const hairline = 'color-mix(in srgb, currentColor 10%, transparent)'
   const accent = 'color-mix(in srgb, currentColor 45%, transparent)'
 
-  const tile = (
+  /**
+   * The glyph keeps its own square slot.
+   *
+   * It is the record's *type*, and it answers a different question than the
+   * picture does — so a record with a thumbnail shows both, side by side,
+   * instead of one replacing the other.
+   */
+  const glyph = (
     <span
       aria-hidden
       style={{
@@ -1760,29 +1769,39 @@ function EntryCard({
         display: 'grid',
         placeItems: 'center',
         background: tileBackground(entry),
-        width: grid ? '100%' : compact ? 36 : 104,
-        height: grid ? (visual ? 132 : 64) : compact ? 36 : 82,
-        borderRadius: grid ? 0 : compact ? 6 : 8,
-        ...(grid
-          ? { borderBottom: `1px solid ${hairline}` }
-          : { borderRight: `1px solid ${hairline}` }),
-        ...(compact ? { margin: '6px 0 6px 10px' } : {}),
-        // Rows put the picture on the right; the grid puts it on top.
-        ...(grid ? {} : { order: 2 }),
+        width: compact ? 28 : 34,
+        height: compact ? 28 : 34,
+        borderRadius: 8,
+        border: `1px solid ${hairline}`,
       }}
     >
-      {entry.thumbnailId === undefined ? (
-        <span style={{ display: 'grid', placeItems: 'center' }}>{kindGlyph(entry)}</span>
-      ) : (
-        <img
-          src={`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}?id=${encodeURIComponent(entry.thumbnailId)}`}
-          alt=""
-          loading="lazy"
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-        />
-      )}
+      {kindGlyph(entry)}
     </span>
   )
+
+  /**
+   * The picture has a slot of its own, on the right of the card, square and
+   * cropped — not a full-width poster. A phone photo is portrait and a video
+   * still is landscape, so a fixed band would either letterbox one or crop the
+   * other into nonsense.
+   */
+  const thumbnail =
+    entry.thumbnailId === undefined || compact ? null : (
+      <img
+        src={`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}?id=${encodeURIComponent(entry.thumbnailId)}`}
+        alt=""
+        loading="lazy"
+        style={{
+          flex: 'none',
+          width: 64,
+          height: 64,
+          objectFit: 'cover',
+          objectPosition: 'center',
+          borderRadius: 8,
+          border: `1px solid ${hairline}`,
+        }}
+      />
+    )
 
   return (
     <button
@@ -1791,8 +1810,8 @@ function EntryCard({
       style={{
         position: 'relative',
         display: 'flex',
-        flexDirection: grid ? 'column' : 'row',
-        alignItems: compact ? 'center' : grid ? 'stretch' : 'stretch',
+        alignItems: 'center',
+        gap: compact ? 8 : 10,
         width: '100%',
         textAlign: 'left',
         font: 'inherit',
@@ -1806,10 +1825,9 @@ function EntryCard({
           ? { border: 'none', borderBottom: `1px solid ${hairline}`, borderRadius: 0 }
           : {
               border: `1px solid ${selected ? accent : hairline}`,
-              borderRadius: 12,
-              overflow: 'hidden',
+              borderRadius: 10,
             }),
-        padding: 0,
+        padding: compact ? '5px 10px' : '9px 10px',
         cursor: 'pointer',
         opacity: 1,
       }}
@@ -1820,19 +1838,30 @@ function EntryCard({
           style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: accent }}
         />
       )}
-      {tile}
+      {glyph}
       <span
         style={{
           minWidth: 0,
           flex: 1,
           display: 'flex',
-          flexDirection: compact ? 'row' : 'column',
-          alignItems: compact ? 'center' : 'stretch',
-          gap: compact ? 8 : 5,
-          padding: compact ? '6px 12px 6px 8px' : '9px 12px',
-          ...(grid ? {} : { order: 1 }),
+          flexDirection: 'column',
+          gap: 3,
         }}
       >
+        {/* The type is a badge in the corner, where a reader looks for "what is
+            this" before "what is it about". */}
+        <span
+          style={{
+            alignSelf: 'flex-start',
+            border: `1px solid ${hairline}`,
+            borderRadius: 5,
+            padding: '0 5px',
+            fontSize: 11,
+            opacity: 0.85,
+          }}
+        >
+          {KIND_LABELS[entry.kind]}
+        </span>
         {/*
           One line each, ellipsised. A card whose height depends on how long its
           URL is turns the list into a ragged column you cannot scan — and in a
@@ -1896,6 +1925,7 @@ function EntryCard({
           )}
         </span>
       </span>
+      {thumbnail}
     </button>
   )
 }
@@ -2049,6 +2079,10 @@ function EntryPane({
               display: 'inline-flex',
               alignItems: 'center',
               gap: 4,
+              // Never let the flex row squeeze the chips to nothing: the input
+              // next to them grows, and these were collapsing to zero width.
+              flex: 'none',
+              background: 'color-mix(in srgb, currentColor 9%, transparent)',
               border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
               borderRadius: 999,
               padding: '1px 4px 1px 8px',
