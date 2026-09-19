@@ -16,5 +16,6 @@
 | 2026-09-19 | `c7103ec` | 初始化：AGENTS.md / CLAUDE.md / docs 骨架 / 两份知识文档 |
 | 2026-09-19 | `077bb9b` | M0 验收：新增 `dev-setup.md`，`dsh-plugin-platform.md` 补 8 条实测结论，dev-bus 记 M0 验收 |
 | 2026-09-19 | `46dc8eb` | README 补安装/卸载/开发章节；规范新增「每个模块收尾必须同步 README 四节」 |
+| 2026-09-19 | `befd406` | M1 验收：新增 `vault-data-model.md`，平台文档补存储栈实测，README 补数据位置与卸载说明 |
 
 > 锚点必须是**已提交的 HEAD**；每次维护最多保留 5 条。
