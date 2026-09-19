@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>原型 v2 · 三栏分诊 + 卡片列表（假数据，不是产品 UI）</title>
+<!--
+  原型 · 一次性代码 · 不是产品的一部分。
+
+  上一版（2026-09-19-inbox-ui.prototype.html）四个方案里，用户选了 A「三栏分诊」，
+  并提了四条修改：
+    1. 选定类目后的内容要改成**卡片列表**，点卡片才在右侧 dock 出详情，卡片要有高亮态；
+    2. 卡片外框统一，**内容按类别不同**（文本 / 图片 / 链接 / 视频音频 / 文件 / 密钥）；
+    3. 图片与视频要能**放大查看**（灯箱）；
+    4. 右上角「入库设置」改成**弹窗**；顺带问能不能用开源图标库 —— 本文件用的就是
+       Lucide（ISC，v1.47.0）的真实路径数据，内联在这里，所以离线也能看。
+
+  本版回答的是「卡片长什么样」：同一套三栏结构下三种卡片处理方式，底部浮条切换
+  （V1 单列媒体卡 / V2 双列卡片网格 / V3 紧凑卡片行），其余（右 dock 详情、灯箱、设置弹窗）三者相同。
+-->
+<style>
+  :root {
+    --bg: #151517; --l1: #232324; --l2: #2c2c2e; --l3: #353638;
+    --fg: #f9fafb; --cap: #81858c; --dim: #6b6f76;
+    --b1: #ffffff0f; --b2: #ffffff1f; --b3: #ffffff2e;
+    --hover: #ffffff14; --active: #ffffff24;
+    --accent: #6e9ef7; --warn: #e0b341; --danger: #e5695f; --ok: #5fb87a;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: "SF Mono", "JetBrains Mono", Consolas, Menlo, "Microsoft YaHei", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: #0d0d0e; color: var(--fg); font: 13px/1.55 var(--font); -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  input, select { font: inherit; color: inherit; }
+  svg { flex: none; vertical-align: -2px; }
+  .mono { font-family: var(--mono); }
+  .muted { color: var(--cap); } .tiny { font-size: 11px; }
+  .grow { flex: 1; } .row { display: flex; align-items: center; gap: 8px; }
+
+  .wrap { padding: 10px; height: 100%; }
+  .frame { height: 100%; border: 1px solid var(--b2); border-radius: 12px; overflow: hidden; background: var(--bg); display: flex; flex-direction: column; position: relative; }
+  .banner { display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: linear-gradient(90deg, #2a2413, #1c1a13); border-bottom: 1px solid var(--b2); font-size: 12px; color: #e8d9a8; flex: none; }
+  .banner b { color: #ffe9a8; }
+  .banner .kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border: 1px solid var(--b2); border-radius: 4px; }
+  .shell { flex: 1; min-height: 0; display: flex; }
+
+  /* 左侧会话栏：dsh 原样，不是候选设计 */
+  .side { width: 228px; flex: none; border-right: 1px solid var(--b1); display: flex; flex-direction: column; }
+  .side .row-btn { padding: 6px 10px; border-radius: 6px; text-align: left; display: flex; gap: 8px; align-items: center; }
+  .side .row-btn:hover { background: var(--hover); }
+  .side .row-btn.on { background: var(--active); }
+  .side-h { font-size: 11px; color: var(--cap); padding: 10px 12px 4px; }
+  .sess { padding: 5px 12px; border-radius: 6px; color: var(--cap); display: flex; justify-content: space-between; gap: 6px; font-size: 12px; }
+  .sess.on { background: var(--hover); color: var(--fg); }
+  .side-foot { margin-top: auto; padding: 9px 12px; border-top: 1px solid var(--b1); color: var(--cap); font-size: 12px; }
+
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .dock { width: 404px; flex: none; border-left: 1px solid var(--b1); background: var(--l1); display: flex; flex-direction: column; }
+  .dock.closed { display: none; }
+  .bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--b1); flex: none; min-height: 46px; }
+  .title { font-weight: 600; }
+  .btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border: 1px solid var(--b2); border-radius: 8px; font-size: 12px; }
+  .btn:hover { background: var(--hover); }
+  .btn.icon { padding: 5px 7px; }
+  .btn.primary { background: var(--fg); color: #16161a; border-color: var(--fg); font-weight: 600; }
+  .btn.ghost { border-color: transparent; color: var(--cap); }
+  .btn.ghost:hover { color: var(--fg); background: var(--hover); }
+  .btn.sm { padding: 3px 8px; font-size: 11px; border-radius: 6px; }
+  input.search { flex: 1; background: var(--l1); border: 1px solid var(--b1); border-radius: 8px; padding: 6px 10px; min-width: 90px; }
+  input.search::placeholder { color: var(--dim); }
+  .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border: 1px solid var(--b1); border-radius: 999px; color: var(--cap); font-size: 12px; }
+  .chip:hover { background: var(--hover); color: var(--fg); }
+  .chip.on { background: var(--active); color: var(--fg); border-color: var(--b2); }
+
+  /* 左侧类目栏 */
+  .rail { width: 190px; flex: none; border-right: 1px solid var(--b1); padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+  .rail .item { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 8px; color: var(--cap); text-align: left; }
+  .rail .item:hover { background: var(--hover); color: var(--fg); }
+  .rail .item.on { background: var(--active); color: var(--fg); }
+  .rail .item .n { margin-left: auto; font-size: 11px; opacity: .7; }
+  .rail-h { font-size: 11px; color: var(--cap); padding: 10px 9px 4px; }
+
+  .scroll { flex: 1; min-height: 0; overflow: auto; }
+  .pager { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--b1); color: var(--cap); font-size: 12px; flex: none; }
+  .empty { padding: 40px 16px; text-align: center; color: var(--cap); }
+
+  /* ---------- 卡片（三种处理方式共用同一份内容模型） ---------- */
+  .card { position: relative; border: 1px solid var(--b1); background: var(--l1); border-radius: 12px; text-align: left; width: 100%; display: flex; overflow: hidden; }
+  .card:hover { border-color: var(--b2); background: var(--l2); }
+  .card.on { border-color: var(--accent); background: var(--l2); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .card.on::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); }
+  .card .thumb { flex: none; background: repeating-linear-gradient(135deg, #2f3238 0 10px, #292c31 10px 20px); display: flex; align-items: center; justify-content: center; color: var(--dim); border-right: 1px solid var(--b1); }
+  .card .body { padding: 10px 12px; min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 5px; }
+  .card .t { font-size: 13px; color: var(--fg); display: block; overflow: hidden; text-overflow: ellipsis; }
+  .card .sub { color: var(--cap); font-size: 12px; display: block; overflow: hidden; text-overflow: ellipsis; }
+  .card .meta { display: flex; align-items: center; gap: 6px; color: var(--dim); font-size: 11px; flex-wrap: wrap; }
+  .card .kind { display: inline-flex; align-items: center; gap: 4px; }
+  .play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .play i { width: 30px; height: 30px; border-radius: 50%; background: #000000a8; border: 1px solid #ffffff40; display: flex; align-items: center; justify-content: center; }
+  .poster { background: linear-gradient(135deg, #3a3f47, #23262b); }
+  .shot { background: linear-gradient(135deg, #3d3a33, #26241f); }
+  .masked { font-family: var(--mono); letter-spacing: .5px; background: var(--l3); border-radius: 6px; padding: 5px 8px; color: var(--cap); }
+  .v1list { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+  .v1 .thumb { width: 104px; min-height: 78px; }
+  .v2grid { padding: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-content: start; }
+  .v2 .card { flex-direction: column; }
+  .v2 .thumb { width: 100%; height: 132px; border-right: none; border-bottom: 1px solid var(--b1); }
+  .v3list { padding: 6px 0; }
+  .v3 .card { border-radius: 0; border-left: none; border-right: none; border-bottom: none; padding: 0; }
+  .v3 .card { border-bottom: 1px solid var(--b1); background: transparent; }
+  .v3 .card.on { background: var(--l2); }
+  .v3 .card .body { padding: 7px 12px; gap: 2px; flex-direction: row; align-items: center; }
+  .v3 .thumb { width: 30px; min-height: 30px; border-radius: 6px; border: 1px solid var(--b1); margin: 6px 0 6px 10px; }
+  .v3 .t { flex: 1; white-space: nowrap; }
+
+  /* 右 dock 详情 */
+  .preview { border-bottom: 1px solid var(--b1); padding: 12px; }
+  .preview .stage { border: 1px solid var(--b1); border-radius: 10px; height: 168px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+  .field { display: grid; grid-template-columns: 62px 1fr; gap: 4px 10px; font-size: 12px; }
+  .field b { color: var(--cap); font-weight: 400; }
+  .bodybox { background: var(--l2); border: 1px solid var(--b1); border-radius: 8px; padding: 9px 10px; white-space: pre-wrap; word-break: break-all; margin: 10px 0; }
+  .acts { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  /* 灯箱 */
+  .overlay { position: absolute; inset: 0; background: #000000cc; backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 20; }
+  .lightbox { width: min(880px, 92%); max-height: 88%; background: var(--bg); border: 1px solid var(--b3); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
+  .lightbox .stage { height: 440px; display: flex; align-items: center; justify-content: center; background: repeating-linear-gradient(135deg, #23262b 0 14px, #1d2024 14px 28px); position: relative; }
+  .lightbox .foot { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--b1); }
+
+  /* 设置弹窗 */
+  .modal { width: min(560px, 92%); background: var(--bg); border: 1px solid var(--b3); border-radius: 14px; overflow: hidden; }
+  .modal .hd { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--b1); }
+  .modal .bd { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .modal .ft { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--b1); }
+  .fld { display: flex; align-items: center; gap: 10px; }
+  .fld > span { width: 92px; color: var(--cap); font-size: 12px; flex: none; text-align: right; }
+  .fld input, .fld select { flex: 1; background: var(--l1); border: 1px solid var(--b1); border-radius: 8px; padding: 6px 9px; }
+  .tabs { display: flex; gap: 6px; }
+  .note { color: var(--cap); font-size: 11px; }
+  .status { color: var(--ok); font-size: 12px; }
+
+  #switcher { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 99; display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 999px; background: #000c; border: 1px solid #ffffff40; box-shadow: 0 8px 24px #000a; font-size: 12px; }
+  #switcher button { width: 26px; height: 26px; border-radius: 50%; background: #ffffff1a; display: flex; align-items: center; justify-content: center; }
+  #switcher button:hover { background: #ffffff33; }
+  #switcher .sub { color: #ffffff99; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="frame" id="frame">
+    <div class="banner">
+      <b>原型 v2</b><span>已按你的四条意见改：卡片列表 · 点卡片进右 dock · 图片/视频可放大 · 入库设置改弹窗</span>
+      <span class="grow"></span>
+      <span id="banner-why">—</span>
+      <span class="kbd">← →</span><span>换卡片样式</span>
+    </div>
+    <div class="shell">
+      <div class="side">
+        <div style="padding:8px 10px; display:flex; flex-direction:column; gap:4px">
+          <button class="row-btn"><span data-icon="plus"></span>新建会话</button>
+          <button class="row-btn on"><span data-icon="inbox"></span>Inbox</button>
+        </div>
+        <div class="side-h">工作区</div>
+        <div style="padding:0 10px 6px"><input class="search" style="width:100%" placeholder="搜索会话" /></div>
+        <div class="scroll">
+          <div class="sess"><span>dsh-inbox</span><span class="tiny">3小时</span></div>
+          <div class="sess on"><span>用 inbox 工具查询仓库未读</span></div>
+          <div class="sess"><span>s3 拉取 401 排查</span><span class="tiny">17小时</span></div>
+          <div class="sess"><span>M6c 文档收尾</span><span class="tiny">1天</span></div>
+        </div>
+        <div class="side-foot"><span data-icon="settings-2"></span> 设置</div>
+      </div>
+      <div class="main" id="main"></div>
+      <div class="dock" id="dock"></div>
+    </div>
+    <div id="overlay"></div>
+  </div>
+</div>
+
+<div id="switcher">
+  <button data-nav="-1"><span data-icon="chevron-left" data-size="15"></span></button>
+  <span id="sw-label">V1</span>
+  <span class="sub" id="sw-name"></span>
+  <button data-nav="1"><span data-icon="chevron-right" data-size="15"></span></button>
+</div>
+
+<script>
+/* Lucide v1.47.0（ISC）—— 真路径数据，内联以便离线双击预览。 */
+const ICONS = {
+  'inbox': '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />',
+  'folder': '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />',
+  'waypoints': '<path d="m10.586 5.414-5.172 5.172" /><path d="m18.586 13.414-5.172 5.172" /><path d="M6 12h12" /><circle cx="12" cy="20" r="2" /><circle cx="12" cy="4" r="2" /><circle cx="20" cy="12" r="2" /><circle cx="4" cy="12" r="2" />',
+  'search': '<path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" />',
+  'settings-2': '<path d="M14 17H5" /><path d="M19 7h-9" /><circle cx="17" cy="17" r="3" /><circle cx="7" cy="7" r="3" />',
+  'x': '<path d="M18 6 6 18" /><path d="m6 6 12 12" />',
+  'chevron-left': '<path d="m15 18-6-6 6-6" />',
+  'chevron-right': '<path d="m9 18 6-6-6-6" />',
+  'chevron-down': '<path d="m6 9 6 6 6-6" />',
+  'circle': '<circle cx="12" cy="12" r="10" />',
+  'circle-check': '<circle cx="12" cy="12" r="10" /><path d="m16 9-5.5 5.5L8 12" />',
+  'check': '<path d="M20 6 9 17l-5-5" />',
+  'trash-2': '<path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />',
+  'rotate-ccw': '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" />',
+  'tag': '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" /><circle cx="7.5" cy="7.5" r=".5" fill="currentColor" />',
+  'clock': '<circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />',
+  'image': '<rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />',
+  'film': '<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M7 3v18" /><path d="M3 7.5h4" /><path d="M3 12h18" /><path d="M3 16.5h4" /><path d="M17 3v18" /><path d="M17 7.5h4" /><path d="M17 16.5h4" />',
+  'music': '<path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />',
+  'file-text': '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" /><path d="M14 2v5a1 1 0 0 0 1 1h5" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" />',
+  'link-2': '<path d="M9 17H7A5 5 0 0 1 7 7h2" /><path d="M15 7h2a5 5 0 1 1 0 10h-2" /><line x1="8" x2="16" y1="12" y2="12" />',
+  'key-round': '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" /><circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />',
+  'id-card': '<path d="M13 19a4 4 0 00-8 0" /><path d="M16 10h2" /><path d="M16 14h2" /><circle cx="9" cy="12" r="3" /><rect x="2" y="5" width="20" height="14" rx="2" />',
+  'lightbulb': '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /><path d="M9 18h6" /><path d="M10 22h4" />',
+  'paperclip': '<path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551" />',
+  'external-link': '<path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />',
+  'play': '<path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />',
+  'zoom-in': '<circle cx="11" cy="11" r="8" /><line x1="21" x2="16.65" y1="21" y2="16.65" /><line x1="11" x2="11" y1="8" y2="14" /><line x1="8" x2="14" y1="11" y2="11" />',
+  'maximize-2': '<path d="M15 3h6v6" /><path d="m21 3-7 7" /><path d="m3 21 7-7" /><path d="M9 21H3v-6" />',
+  'sparkles': '<path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" />',
+  'ruler': '<path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z" /><path d="m14.5 12.5 2-2" /><path d="m11.5 9.5 2-2" /><path d="m8.5 6.5 2-2" /><path d="m17.5 15.5 2-2" />',
+  'user': '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />',
+  'shield-alert': '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="M12 8v4" /><path d="M12 16h.01" />',
+  'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />',
+  'refresh-cw': '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" />',
+  'sliders-horizontal': '<path d="M10 5H3" /><path d="M12 19H3" /><path d="M14 3v4" /><path d="M16 17v4" /><path d="M21 12h-9" /><path d="M21 19h-5" /><path d="M21 5h-7" /><path d="M8 10v4" /><path d="M8 12H3" />',
+  'plus': '<path d="M5 12h14" /><path d="M12 5v14" />',
+  'upload': '<path d="M12 3v12" /><path d="m17 8-5-5-5 5" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />',
+  'alert-triangle': '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" />',
+  'more-horizontal': '<circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" />',
+  'panel-right': '<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M15 3v18" />',
+  'layers': '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z" /><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12" /><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17" />',
+  'layout-grid': '<rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" /><rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" />',
+  'rows-3': '<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M21 9H3" /><path d="M21 15H3" />',
+  'copy': '<rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />',
+  'cloud': '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />',
+  'arrow-up-right': '<path d="M7 7h10v10" /><path d="M7 17 17 7" />',
+  'check-check': '<path d="M18 6 7 17l-5-5" /><path d="m22 10-7.5 7.5L13 16" />',
+  'circle-dashed': '<path d="M10.1 2.182a10 10 0 0 1 3.8 0" /><path d="M13.9 21.818a10 10 0 0 1-3.8 0" /><path d="M17.609 3.721a10 10 0 0 1 2.69 2.7" /><path d="M2.182 13.9a10 10 0 0 1 0-3.8" /><path d="M20.279 17.609a10 10 0 0 1-2.7 2.69" /><path d="M21.818 10.1a10 10 0 0 1 0 3.8" /><path d="M3.721 6.391a10 10 0 0 1 2.7-2.69" /><path d="M6.391 20.279a10 10 0 0 1-2.69-2.7" />',
+  'send': '<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" /><path d="m21.854 2.147-10.94 10.939" />',
+  'clipboard-paste': '<path d="M11 14h10" /><path d="M16 4h2a2 2 0 0 1 2 2v1.344" /><path d="m17 18 4-4-4-4" /><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 1.793-1.113" /><rect x="8" y="2" width="8" height="4" rx="1" />',
+};
+const icon = (name, size = 15) =>
+  `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] ?? ''}</svg>`;
+
+/* ============================ 假数据 ============================ */
+const CATS = [
+  ['idea', '灵感/待办', 'lightbulb'], ['article', '文章', 'file-text'], ['media', '视频/音频', 'film'],
+  ['image', '图片', 'image'], ['document', '证件', 'id-card'], ['secret', '密钥/账密', 'key-round'],
+  ['other', '其它', 'layers'],
+];
+const KIND = { text: '文本', link: '链接', image: '图片', file: '文件' };
+const KIND_ICON = { text: 'file-text', link: 'link-2', image: 'image', file: 'paperclip' };
+const SRC = { panel: '面板', chat: '对话', webdav: 'WebDAV', import: '导入' };
+const CATSOURCE = { rule: ['规则判的', 'ruler'], model: ['模型判的', 'sparkles'], user: ['你定', 'user'] };
+const cat = (id) => (CATS.find((c) => c[0] === id) ?? CATS[6])[1];
+const catIcon = (id) => (CATS.find((c) => c[0] === id) ?? CATS[6])[2];
+
+const PLATFORM = {
+  bilibili: { name: 'B 站', domain: 'bilibili.com', kind: 'video' },
+  wechat: { name: '公众号', domain: 'mp.weixin.qq.com', kind: 'article' },
+  zhihu: { name: '知乎', domain: 'zhihu.com', kind: 'article' },
+  xiaohongshu: { name: '小红书', domain: 'xiaohongshu.com', kind: 'article' },
+  maimai: { name: '脉脉', domain: 'maimai.cn', kind: 'article' },
+  xiaoyuzhou: { name: '小宇宙', domain: 'xiaoyuzhoufm.com', kind: 'audio' },
+  x: { name: 'X', domain: 'x.com', kind: 'article' },
+};
+
+let RECORDS = [
+  { id: 'r1', kind: 'link', category: 'media', catSource: 'rule', platform: 'bilibili', title: '十分钟讲清 HTTP/3 与 QUIC', url: 'https://www.bilibili.com/video/BV1yy411c7mE', status: 'unread', source: 'panel', tags: ['待看'], at: '2026-09-19 17:00', note: '先看这个，比书里讲得清楚', duration: '12:41' },
+  { id: 'r2', kind: 'image', category: 'document', catSource: 'rule', title: '', status: 'unread', source: 'webdav', tags: ['疑似证件'], at: '2026-09-19 16:41', att: 'IMG_9270.jpg · 1280×1708 · 278 KB', shot: true, note: '模型说像证件，我确认一下' },
+  { id: 'r3', kind: 'text', category: 'secret', catSource: 'rule', title: '', text: 'secretId=AKIAXWOIMIATPKRL5MXQ\nsecretKey=M********YE', status: 'unread', source: 'panel', tags: [], at: '2026-09-19 16:22', note: '数据胶囊 Obsidian 那把钥匙' },
+  { id: 'r4', kind: 'link', category: 'article', catSource: 'rule', platform: 'wechat', title: '为什么你的缓存策略总是出错', url: 'https://mp.weixin.qq.com/s/abc123', status: 'unread', source: 'chat', tags: ['缓存'], at: '2026-09-19 14:43' },
+  { id: 'r5', kind: 'text', category: 'idea', catSource: 'rule', title: '', text: '记得下个月把域名续费，顺便看看有没有更便宜的方案', status: 'unread', source: 'panel', tags: [], at: '2026-09-19 14:45' },
+  { id: 'r6', kind: 'text', category: 'idea', catSource: 'user', title: '', text: '下周三之前把上个月的发票报销掉，别忘了带抬头', status: 'unread', source: 'panel', tags: [], at: '2026-09-19 14:42' },
+  { id: 'r7', kind: 'image', category: 'image', catSource: 'rule', title: '发票（9 月）', status: 'read', source: 'panel', tags: ['报销'], at: '2026-09-19 14:27', att: 'IMG_9266.jpg · 3024×4032 · 2.1 MB', shot: true, note: '抬头是「多语工作室」' },
+  { id: 'r8', kind: 'link', category: 'article', catSource: 'rule', platform: 'zhihu', title: '如何评价 dsh 的插件化架构？', url: 'https://www.zhihu.com/question/1234567/answer/890', status: 'read', source: 'panel', tags: [], at: '2026-09-19 13:10' },
+  { id: 'r9', kind: 'file', category: 'other', catSource: 'model', title: 'S3 兼容性测试报告.pdf', status: 'read', source: 'panel', tags: ['工作'], at: '2026-09-19 12:58', att: 'report.pdf · 4.2 MB' },
+  { id: 'r10', kind: 'link', category: 'media', catSource: 'rule', platform: 'xiaoyuzhou', title: 'EP42 一个程序员的四年副业', url: 'https://www.xiaoyuzhoufm.com/episode/abc', status: 'unread', source: 'panel', tags: ['通勤听'], at: '2026-09-19 11:30', duration: '58:12' },
+  { id: 'r11', kind: 'text', category: 'other', catSource: 'user', title: '', text: 'if (!response.ok) throw await refusal(what, response)', status: 'read', source: 'panel', tags: ['代码'], at: '2026-09-19 10:12' },
+  { id: 'r12', kind: 'link', category: 'article', catSource: 'rule', platform: 'xiaohongshu', title: 'macOS 上 12 个提高效率的小工具', url: 'https://www.xiaohongshu.com/explore/xyz', status: 'unread', source: 'panel', tags: [], at: '2026-09-18 22:07' },
+  { id: 'r13', kind: 'link', category: 'article', catSource: 'rule', platform: 'maimai', title: '35 岁之后还能写代码吗', url: 'https://maimai.cn/web/feed_detail?fid=1', status: 'unread', source: 'panel', tags: [], at: '2026-09-18 21:15' },
+  { id: 'r14', kind: 'text', category: 'idea', catSource: 'user', title: '双链笔记的替代品？', text: '把 inbox 的类目当成最小标签集，别再引入第二套分类法', status: 'unread', source: 'chat', tags: [], at: '2026-09-18 20:02' },
+  { id: 'r15', kind: 'image', category: 'image', catSource: 'rule', title: '', status: 'read', source: 'panel', tags: [], at: '2026-09-18 18:40', att: 'IMG_9251.jpg · 1170×2532 · 1.4 MB', shot: true },
+  { id: 'r16', kind: 'link', category: 'other', catSource: 'model', platform: 'x', title: '一条关于 S3 网关鉴权的吐槽', url: 'https://x.com/i/status/123', status: 'unread', source: 'webdav', tags: [], at: '2026-09-18 15:20' },
+];
+
+const PER_PAGE = 6;
+let state = { filter: 'all', cat: null, q: '', sel: 'r1', page: 1, dock: true, secret: false, lightbox: null, modal: null, notice: '', protocol: 's3' };
+let VARIANT = 'V1';
+const VARIANTS = ['V1', 'V2', 'V3'];
+const VNAME = { V1: '单列媒体卡', V2: '双列卡片网格', V3: '紧凑卡片行' };
+const VWHY = {
+  V1: 'V1 单列媒体卡：一行一张，缩略图在左、文字在右 —— 扫读最快，图片/视频也有存在感',
+  V2: 'V2 双列网格：图片和视频给整块海报，最"好看"，但一屏能扫的条数少一半',
+  V3: 'V3 紧凑卡片行：去掉了大图，一条一行（32px），只为"两千条也不怕"',
+};
+
+/* ============================ 小工具 ============================ */
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const byId = (id) => RECORDS.find((r) => r.id === id);
+const day = (at) => at.slice(0, 10);
+const plat = (r) => (r.platform ? PLATFORM[r.platform] : undefined);
+const mediaKind = (r) => plat(r)?.kind;
+const isZoomable = (r) => Boolean(r.shot) || mediaKind(r) === 'video' || mediaKind(r) === 'audio' || r.kind === 'file';
+const unread = () => RECORDS.filter((r) => r.status === 'unread').length;
+const catCount = (id) => RECORDS.filter((r) => r.category === id).length;
+const pages = (n) => Math.max(1, Math.ceil(n / PER_PAGE));
+
+function matches(r) {
+  if (state.filter === 'unread' && r.status !== 'unread') return false;
+  if (state.cat && r.category !== state.cat) return false;
+  if (state.q) {
+    const hay = [r.title, r.text, r.url, r.note, plat(r)?.name, ...(r.tags || [])].join(' ').toLowerCase();
+    if (!hay.includes(state.q.toLowerCase())) return false;
+  }
+  return true;
+}
+const visible = () => RECORDS.filter(matches);
+
+/** 卡片标题：按类型给不同的默认文案。 */
+function heading(r) {
+  if (r.title) return esc(r.title);
+  if (r.category === 'secret') return '密钥 / 账密';
+  if (r.kind === 'image') return r.att ? esc(r.att.split(' · ')[0]) : '图片';
+  if (r.text) return esc(r.text.split('\n')[0].slice(0, 46));
+  return '<span class="muted">（无标题）</span>';
+}
+
+/** 卡片正文：这是"不同类别内容不同"的地方。 */
+function cardBody(r) {
+  const p = plat(r);
+  if (r.category === 'secret') {
+    return `<span class="masked tiny">•••••••••••••••• ••••••••</span>
+      <span class="meta">${icon('lock', 12)} 列表里不显示明文 · 对话里永不输出</span>`;
+  }
+  if (r.kind === 'image') {
+    return `<span class="sub">${esc(r.att ?? '1 个附件')}</span>
+      <span class="meta">${icon('zoom-in', 12)} 点开可放大${(r.tags || []).includes('疑似证件') ? ` · <span style="color:var(--warn)">${icon('shield-alert', 12)} 疑似证件</span>` : ''}</span>`;
+  }
+  if (r.kind === 'file') {
+    return `<span class="sub">${esc(r.att ?? '附件')}</span>
+      <span class="meta">${icon('paperclip', 12)} 文件 · 点开可预览/放大</span>`;
+  }
+  if (p && (p.kind === 'video' || p.kind === 'audio')) {
+    return `<span class="sub">${esc(p.name)} · ${esc(p.domain)}${r.duration ? ` · ${esc(r.duration)}` : ''}</span>
+      <span class="meta">${icon(p.kind === 'video' ? 'film' : 'music', 12)} ${p.kind === 'video' ? '视频' : '音频'} · ${icon('zoom-in', 12)} 可放大预览</span>`;
+  }
+  if (r.kind === 'link') {
+    return `<span class="sub">${esc(r.url)}</span>
+      <span class="meta">${icon('link-2', 12)} ${p ? esc(p.name) : '链接'}${r.note ? ` · ${esc(r.note)}` : ''}</span>`;
+  }
+  return `<span class="sub">${esc((r.text ?? '').slice(0, 88))}</span>`;
+}
+
+/** 卡片左边的缩略图/图章：同一外框，内容按类型。 */
+function cardThumb(r) {
+  const p = plat(r);
+  if (r.shot) return `<span class="thumb shot" style="position:relative">${icon('image', 18)}${state.lightbox ? '' : ''}</span>`;
+  if (p && p.kind === 'video') return `<span class="thumb poster" style="position:relative">${icon('film', 18)}<span class="play"><i>${icon('play', 12)}</i></span></span>`;
+  if (p && p.kind === 'audio') return `<span class="thumb poster" style="position:relative">${icon('music', 18)}<span class="play"><i>${icon('play', 12)}</i></span></span>`;
+  if (r.category === 'secret') return `<span class="thumb" style="background:var(--l3)">${icon('key-round', 18)}</span>`;
+  if (r.kind === 'file') return `<span class="thumb" style="background:var(--l3)">${icon('file-text', 18)}</span>`;
+  if (r.kind === 'link') return `<span class="thumb" style="background:var(--l3)">${icon('link-2', 18)}</span>`;
+  return `<span class="thumb" style="background:var(--l3)">${icon(KIND_ICON[r.kind], 18)}</span>`;
+}
+
+function card(r) {
+  const [srcLabel, srcIcon] = CATSOURCE[r.catSource] ?? CATSOURCE.rule;
+  return `<div class="card${r.id === state.sel ? ' on' : ''}" data-act="select" data-id="${r.id}">
+    ${cardThumb(r)}
+    <div class="body">
+      <span class="t">${heading(r)}</span>
+      ${cardBody(r)}
+      <span class="meta">
+        <span class="kind">${icon(catIcon(r.category), 12)} ${esc(cat(r.category))}</span> ·
+        <span class="kind">${icon(srcIcon, 12)} ${esc(srcLabel)}</span> ·
+        ${icon('clock', 12)} ${esc(r.at.slice(5, 16))}
+        ${(r.tags || []).map((t) => `<span style="color:var(--accent)">#${esc(t)}</span>`).join('')}
+        <span class="grow"></span>
+        ${r.status === 'unread' ? `<span style="color:var(--accent)">${icon('circle', 9)} 未读</span>` : `<span>${icon('check', 11)} 已读</span>`}
+      </span>
+    </div>
+  </div>`;
+}
+
+/* ============================ 右 dock 详情 ============================ */
+function previewStage(r, big = false) {
+  const p = plat(r);
+  const h = big ? 440 : 168;
+  if (r.shot) return `<div class="stage shot" style="height:${h}px">${icon('image', big ? 48 : 28)}</div>`;
+  if (p && (p.kind === 'video' || p.kind === 'audio')) {
+    return `<div class="stage poster" style="height:${h}px">${icon(p.kind === 'video' ? 'film' : 'music', big ? 46 : 26)}<span class="play"><i style="${big ? 'width:56px;height:56px' : ''}">${icon('play', big ? 22 : 12)}</i></span></div>`;
+  }
+  if (r.kind === 'file') return `<div class="stage" style="height:${h}px">${icon('file-text', big ? 46 : 28)}</div>`;
+  return '';
+}
+
+function dockDetail() {
+  const r = byId(state.sel);
+  if (!r) return '<div class="empty">选一张卡片看详情。</div>';
+  const p = plat(r);
+  const [srcLabel, srcIcon] = CATSOURCE[r.catSource] ?? CATSOURCE.rule;
+  const masked = r.category === 'secret' && !state.secret;
+  return `
+    ${previewStage(r)}
+    <div style="padding:12px" class="scroll">
+      <div class="row" style="align-items:flex-start; gap:8px">
+        <h3 style="margin:0;font-size:14px;flex:1">${r.title ? esc(r.title) : heading(r)}</h3>
+        ${isZoomable(r) ? `<button class="btn sm" data-act="lightbox" data-id="${r.id}">${icon('maximize-2', 13)} 放大</button>` : ''}
+      </div>
+      <div class="tiny muted" style="margin:6px 0 10px">${icon(catIcon(r.category), 12)} ${esc(cat(r.category))} · ${icon(srcIcon, 12)} ${esc(srcLabel)} · ${icon('clock', 12)} ${esc(r.at)} · 来源 ${esc(SRC[r.source])}</div>
+      ${r.url ? `<div class="row" style="gap:6px;margin-bottom:10px"><span class="mono tiny muted" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.url)}</span><button class="btn sm" data-act="open-link" data-id="${r.id}">${icon('external-link', 12)} 打开</button></div>` : ''}
+      ${r.text ? `<div class="bodybox${masked ? ' masked' : ''}" style="font-size:12px">${esc(masked ? '••••••••••••••••••••••••••••••••' : r.text)}</div>` : ''}
+      ${r.att ? `<div class="row tiny muted" style="margin-bottom:8px">${icon('paperclip', 12)} ${esc(r.att)}</div>` : ''}
+      <div class="note" style="margin-bottom:10px">描述（你写的永远优先于模型）：${esc(r.note || '—')}</div>
+      <div class="field" style="margin-bottom:12px">
+        <b>类目</b><span><select class="btn" data-act="set-cat" data-id="${r.id}" style="padding:3px 6px">${CATS.map(([id, label]) => `<option value="${id}"${id === r.category ? ' selected' : ''}>${label}</option>`).join('')}</select></span>
+        <b>标签</b><span>${(r.tags || []).map((t) => `<span class="chip" style="padding:1px 8px">${icon('tag', 11)} ${esc(t)}</span>`).join(' ') || '<span class="muted">—</span>'}</span>
+      </div>
+      <div class="acts">
+        <button class="btn" data-act="toggle-read" data-id="${r.id}">${r.status === 'unread' ? icon('check', 13) + ' 标为已读' : icon('circle', 13) + ' 标为未读'}</button>
+        ${r.category === 'secret' ? `<button class="btn" data-act="toggle-secret">${icon('key-round', 13)} ${state.secret ? '遮住明文' : '查看明文'}</button>` : ''}
+        <button class="btn" data-act="delete" data-id="${r.id}">${icon('trash-2', 13)} 删除</button>
+        <button class="btn ghost" data-act="toast" data-msg="真实实现里：这条会连同备注一起复制回剪贴板 / 或塞进对话输入框">${icon('clipboard-paste', 13)} 取回</button>
+      </div>
+    </div>`;
+}
+
+function dockHTML() {
+  return `<div class="bar" style="padding:6px 8px; gap:4px; min-height:40px">
+      <span class="chip on">${icon('inbox', 13)} 仓库</span>
+      <span class="chip">${icon('folder', 13)} 文件</span>
+      <span class="chip">${icon('waypoints', 13)} 轨迹</span>
+      <span class="grow"></span>
+      <button class="btn ghost icon" data-act="close-dock" title="收起右侧栏">${icon('x', 14)}</button>
+    </div>
+    <div class="scroll">${dockDetail()}</div>`;
+}
+
+/* ============================ 主区域 ============================ */
+function mainHTML() {
+  const list = visible();
+  const page = Math.min(state.page, pages(list.length));
+  const slice = list.slice((page - 1) * PER_PAGE, (page - 1) * PER_PAGE + PER_PAGE);
+  const rail = [['all', '全部', 'inbox', RECORDS.length], ['unread', '未读', 'circle', unread()], ['bin', '回收站', 'trash-2', 1]]
+    .map(([k, label, ic, n]) => `<button class="item${state.filter === k ? ' on' : ''}" data-act="filter" data-v="${k}">${icon(ic, 14)} ${label}<span class="n">${String(n)}</span></button>`).join('')
+    + '<div class="rail-h">类目</div>'
+    + CATS.map(([id, label, ic]) => `<button class="item${state.cat === id ? ' on' : ''}" data-act="cat" data-v="${id}">${icon(ic, 14)} ${label}<span class="n">${String(catCount(id))}</span></button>`).join('');
+
+  const cards = slice.length === 0
+    ? '<div class="empty">这个筛选下没有记录。</div>'
+    : slice.map(card).join('');
+
+  return `<div class="bar">
+      <span class="title">${icon('inbox', 15)} 仓库</span>
+      <span class="tiny muted">${String(list.length)} 条 · 未读 ${String(unread())}</span>
+      <span class="grow"></span>
+      <input class="search" id="q" placeholder="搜标题 / 正文 / 链接 / 标签" value="${esc(state.q)}" style="max-width:260px" />
+      <button class="btn" data-act="open-settings">${icon('sliders-horizontal', 14)} 入库设置</button>
+      ${state.dock ? '' : `<button class="btn ghost icon" data-act="open-dock" title="打开右栏">${icon('panel-right', 15)}</button>`}
+    </div>
+    <div class="shell" style="flex:1;min-height:0">
+      <div class="rail">${rail}</div>
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+        <div class="row" style="padding:8px 12px;gap:6px;border-bottom:1px solid var(--b1)">
+          <button class="chip${state.filter === 'all' && !state.cat ? ' on' : ''}" data-act="filter" data-v="all">${icon('inbox', 13)} 全部</button>
+          <button class="chip${state.filter === 'unread' ? ' on' : ''}" data-act="filter" data-v="unread">${icon('circle', 11)} 只看未读</button>
+          ${state.cat ? `<span class="chip on">${icon(catIcon(state.cat), 13)} ${esc(cat(state.cat))} <button data-act="cat" data-v="${state.cat}" style="opacity:.7">${icon('x', 12)}</button></span>` : ''}
+          <span class="grow"></span>
+          ${state.notice ? `<span class="status">${icon('check-check', 13)} ${esc(state.notice)}</span>` : ''}
+          <span class="tiny muted">${String(PER_PAGE)} 条/页</span>
+        </div>
+        <div class="scroll">
+          <div class="${VARIANT === 'V2' ? 'v2grid v2' : VARIANT === 'V3' ? 'v3list v3' : 'v1list v1'}">${cards}</div>
+        </div>
+        <div class="pager">
+          <span>第 ${String(page)} / ${String(pages(list.length))} 页 · 匹配 ${String(list.length)} 条</span>
+          <span class="grow"></span>
+          <button class="btn sm" data-act="page" data-v="${String(page - 1)}" ${page <= 1 ? 'disabled style="opacity:.4"' : ''}>${icon('chevron-left', 13)} 上一页</button>
+          <button class="btn sm" data-act="page" data-v="${String(page + 1)}" ${page >= pages(list.length) ? 'disabled style="opacity:.4"' : ''}>下一页 ${icon('chevron-right', 13)}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+/* ============================ 灯箱 / 设置弹窗 ============================ */
+function lightboxHTML() {
+  const r = byId(state.lightbox);
+  if (!r) return '';
+  const p = plat(r);
+  const stage = previewStage(r, true);
+  const siblings = RECORDS.filter((x) => x.kind === 'image' || mediaKind(x) === 'video' || mediaKind(x) === 'audio' || x.kind === 'file');
+  const i = siblings.findIndex((x) => x.id === r.id);
+  return `<div class="overlay" data-act="close-lightbox">
+    <div class="lightbox" data-stop="1">
+      <div class="row" style="padding:10px 12px;border-bottom:1px solid var(--b1)">
+        <span>${icon(p?.kind === 'audio' ? 'music' : p?.kind === 'video' ? 'film' : r.shot ? 'image' : 'file-text', 14)} ${esc(r.title || heading(r))}</span>
+        <span class="grow"></span>
+        <button class="btn ghost icon" data-act="close-lightbox">${icon('x', 15)}</button>
+      </div>
+      ${stage}
+      <div class="foot">
+        <span class="tiny muted">${esc(r.att ?? r.url ?? '')}</span>
+        <span class="grow"></span>
+        <span class="tiny muted">${String(i + 1)} / ${String(siblings.length)}</span>
+        <button class="btn sm" data-act="lb-prev">${icon('chevron-left', 13)} 上一张</button>
+        <button class="btn sm" data-act="lb-next">下一张 ${icon('chevron-right', 13)}</button>
+        ${r.url ? `<button class="btn sm" data-act="open-link" data-id="${r.id}">${icon('external-link', 12)} 在浏览器打开</button>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+function settingsHTML() {
+  if (state.modal !== 'settings') return '';
+  const row = (label, value, type = 'text', ph = '') =>
+    `<label class="fld"><span>${label}</span><input type="${type}" value="${esc(value)}" placeholder="${esc(ph)}" /></label>`;
+  return `<div class="overlay" data-act="close-modal">
+    <div class="modal" data-stop="1">
+      <div class="hd">
+        <span>${icon('sliders-horizontal', 15)} 入库设置</span>
+        <span class="tiny muted">设置服务在 · WebDAV 密码已存 · S3 密钥已存</span>
+        <span class="grow"></span>
+        <button class="btn ghost icon" data-act="close-modal">${icon('x', 15)}</button>
+      </div>
+      <div class="bd">
+        <div class="fld"><span>协议</span>
+          <div class="tabs">
+            <button class="chip${state.protocol === 'webdav' ? ' on' : ''}" data-act="protocol" data-v="webdav">${icon('cloud', 13)} WebDAV</button>
+            <button class="chip${state.protocol === 's3' ? ' on' : ''}" data-act="protocol" data-v="s3">${icon('layers', 13)} S3</button>
+          </div>
+          <span class="note">换协议后记得点保存</span>
+        </div>
+        ${row('客户端标识', state.protocol === 's3' ? 'Obsidian' : 'Zotero', 'text', '留空即 dsh-inbox；有些网关按它认人')}
+        ${state.protocol === 's3'
+          ? `${row('接入点', 's3.cstcloud.cn', 'text', '不写协议默认 https')}
+             ${row('Bucket', 'duoyu-inbox')}
+             <div class="fld"><span>签名</span>
+               <select><option>v4</option><option>v2</option></select>
+               <input value="us-east-1" style="flex:0 1 130px" />
+             </div>
+             ${row('AccessKey ID', 'AKIAXWOIMIATPKRL5MXQ')}
+             ${row('Secret', '', 'password', '已存（留空则不改）')}
+             <div class="note">目录一栏同时是 S3 的 key 前缀（默认 /inbox）。</div>`
+          : `${row('地址', 'https://data.cstcloud.cn/dav')}
+             ${row('目录', '/')}
+             ${row('用户名', 'chance722')}
+             ${row('密码', '', 'password', '已存（留空则不改）')}`}
+        <div class="note">${icon('lock', 12)} 密码与密钥进 dsh 的凭证库，不写进配置；客户端标识按协议各存一份。</div>
+      </div>
+      <div class="ft">
+        <button class="btn primary" data-act="save-settings">${icon('check', 13)} 保存</button>
+        <button class="btn" data-act="pull">${icon('refresh-cw', 13)} 立即拉取</button>
+        <button class="btn" data-act="selftest">${icon('search', 13)} 自检</button>
+        <span class="grow"></span>
+        <span class="tiny muted" id="modal-msg">${esc(state.notice)}</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ============================ 绘制 ============================ */
+function draw() {
+  document.getElementById('main').innerHTML = mainHTML();
+  const dock = document.getElementById('dock');
+  dock.className = 'dock' + (state.dock ? '' : ' closed');
+  dock.innerHTML = dockHTML();
+  document.getElementById('overlay').innerHTML = lightboxHTML() + settingsHTML();
+  document.getElementById('sw-label').textContent = VARIANT;
+  document.getElementById('sw-name').textContent = VNAME[VARIANT];
+  document.getElementById('banner-why').textContent = VWHY[VARIANT];
+}
+
+function setVariant(next) {
+  VARIANT = next;
+  state.page = 1;
+  try { history.replaceState(null, '', '?variant=' + VARIANT); } catch { /* file:// 不让改地址，无所谓 */ }
+  draw();
+}
+function toast(msg) { state.notice = msg; draw(); setTimeout(() => { state.notice = ''; draw(); }, 2600); }
+
+/* ============================ 交互 ============================ */
+document.addEventListener('click', (event) => {
+  const nav = event.target.closest('[data-nav]');
+  if (nav) { setVariant(VARIANTS[(VARIANTS.indexOf(VARIANT) + Number(nav.dataset.nav) + 3) % 3]); return; }
+  const el = event.target.closest('[data-act]');
+  if (!el) return;
+  // 点遮罩关灯箱/弹窗，但点内容不关
+  if ((el.dataset.act === 'close-lightbox' || el.dataset.act === 'close-modal') && event.target.closest('[data-stop]') && !event.target.closest('button')) return;
+  const rec = el.dataset.id ? byId(el.dataset.id) : undefined;
+  switch (el.dataset.act) {
+    case 'select': state.sel = el.dataset.id; state.secret = false; state.dock = true; break;
+    case 'filter': state.filter = el.dataset.v; state.page = 1; break;
+    case 'cat': state.cat = state.cat === el.dataset.v ? null : el.dataset.v; state.page = 1; break;
+    case 'page': state.page = Math.max(1, Number(el.dataset.v)); break;
+    case 'toggle-read': if (rec) rec.status = rec.status === 'unread' ? 'read' : 'unread'; break;
+    case 'toggle-secret': state.secret = !state.secret; break;
+    case 'lightbox': state.lightbox = el.dataset.id; break;
+    case 'close-lightbox': state.lightbox = null; break;
+    case 'lb-prev': case 'lb-next': {
+      const sibs = RECORDS.filter((x) => isZoomable(x));
+      const i = sibs.findIndex((x) => x.id === state.lightbox);
+      const j = (i + (el.dataset.act === 'lb-next' ? 1 : sibs.length - 1)) % sibs.length;
+      state.lightbox = sibs[j].id; state.sel = sibs[j].id;
+      break;
+    }
+    case 'delete': if (rec) { RECORDS = RECORDS.filter((x) => x.id !== rec.id); state.sel = RECORDS[0]?.id ?? ''; toast('已移入回收站（软删）'); } break;
+    case 'open-dock': state.dock = true; break;
+    case 'close-dock': state.dock = false; break;
+    case 'open-settings': state.modal = 'settings'; break;
+    case 'close-modal': state.modal = null; break;
+    case 'protocol': state.protocol = el.dataset.v; break;
+    case 'save-settings': toast('设置已保存（原型不真存）'); break;
+    case 'pull': toast('拉取完成：远端列出 1 项，新入库 0 条，跳过 1 条'); break;
+    case 'selftest': toast('自检：8 行里 6 行 200（原型假数据）'); break;
+    case 'open-link': toast('真实实现里：新标签页打开 ' + (rec?.url ?? '')); break;
+    case 'toast': toast(el.dataset.msg ?? '原型占位'); break;
+    default: break;
+  }
+  draw();
+});
+
+document.addEventListener('change', (event) => {
+  const el = event.target.closest('[data-act="set-cat"]');
+  if (!el) return;
+  const rec = byId(el.dataset.id);
+  if (rec) { rec.category = el.value; rec.catSource = 'user'; draw(); }
+});
+
+document.addEventListener('input', (event) => {
+  if (event.target.id !== 'q') return;
+  state.q = event.target.value;
+  state.page = 1;
+  const pos = event.target.selectionStart;
+  draw();
+  const q = document.getElementById('q');
+  if (q) { q.focus(); q.setSelectionRange(pos, pos); }
+});
+
+document.addEventListener('keydown', (event) => {
+  const t = event.target;
+  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA');
+  if (event.key === 'Escape') { state.lightbox = null; state.modal = null; draw(); return; }
+  if (!typing && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+    setVariant(VARIANTS[(VARIANTS.indexOf(VARIANT) + (event.key === 'ArrowRight' ? 1 : 2)) % 3]);
+    return;
+  }
+  if (typing) return;
+  const list = visible();
+  const i = list.findIndex((r) => r.id === state.sel);
+  if (event.key === 'j' || event.key === 'k') {
+    const next = Math.min(list.length - 1, Math.max(0, i + (event.key === 'j' ? 1 : -1)));
+    if (list[next]) { state.sel = list[next].id; state.dock = true; draw(); }
+  } else if (event.key === 'Enter' && list[i]) {
+    list[i].status = list[i].status === 'unread' ? 'read' : 'unread'; draw();
+  } else if (event.key === 'z' && list[i] && isZoomable(list[i])) { state.lightbox = list[i].id; draw(); }
+  else if (event.key === 'd') { state.dock = !state.dock; draw(); }
+  else if (event.key === '/') { const q = document.getElementById('q'); if (q) { q.focus(); event.preventDefault(); } }
+});
+
+const initial = new URLSearchParams(location.search).get('variant');
+if (initial && VARIANTS.includes(initial.toUpperCase())) VARIANT = initial.toUpperCase();
+document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = icon(el.dataset.icon, Number(el.dataset.size ?? 15)); });
+draw();
+</script>
+</body>
+</html>
