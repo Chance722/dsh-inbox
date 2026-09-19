@@ -14,8 +14,11 @@
     4. 右上角「入库设置」改成**弹窗**；顺带问能不能用开源图标库 —— 本文件用的就是
        Lucide（ISC，v1.47.0）的真实路径数据，内联在这里，所以离线也能看。
 
-  本版回答的是「卡片长什么样」：同一套三栏结构下三种卡片处理方式，底部浮条切换
-  （V1 单列媒体卡 / V2 双列卡片网格 / V3 紧凑卡片行），其余（右 dock 详情、灯箱、设置弹窗）三者相同。
+  三种卡片密度**都保留，并升级成产品里的「列表模式」开关**（工具栏右侧那三个按钮，用户随时切；
+  底部浮条是原型自己的切换器，两边同步）。其余（右 dock 详情、灯箱、设置弹窗）三者共用。
+
+  另外：横幅上有一行**动作回执**——每次点击都会在那里留一句，没回执就说明点击没到达处理函数；
+  处理函数里抛异常也会直接写在同一行（红色）。点下去"没反应"是最难查的故障形态，不该让它静默。
 -->
 <style>
   :root {
@@ -71,6 +74,13 @@
   .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border: 1px solid var(--b1); border-radius: 999px; color: var(--cap); font-size: 12px; }
   .chip:hover { background: var(--hover); color: var(--fg); }
   .chip.on { background: var(--active); color: var(--fg); border-color: var(--b2); }
+  .seg { display: inline-flex; border: 1px solid var(--b1); border-radius: 8px; overflow: hidden; flex: none; }
+  .seg button { padding: 5px 9px; color: var(--cap); display: flex; align-items: center; gap: 5px; font-size: 12px; }
+  .seg button + button { border-left: 1px solid var(--b1); }
+  .seg button:hover { background: var(--hover); color: var(--fg); }
+  .seg button.on { background: var(--active); color: var(--fg); }
+  .echo { font-size: 11px; color: var(--dim); }
+  .echo.bad { color: var(--danger); }
 
   /* 左侧类目栏 */
   .rail { width: 190px; flex: none; border-right: 1px solid var(--b1); padding: 8px; display: flex; flex-direction: column; gap: 2px; }
@@ -151,8 +161,9 @@
     <div class="banner">
       <b>原型 v2</b><span>已按你的四条意见改：卡片列表 · 点卡片进右 dock · 图片/视频可放大 · 入库设置改弹窗</span>
       <span class="grow"></span>
+      <span class="echo" id="echo">点一下试试：每次操作都会在这里留一句回执（没回执 = 点击没到）</span>
       <span id="banner-why">—</span>
-      <span class="kbd">← →</span><span>换卡片样式</span>
+      <span class="kbd">← →</span><span>换列表模式</span>
     </div>
     <div class="shell">
       <div class="side">
@@ -285,10 +296,11 @@ let RECORDS = [
 ];
 
 const PER_PAGE = 6;
-let state = { filter: 'all', cat: null, q: '', sel: 'r1', page: 1, dock: true, secret: false, lightbox: null, modal: null, notice: '', protocol: 's3' };
+let state = { filter: 'all', cat: null, q: '', sel: 'r1', page: 1, dock: true, secret: false, lightbox: null, modal: null, notice: '', protocol: 's3', echo: '', echoBad: false };
 let VARIANT = 'V1';
 const VARIANTS = ['V1', 'V2', 'V3'];
 const VNAME = { V1: '单列媒体卡', V2: '双列卡片网格', V3: '紧凑卡片行' };
+const MODES = [['V1', '单列媒体卡', 'rows-3'], ['V2', '双列网格', 'layout-grid'], ['V3', '紧凑行', 'layers']];
 const VWHY = {
   V1: 'V1 单列媒体卡：一行一张，缩略图在左、文字在右 —— 扫读最快，图片/视频也有存在感',
   V2: 'V2 双列网格：图片和视频给整块海报，最"好看"，但一屏能扫的条数少一半',
@@ -455,9 +467,12 @@ function mainHTML() {
       <span class="title">${icon('inbox', 15)} 仓库</span>
       <span class="tiny muted">${String(list.length)} 条 · 未读 ${String(unread())}</span>
       <span class="grow"></span>
+      <span class="seg" role="group" aria-label="列表模式">
+        ${MODES.map(([v, label, ic]) => `<button type="button" class="${VARIANT === v ? 'on' : ''}" data-act="mode" data-v="${v}" title="列表模式：${label}">${icon(ic, 14)} ${label}</button>`).join('')}
+      </span>
       <input class="search" id="q" placeholder="搜标题 / 正文 / 链接 / 标签" value="${esc(state.q)}" style="max-width:260px" />
-      <button class="btn" data-act="open-settings">${icon('sliders-horizontal', 14)} 入库设置</button>
-      ${state.dock ? '' : `<button class="btn ghost icon" data-act="open-dock" title="打开右栏">${icon('panel-right', 15)}</button>`}
+      <button type="button" class="btn" data-act="open-settings">${icon('sliders-horizontal', 14)} 入库设置</button>
+      ${state.dock ? '' : `<button type="button" class="btn ghost icon" data-act="open-dock" title="打开右栏">${icon('panel-right', 15)}</button>`}
     </div>
     <div class="shell" style="flex:1;min-height:0">
       <div class="rail">${rail}</div>
@@ -569,18 +584,24 @@ function draw() {
   document.getElementById('sw-label').textContent = VARIANT;
   document.getElementById('sw-name').textContent = VNAME[VARIANT];
   document.getElementById('banner-why').textContent = VWHY[VARIANT];
+  const echo = document.getElementById('echo');
+  echo.textContent = state.echo || '点一下试试：每次操作都会在这里留一句回执（没回执 = 点击没到）';
+  echo.className = 'echo' + (state.echoBad ? ' bad' : '');
 }
 
 function setVariant(next) {
   VARIANT = next;
   state.page = 1;
+  state.echo = `列表模式 → ${VNAME[next]}`;
+  state.echoBad = false;
   try { history.replaceState(null, '', '?variant=' + VARIANT); } catch { /* file:// 不让改地址，无所谓 */ }
   draw();
 }
-function toast(msg) { state.notice = msg; draw(); setTimeout(() => { state.notice = ''; draw(); }, 2600); }
+function toast(msg) { state.notice = msg; state.echo = msg; state.echoBad = false; draw(); setTimeout(() => { state.notice = ''; draw(); }, 2600); }
 
 /* ============================ 交互 ============================ */
 document.addEventListener('click', (event) => {
+  try {
   const nav = event.target.closest('[data-nav]');
   if (nav) { setVariant(VARIANTS[(VARIANTS.indexOf(VARIANT) + Number(nav.dataset.nav) + 3) % 3]); return; }
   const el = event.target.closest('[data-act]');
@@ -589,27 +610,29 @@ document.addEventListener('click', (event) => {
   if ((el.dataset.act === 'close-lightbox' || el.dataset.act === 'close-modal') && event.target.closest('[data-stop]') && !event.target.closest('button')) return;
   const rec = el.dataset.id ? byId(el.dataset.id) : undefined;
   switch (el.dataset.act) {
-    case 'select': state.sel = el.dataset.id; state.secret = false; state.dock = true; break;
-    case 'filter': state.filter = el.dataset.v; state.page = 1; break;
-    case 'cat': state.cat = state.cat === el.dataset.v ? null : el.dataset.v; state.page = 1; break;
-    case 'page': state.page = Math.max(1, Number(el.dataset.v)); break;
-    case 'toggle-read': if (rec) rec.status = rec.status === 'unread' ? 'read' : 'unread'; break;
-    case 'toggle-secret': state.secret = !state.secret; break;
-    case 'lightbox': state.lightbox = el.dataset.id; break;
-    case 'close-lightbox': state.lightbox = null; break;
+    case 'mode': VARIANT = VARIANTS.includes(el.dataset.v) ? el.dataset.v : VARIANT; state.page = 1; state.echo = `列表模式 → ${VNAME[VARIANT]}`; break;
+    case 'select': state.sel = el.dataset.id; state.secret = false; state.dock = true; state.echo = `选中 ${el.dataset.id}，详情已开到右栏`; break;
+    case 'filter': state.filter = el.dataset.v; state.page = 1; state.echo = `筛选 → ${el.dataset.v}`; break;
+    case 'cat': state.cat = state.cat === el.dataset.v ? null : el.dataset.v; state.page = 1; state.echo = state.cat ? `类目 → ${cat(state.cat)}` : '类目 → 全部'; break;
+    case 'page': state.page = Math.max(1, Number(el.dataset.v)); state.echo = `翻到第 ${String(state.page)} 页`; break;
+    case 'toggle-read': if (rec) rec.status = rec.status === 'unread' ? 'read' : 'unread'; state.echo = '改了已读状态'; break;
+    case 'toggle-secret': state.secret = !state.secret; state.echo = state.secret ? '显示明文（只在本机）' : '遮住明文'; break;
+    case 'lightbox': state.lightbox = el.dataset.id; state.echo = '打开放大视图'; break;
+    case 'close-lightbox': state.lightbox = null; state.echo = '关掉放大视图'; break;
     case 'lb-prev': case 'lb-next': {
       const sibs = RECORDS.filter((x) => isZoomable(x));
       const i = sibs.findIndex((x) => x.id === state.lightbox);
       const j = (i + (el.dataset.act === 'lb-next' ? 1 : sibs.length - 1)) % sibs.length;
       state.lightbox = sibs[j].id; state.sel = sibs[j].id;
+      state.echo = '放大视图：上一张 / 下一张';
       break;
     }
     case 'delete': if (rec) { RECORDS = RECORDS.filter((x) => x.id !== rec.id); state.sel = RECORDS[0]?.id ?? ''; toast('已移入回收站（软删）'); } break;
-    case 'open-dock': state.dock = true; break;
-    case 'close-dock': state.dock = false; break;
-    case 'open-settings': state.modal = 'settings'; break;
-    case 'close-modal': state.modal = null; break;
-    case 'protocol': state.protocol = el.dataset.v; break;
+    case 'open-dock': state.dock = true; state.echo = '打开右侧栏'; break;
+    case 'close-dock': state.dock = false; state.echo = '收起右侧栏'; break;
+    case 'open-settings': state.modal = 'settings'; state.echo = '已打开「入库设置」弹窗'; break;
+    case 'close-modal': state.modal = null; state.echo = '关掉设置弹窗'; break;
+    case 'protocol': state.protocol = el.dataset.v; state.echo = `协议 → ${el.dataset.v}`; break;
     case 'save-settings': toast('设置已保存（原型不真存）'); break;
     case 'pull': toast('拉取完成：远端列出 1 项，新入库 0 条，跳过 1 条'); break;
     case 'selftest': toast('自检：8 行里 6 行 200（原型假数据）'); break;
@@ -618,6 +641,12 @@ document.addEventListener('click', (event) => {
     default: break;
   }
   draw();
+  } catch (error) {
+    // 点下去"没反应"是最难查的故障：把异常直接写在横幅上，别让它沉底。
+    state.echo = '点击处理出错：' + (error && error.message ? error.message : String(error));
+    state.echoBad = true;
+    draw();
+  }
 });
 
 document.addEventListener('change', (event) => {
@@ -654,6 +683,7 @@ document.addEventListener('keydown', (event) => {
   } else if (event.key === 'Enter' && list[i]) {
     list[i].status = list[i].status === 'unread' ? 'read' : 'unread'; draw();
   } else if (event.key === 'z' && list[i] && isZoomable(list[i])) { state.lightbox = list[i].id; draw(); }
+  else if (event.key === 's') { state.modal = 'settings'; state.echo = '已打开「入库设置」弹窗（快捷键 s）'; draw(); }
   else if (event.key === 'd') { state.dock = !state.dock; draw(); }
   else if (event.key === '/') { const q = document.getElementById('q'); if (q) { q.focus(); event.preventDefault(); } }
 });
