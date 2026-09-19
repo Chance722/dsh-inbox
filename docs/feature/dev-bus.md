@@ -7,7 +7,7 @@
 
 | # | 模块 | 目标 | 验收标准 | 状态 |
 |---|---|---|---|---|
-| M0 | 插件骨架 spike | 打掉最大不确定性：第三方插件到底能不能长出 UI 和工具 | ① `dsh --profile inbox` 起得来；② 左栏出现 Inbox 图标，点开是占满主区域的页面；③ 对话里模型能调用一个最小工具并拿到结果；④ 实测到的真实 API 形态回写 `docs/help/dsh-plugin-platform.md` | 未开始 |
+| M0 | 插件骨架 spike | 打掉最大不确定性：第三方插件到底能不能长出 UI 和工具 | ① `dsh --profile inbox` 起得来；② 左栏出现 Inbox 图标，点开是占满主区域的页面；③ 对话里模型能调用一个最小工具并拿到结果；④ 实测到的真实 API 形态回写 `docs/help/dsh-plugin-platform.md` | 已验收 |
 | M1 | 数据模型与存储 | 仓库的持久层 | SQLite schema（items / attachments / tags / sync_state）+ CRUD + 关键词查询；vitest 单测全绿；库文件落在 DSH_HOME 下 | 未开始 |
 | M2 | 捕获入库 | 东西进得来 | 面板粘贴/拖拽文本、图片、链接各一条能入库；聊天框前缀转存能入库；重复项按规则合并 | 未开始 |
 | M3 | 侧栏面板 | 看得见、管得动 | 列表 + 按类目/标签/未读筛选 + 详情 + 改备注与类目 + 标记已读 + 软删/回收站 | 未开始 |
@@ -26,4 +26,23 @@
 
 > 每个模块收尾追加一条：模块 + 日期 + 做到了什么 + 证据（命令输出/截图路径/文件）+ 遗留问题。
 
-（暂无）
+### M0 — 插件骨架 spike（2026-09-19，已验收）
+
+**做到了什么**
+
+- `@duoyu/dsh-inbox` 双半边插件跑通：宿主侧注册 `inbox_status` 工具，浏览器侧用 `sidebar.panellist` + 布局 `main` keyed slot 长出侧栏入口和整页面板。
+- 构建链：esbuild 产出 `lib/index.js`（ESM）+ `lib/client.js`（`window.__ModuleLoader__.load` 包裹的 CJS 工厂）；`pnpm typecheck` 与 `pnpm test`（3 条）全绿。
+- 装配链：`dsh plugin --profile inbox add` 自动进 `dsh.profile.bundles`，隔离 profile 不影响日常 web profile。
+- 实测结论 8 条回写 `docs/help/dsh-plugin-platform.md`（含「客户端插件不声明 `inject: ['slots']` 会静默失效」这个坑）。
+
+**证据**
+
+- ① `dsh --profile inbox --no-open --port 3102` 启动成功并打印带 token 的 URL。
+- ② 浏览器实测：侧栏出现「全局面板 → Inbox」，点击后主区域渲染出 "dsh-inbox · M0 skeleton" 页面。
+- ③ `dsh --profile inbox-m0 "Call the inbox_status tool..."` 返回：模型报告工具输出为 `dsh-inbox (M0) loaded: true`。
+- ④ 见 `docs/help/dsh-plugin-platform.md` 的「M0 实测补充」。
+
+**遗留问题**
+
+- 客户端 `ctx.get('slots')` 目前没有强类型（未引入 `@deepseek-ai/dsh-client-ui-slots` 类型包），M1 前评估是否补上。
+- preset 的自动装配（复制 standard + 追加行 + 切默认）还没做成 `init` 命令，属 M7 范围；开发期用手工步骤，见 `docs/help/dev-setup.md`。

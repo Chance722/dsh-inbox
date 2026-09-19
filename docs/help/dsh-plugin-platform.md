@@ -73,3 +73,47 @@ window.__ModuleLoader__.load({
 - `web_fetch`：HTML→markdown，用于抓链接标题/摘要（`dsh-tool-web`）。
 - `web_search`：代价是每次搜索等于一次完整模型请求。
 - `present`：把文件声明为交付物，出回合尾卡片（`dsh-tool-present`）。
+
+## M0 实测补充（2026-09-19，骨架 spike 亲测）
+
+以下每一条都是踩过之后写下来的，不是读文档推断的。
+
+### 客户端插件必须声明 `inject: ['slots']`
+
+**症状**：bundle 进了启动图、控制台零报错、注册调用也返回了 disposer，但侧栏就是不出现条目（连 `[data-slot="sidebar.panellist"]` 节点都没有）。
+**原因**：客户端插件若不声明服务依赖，Cordis 会在 `slots` 服务就绪之前先跑一次 `apply`，此时 `ctx.get('slots')` 是 `undefined`，我们直接 `return`，注册静默丢失。
+**修法**：客户端半边导出 `export const inject = ['slots']`（官方 sidebar 也是这么写的）。服务就绪后 Cordis 会重新激活插件。
+
+### 安装是自动挂载的
+
+`dsh plugin --profile <name> add <包名或路径>` 除了装包，**还会自动把包名追加到 profile `package.json` 的 `dsh.profile.bundles`**。装一个自带 `dsh.bundle.patch` 的包即可生效，不需要手改 profile 文件。
+
+### 客户端 bundle 的构建配方
+
+官方用 tsdown（配置未随包发布）。我们用 esbuild 复刻同样的产物：
+
+- `format: 'cjs'`、`platform: 'browser'`、`jsx: 'automatic'`
+- `external: ['react', 'react/jsx-runtime', 'react-dom', '@deepseek-ai/*']`
+- 外面包一层 `window.__ModuleLoader__.load({ id: <包名>, factory: (require) => { var module={exports:{}}; var exports=module.exports; ...; return module.exports } })`
+
+**平台静态模块基线**（无需在 `dsh.client.external` 里声明）：`react`、`react/jsx-runtime`、`react-dom`、`react-dom/client`、`@deepseek-ai/cordis`、`@deepseek-ai/dsh-client-store`、`@deepseek-ai/dsh-client-ui-slots`、`@deepseek-ai/dsh-client-ui-primitives`、`@deepseek-ai/dsh-client-ui-dockkit`。其余模块请求必须声明，否则 boot 时报缺失供应商。
+
+### 全局面板的实测行为
+
+- `sidebar.panellist` 注册 `{ name, id, order, label }` + 图标组件后，侧栏出现一个「全局面板」分组和一行；`label` 就是可见文本。
+- 点这一行时，主区域渲染 layout 的 `main` keyed slot 里**同 key** 的组件。
+- 只注册 panellist、不注册 `main`，点击会抛错且保持原选中（官方文档说的行为，注意别踩）。
+- 侧栏 collapsed 成 56px 轨道时面板行仍在（变成图标按钮）。
+
+### 工具怎么才能到模型面前
+
+两条路，都成立：
+
+1. **宿主组合直接挂**——`base`/`headless` 这类没有 agent-presets 的组合，工具行一挂就对模型可见（M0 用 headless 实测通过）。
+2. **挂进 agent preset**——web profile 的工具行由 preset 接管。用户级 preset 根是 `~/.dsh/.agent-presets/<id>/`，里面放 `preset.yml`（显示名/描述/顺序）+ `agent.cordis.yml`（组合）。把 shipped preset 整目录复制过来再追加自己的行即可。
+
+**模型看到的工具输出是 `output.render()` 产出的内容**，不是 `execute` 返回的原始 JSON：M0 里 `execute` 返回对象，模型收到的是渲染后的文本 `dsh-inbox (M0) loaded: true`，它还特意指出"这不是 JSON"。
+
+### pnpm 11 的构建脚本白名单
+
+`package.json` 里的 `pnpm` 字段已不再被读取；`onlyBuiltDependencies` 必须写进 **`pnpm-workspace.yaml`**。否则 esbuild 的原生二进制装不上，且每次 `pnpm run` 都会因依赖状态检查失败而报 `ERR_PNPM_IGNORED_BUILDS`。

@@ -1,0 +1,11 @@
+# pnpm settings live here (the `pnpm` field in package.json is no longer read).
+# esbuild needs its postinstall to place the platform binary; without an explicit
+# allowance pnpm blocks it and every `pnpm run` fails the dependency check.
+packages:
+  - .
+
+allowBuilds:
+  esbuild: set this to true or false
+
+onlyBuiltDependencies:
+  - esbuild

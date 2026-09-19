@@ -1,0 +1,11 @@
+# The dsh-inbox bundle patch. Loaded when this package is named in the profile's
+# `dsh.profile.bundles`; it inserts one host row, and the browser half arrives
+# through the same package's `dsh.client` declaration (the client-modules node
+# half scans enabled rows for packages that declare one).
+#
+# Row ids are addressed by later layers (the profile's cordis.patch.yml, --patch
+# overlays), so `dsh-inbox` is the id other people should target to reconfigure us.
+
+- insert:
+    - id: dsh-inbox
+      name: '@duoyu/dsh-inbox'

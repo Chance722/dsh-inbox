@@ -49,16 +49,19 @@ prototypes/    原型（*.prototype.html）
 8. **数据事实只认实测**：dsh 处于 rc 阶段（本机 0.1.5-rc.2），API 会变。写 dsh 相关代码前先查 `docs/help/dsh-plugin-platform.md`；该文档与代码冲突时以 `.research/` 里的官方源码为准，并回改文档。
 9. **文档语言**：代码与标识符英文，代码注释中文；文档中英双份（`README.md` + `README.zh.md`），`AGENTS.md`/`docs/` 用中文。
 
-## 常用命令（计划，M0 落地后回填实际命令）
+## 常用命令
 
 | 用途 | 命令 |
 |---|---|
 | 安装依赖 | `pnpm install` |
-| 开发（隔离 profile） | `dsh --profile inbox` |
-| 装进 web profile | `dsh plugin --profile web add @duoyu/dsh-inbox` |
-| 构建 | `pnpm build`（tsdown） |
-| 测试 | `pnpm test`（vitest） |
+| 构建 | `pnpm build`（esbuild → `lib/index.js` + `lib/client.js`） |
 | 类型检查 | `pnpm typecheck` |
+| 测试 | `pnpm test`（vitest） |
+| 起隔离开发 profile | `dsh --profile inbox --no-open --port 3102` |
+| 挂载本仓库到 profile | `dsh plugin --profile inbox add <仓库路径>` |
+| 验证模型能调到工具 | `dsh --profile inbox-m0 "<让模型调用工具的提示>"`（headless 派生 profile） |
+
+本机 dsh 不在 PATH 上，完整命令（含 Node 22 路径）见 `docs/help/dev-setup.md`。构建需要提权（esbuild 要 spawn 子进程）。
 
 ## 知识文档索引
 
