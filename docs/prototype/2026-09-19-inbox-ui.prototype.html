@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>原型 · dsh-inbox 界面四方案（假数据，不是产品 UI）</title>
+<!--
+  原型 · 一次性代码 · 用来回答一个问题，不是产品代码的一部分。
+
+  问题：「在 dsh 里，我的粘贴板仓库应该长什么样？」
+  做法：四个结构上互不相同的方案，挂在同一个 dsh 外壳里（左侧会话栏 + 主区域 + 右侧 dock），
+       用底部的浮条切换。假数据、内存状态、没有持久化、没有错误处理。
+
+  A 三栏分诊（收件箱式）   B 类目看板（按类目组织）
+  C 卡片流 + dock 为主     D 密度优先表格 + 命令面板
+
+  用法：双击本文件即可；?variant=B 也能直接进（file:// 下浏览器可能不允许改地址，用浮条即可）。
+  配色取自运行中的 dsh（--dsw-alias-* 的暗色值）：bg #151517 / layer1 #232324 / layer2 #2c2c2e /
+  layer3 #353638 / 主文字 #f9fafb / 次要 #81858c / 边框 #ffffff0f·#ffffff1f / hover #ffffff14。
+-->
+<style>
+  :root {
+    --bg: #151517; --l1: #232324; --l2: #2c2c2e; --l3: #353638;
+    --fg: #f9fafb; --cap: #81858c; --dim: #6b6f76;
+    --b1: #ffffff0f; --b2: #ffffff1f;
+    --hover: #ffffff14; --active: #ffffff24;
+    --warn: #e0b341; --danger: #e5695f; --ok: #5fb87a; --accent: #6e9ef7;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: "SF Mono", "JetBrains Mono", Consolas, Menlo, "Microsoft YaHei", monospace;
+    --r: 8px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #0d0d0e; color: var(--fg); font: 13px/1.5 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  input, select { font: inherit; color: inherit; }
+  .wrap { padding: 10px; height: 100%; }
+  .frame {
+    height: 100%; border: 1px solid var(--b2); border-radius: 12px; overflow: hidden;
+    background: var(--bg); display: flex; flex-direction: column;
+  }
+  .banner {
+    display: flex; align-items: center; gap: 10px; padding: 6px 12px;
+    background: linear-gradient(90deg, #2a2413, #1c1a13); border-bottom: 1px solid var(--b2);
+    font-size: 12px; color: #e8d9a8; flex: none;
+  }
+  .banner b { color: #ffe9a8; }
+  .banner .kbd { font-family: var(--mono); font-size: 11px; padding: 1px 5px; border: 1px solid var(--b2); border-radius: 4px; }
+  .shell { flex: 1; min-height: 0; display: flex; }
+
+  /* ---------- 左侧会话栏（dsh 的外观，不是我们的设计） ---------- */
+  .side { width: 236px; flex: none; border-right: 1px solid var(--b1); display: flex; flex-direction: column; background: var(--bg); }
+  .side-top { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .row-btn { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; color: var(--fg); text-align: left; }
+  .row-btn:hover { background: var(--hover); }
+  .row-btn.on { background: var(--active); }
+  .side-h { font-size: 11px; color: var(--cap); padding: 8px 12px 4px; letter-spacing: .04em; }
+  .sess { padding: 5px 10px 5px 12px; border-radius: 6px; color: var(--cap); display: flex; justify-content: space-between; gap: 6px; }
+  .sess.on { background: var(--hover); color: var(--fg); }
+  .side-foot { margin-top: auto; padding: 8px 10px; border-top: 1px solid var(--b1); color: var(--cap); font-size: 12px; }
+  .icon { width: 16px; text-align: center; opacity: .85; }
+
+  /* ---------- 主区域 / 右侧 dock ---------- */
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .dock { width: 396px; flex: none; border-left: 1px solid var(--b1); display: flex; flex-direction: column; background: var(--l1); }
+  .dock.closed { display: none; }
+  .bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--b1); flex: none; min-height: 44px; }
+  .bar .title { font-weight: 600; }
+  .grow { flex: 1; }
+  .chip { padding: 3px 9px; border: 1px solid var(--b1); border-radius: 999px; color: var(--cap); font-size: 12px; }
+  .chip:hover { background: var(--hover); color: var(--fg); }
+  .chip.on { background: var(--active); color: var(--fg); border-color: var(--b2); }
+  .btn { padding: 4px 10px; border: 1px solid var(--b2); border-radius: 6px; font-size: 12px; }
+  .btn:hover { background: var(--hover); }
+  .btn.primary { background: var(--fg); color: #16161a; border-color: var(--fg); font-weight: 600; }
+  .btn.ghost { border-color: transparent; color: var(--cap); }
+  .btn.ghost:hover { color: var(--fg); background: var(--hover); }
+  .search { flex: 1; background: var(--l1); border: 1px solid var(--b1); border-radius: 6px; padding: 5px 9px; color: var(--fg); min-width: 80px; }
+  .search::placeholder { color: var(--dim); }
+
+  .scroll { flex: 1; min-height: 0; overflow: auto; }
+  .muted { color: var(--cap); }
+  .tiny { font-size: 11px; }
+  .mono { font-family: var(--mono); }
+  .tag { color: var(--accent); font-size: 11px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
+  .srcline { color: var(--dim); font-size: 11px; }
+
+  /* ---------- A：三栏分诊 ---------- */
+  .a-shell { flex: 1; min-height: 0; display: flex; }
+  .a-rail { width: 186px; flex: none; border-right: 1px solid var(--b1); padding: 10px; display: flex; flex-direction: column; gap: 2px; }
+  .a-rail .item { display: flex; justify-content: space-between; padding: 5px 8px; border-radius: 6px; color: var(--cap); }
+  .a-rail .item:hover { background: var(--hover); color: var(--fg); }
+  .a-rail .item.on { background: var(--active); color: var(--fg); }
+  .a-list { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .a-row { display: flex; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--b1); align-items: flex-start; }
+  .a-row:hover { background: var(--hover); }
+  .a-row.on { background: var(--l2); }
+  .a-row.read { opacity: .55; }
+  .a-detail { width: 340px; flex: none; border-left: 1px solid var(--b1); padding: 12px; overflow: auto; }
+  .pager { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--b1); color: var(--cap); font-size: 12px; }
+
+  /* ---------- B：类目看板 ---------- */
+  .board { flex: 1; min-height: 0; display: flex; gap: 12px; padding: 12px; overflow: auto; align-items: flex-start; }
+  .col { width: 232px; flex: none; background: var(--l1); border: 1px solid var(--b1); border-radius: 10px; display: flex; flex-direction: column; max-height: 100%; }
+  .col-h { padding: 8px 10px; border-bottom: 1px solid var(--b1); display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .col-b { padding: 8px; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
+  .kcard { background: var(--l2); border: 1px solid var(--b1); border-radius: 8px; padding: 8px 9px; text-align: left; }
+  .kcard:hover { border-color: var(--b2); }
+  .kcard.on { outline: 1px solid var(--accent); }
+  .kcard .t { display: block; margin-bottom: 4px; }
+  .move { display: flex; gap: 4px; margin-top: 6px; }
+  .move button { font-size: 11px; color: var(--cap); border: 1px solid var(--b1); border-radius: 4px; padding: 0 5px; }
+  .move button:hover { color: var(--fg); background: var(--hover); }
+
+  /* ---------- C：卡片流 ---------- */
+  .feed { padding: 4px 0 12px; }
+  .day { padding: 10px 16px 2px; color: var(--cap); font-size: 11px; position: sticky; top: 0; background: var(--bg); }
+  .card { margin: 8px 16px; border: 1px solid var(--b1); border-radius: 10px; background: var(--l1); overflow: hidden; text-align: left; width: calc(100% - 32px); }
+  .card:hover { border-color: var(--b2); background: var(--l2); }
+  .card.on { border-color: var(--accent); }
+  .card .head { display: flex; gap: 10px; padding: 10px 12px; align-items: flex-start; }
+  .strip { width: 3px; align-self: stretch; border-radius: 2px; background: var(--accent); flex: none; }
+  .thumb { width: 132px; height: 92px; flex: none; border-radius: 6px; border: 1px solid var(--b1); background:
+    repeating-linear-gradient(135deg, #2f3238 0 10px, #292c31 10px 20px); display: flex; align-items: center; justify-content: center; color: var(--dim); font-size: 11px; }
+  .card .body { flex: 1; min-width: 0; }
+  .card .foot { display: flex; gap: 8px; align-items: center; padding: 7px 12px; border-top: 1px solid var(--b1); color: var(--cap); font-size: 11px; }
+
+  /* ---------- D：密度优先表格 ---------- */
+  .dwrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  table { border-collapse: collapse; width: 100%; }
+  thead th { position: sticky; top: 0; background: var(--bg); text-align: left; font-weight: 500; color: var(--cap); font-size: 11px; padding: 6px 10px; border-bottom: 1px solid var(--b2); }
+  tbody td { padding: 5px 10px; border-bottom: 1px solid var(--b1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
+  tbody tr:hover { background: var(--hover); }
+  tbody tr.on { background: var(--l2); }
+  tbody tr.read td { color: var(--cap); }
+  .cmd { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--b1); }
+  .hint { color: var(--dim); font-size: 11px; font-family: var(--mono); }
+
+  /* ---------- 详情（各方案共用同一份"记录详情"语义，位置不同） ---------- */
+  .detail h3 { margin: 4px 0 6px; font-size: 14px; }
+  .meta { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; color: var(--cap); font-size: 12px; margin-bottom: 10px; }
+  .meta b { font-weight: 500; color: var(--cap); }
+  .bodybox { background: var(--l1); border: 1px solid var(--b1); border-radius: 8px; padding: 9px 10px; margin-bottom: 10px; white-space: pre-wrap; word-break: break-all; }
+  .bodybox.masked { font-family: var(--mono); letter-spacing: 1px; }
+  .acts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .empty { padding: 28px 16px; color: var(--cap); text-align: center; }
+
+  /* ---------- 原型浮条（不是设计的一部分） ---------- */
+  #switcher {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 99;
+    display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 999px;
+    background: #000c; border: 1px solid #ffffff40; box-shadow: 0 8px 24px #000a; backdrop-filter: blur(6px);
+    font-size: 12px; color: #fff;
+  }
+  #switcher button { width: 26px; height: 26px; border-radius: 50%; background: #ffffff1a; color: #fff; }
+  #switcher button:hover { background: #ffffff33; }
+  #switcher .sub { color: #ffffff99; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="frame">
+    <div class="banner">
+      <b>原型</b><span>4 个方案 · 假数据 · 不是产品 UI · 判断用：哪个结构更顺手，细节可以互相拼</span>
+      <span class="grow"></span>
+      <span id="banner-why">—</span>
+      <span class="kbd">← →</span><span>切换方案</span>
+    </div>
+    <div class="shell">
+      <!-- 左侧：dsh 原有的会话栏（原样，不是候选设计） -->
+      <div class="side">
+        <div class="side-top">
+          <button class="row-btn"><span class="icon">✳</span>新建会话</button>
+          <button class="row-btn on"><span class="icon">▤</span>Inbox</button>
+        </div>
+        <div class="side-h">工作区</div>
+        <div class="sidebar-search" style="padding: 0 10px 6px">
+          <input class="search" placeholder="搜索会话" style="width:100%" />
+        </div>
+        <div style="overflow:auto; flex:1">
+          <div class="sess"><span>dsh-inbox</span><span class="tiny">3小时</span></div>
+          <div class="sess on"><span>用 inbox 工具查询仓库未读</span></div>
+          <div class="sess"><span>s3 拉取 401 排查</span><span class="tiny">17小时</span></div>
+          <div class="sess"><span>M6c 文档收尾</span><span class="tiny">1天</span></div>
+        </div>
+        <div class="side-foot">⚙ 设置</div>
+      </div>
+
+      <div class="main" id="main"></div>
+      <div class="dock" id="dock"></div>
+    </div>
+  </div>
+</div>
+
+<div id="switcher">
+  <button data-nav="-1" title="上一个方案">←</button>
+  <span id="sw-label">A</span>
+  <span class="sub" id="sw-name"></span>
+  <button data-nav="1" title="下一个方案">→</button>
+</div>
+
+<script>
+/* ============================ 假数据（一次性，别当真） ============================ */
+const CATS = [
+  ['idea', '灵感/待办'], ['article', '文章'], ['media', '视频/音频'], ['image', '图片'],
+  ['document', '证件'], ['secret', '密钥/账密'], ['other', '其它'],
+];
+const KIND = { text: '文本', link: '链接', image: '图片', file: '文件' };
+const SRC = { panel: '面板', chat: '对话', webdav: 'WebDAV', import: '导入' };
+const CATSOURCE = { rule: '规则判的', model: '模型判的', user: '你定' };
+const cat = (id) => CATS.find((c) => c[0] === id)[1];
+
+let RECORDS = [
+  { id: 'r1', kind: 'link', category: 'media', catSource: 'rule', platform: 'bilibili', title: '十分钟讲清 HTTP/3 与 QUIC', url: 'https://www.bilibili.com/video/BV1yy411c7mE', status: 'unread', source: 'panel', tags: ['待看'], at: '2026-09-19 17:00', note: '先看这个，比书里讲得清楚' },
+  { id: 'r2', kind: 'image', category: 'document', catSource: 'rule', title: '', status: 'unread', source: 'webdav', tags: ['疑似证件'], at: '2026-09-19 16:41', att: 'IMG_9270.jpg · 1280×1708 · 278 KB', shot: true },
+  { id: 'r3', kind: 'text', category: 'secret', catSource: 'rule', title: '', text: 'secretId=AKIAXXXXXXXXXXXXXX\nsecretKey=M********YE', status: 'unread', source: 'panel', tags: [], at: '2026-09-19 16:22', note: '数据胶囊 Obsidian 那把钥匙' },
+  { id: 'r4', kind: 'link', category: 'article', catSource: 'rule', platform: 'wechat', title: '为什么你的缓存策略总是出错', url: 'https://mp.weixin.qq.com/s/abc123', status: 'unread', source: 'chat', tags: ['缓存'], at: '2026-09-19 14:43' },
+  { id: 'r5', kind: 'text', category: 'idea', catSource: 'rule', title: '', text: '记得下个月把域名续费，顺便看看有没有更便宜的方案', status: 'unread', source: 'panel', tags: [], at: '2026-09-19 14:45' },
+  { id: 'r6', kind: 'text', category: 'idea', catSource: 'user', title: '', text: '下周三之前把上个月的发票报销掉，别忘了带抬头', status: 'unread', source: 'panel', tags: [], at: '2026-09-19 14:42' },
+  { id: 'r7', kind: 'image', category: 'image', catSource: 'rule', title: '发票（9 月）', status: 'read', source: 'panel', tags: ['报销'], at: '2026-09-19 14:27', att: 'IMG_9266.jpg · 3024×4032 · 2.1 MB', shot: true, note: '抬头是「多语工作室」' },
+  { id: 'r8', kind: 'link', category: 'article', catSource: 'rule', platform: 'zhihu', title: '如何评价 dsh 的插件化架构？', url: 'https://www.zhihu.com/question/1234567/answer/890', status: 'read', source: 'panel', tags: [], at: '2026-09-19 13:10' },
+  { id: 'r9', kind: 'file', category: 'other', catSource: 'model', title: 'S3 兼容性测试报告.pdf', status: 'read', source: 'panel', tags: ['工作'], at: '2026-09-19 12:58', att: 'report.pdf · 4.2 MB' },
+  { id: 'r10', kind: 'link', category: 'media', catSource: 'rule', platform: 'xiaoyuzhou', title: 'EP42 一个程序员的四年副业', url: 'https://www.xiaoyuzhoufm.com/episode/abc', status: 'unread', source: 'panel', tags: ['通勤听'], at: '2026-09-19 11:30' },
+  { id: 'r11', kind: 'text', category: 'other', catSource: 'user', title: '', text: 'if (!response.ok) throw await refusal(what, response)', status: 'read', source: 'panel', tags: ['代码'], at: '2026-09-19 10:12' },
+  { id: 'r12', kind: 'link', category: 'article', catSource: 'rule', platform: 'xiaohongshu', title: 'macOS 上 12 个提高效率的小工具', url: 'https://www.xiaohongshu.com/explore/xyz', status: 'unread', source: 'panel', tags: [], at: '2026-09-18 22:07' },
+  { id: 'r13', kind: 'link', category: 'article', catSource: 'rule', platform: 'maimai', title: '35 岁之后还能写代码吗', url: 'https://maimai.cn/web/feed_detail?fid=1', status: 'unread', source: 'panel', tags: [], at: '2026-09-18 21:15' },
+  { id: 'r14', kind: 'text', category: 'idea', catSource: 'user', title: '双链笔记的替代品？', text: '把 inbox 的类目当成最小标签集，别再引入第二套分类法', status: 'unread', source: 'chat', tags: [], at: '2026-09-18 20:02' },
+  { id: 'r15', kind: 'image', category: 'image', catSource: 'rule', title: '', status: 'read', source: 'panel', tags: [], at: '2026-09-18 18:40', att: 'IMG_9251.jpg · 1170×2532 · 1.4 MB', shot: true },
+  { id: 'r16', kind: 'link', category: 'other', catSource: 'model', platform: 'x', title: '一条关于 S3 网关鉴权的吐槽', url: 'https://x.com/i/status/123', status: 'unread', source: 'webdav', tags: [], at: '2026-09-18 15:20' },
+];
+
+const PAGE_SIZE = 5;
+let state = { filter: 'all', cat: null, q: '', sel: 'r1', page: 1, loaded: PAGE_SIZE, dock: true, showSecret: false };
+
+const VARIANT_WHY = {
+  A: 'A · 三栏分诊：类目在左、列表在中、详情在右 —— 目的是「快速把未读清空」',
+  B: 'B · 类目看板：一屏 7 列，按类目组织而不是按时间 —— 目的是「东西该放哪儿」',
+  C: 'C · 卡片流：按天分组、图片给大图，点卡片看右侧 dock —— 目的是「随手翻、看着舒服」',
+  D: 'D · 密度优先：表格 + 键盘 + 命令输入 —— 目的是「两千条也不卡、键盘就能干完」',
+};
+
+/* ============================ 小工具 ============================ */
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const byId = (id) => RECORDS.find((r) => r.id === id);
+const day = (at) => at.slice(0, 10);
+const isToday = (at) => day(at) === '2026-09-19';
+const dayLabel = (d) => (d === '2026-09-19' ? '今天' : d === '2026-09-18' ? '昨天' : d);
+
+function matches(r, { ignoreCat = false } = {}) {
+  if (state.filter === 'bin') return false;
+  if (state.filter === 'unread' && r.status !== 'unread') return false;
+  if (!ignoreCat && state.cat && r.category !== state.cat) return false;
+  if (state.q) {
+    const hay = [r.title, r.text, r.url, r.note, r.platform, ...(r.tags || [])].join(' ').toLowerCase();
+    if (!hay.includes(state.q.toLowerCase())) return false;
+  }
+  return true;
+}
+const visible = (opts) => {
+  const list = RECORDS.filter((r) => matches(r, opts));
+  return list;
+};
+const unreadCount = () => RECORDS.filter((r) => r.status === 'unread').length;
+const catCount = (id) => RECORDS.filter((r) => r.category === id).length;
+const pages = (n) => Math.max(1, Math.ceil(n / PAGE_SIZE));
+
+function catChip(r) {
+  return `<span class="chip" style="padding:1px 7px">${esc(cat(r.category))}<span class="tiny muted"> · ${esc(CATSOURCE[r.catSource])}</span></span>`;
+}
+function titleOf(r) {
+  if (r.title) return esc(r.title);
+  if (r.category === 'secret') return '<span class="mono">（密钥 · 列表里不显示内容）</span>';
+  if (r.att) return '<span class="muted">（无标题，1 个附件）</span>';
+  return `<span class="muted">${esc((r.text || '').slice(0, 40))}</span>`;
+}
+function previewOf(r) {
+  if (r.url) return `<span class="mono tiny muted">${esc(r.url.slice(0, 62))}</span>`;
+  if (r.text) return `<span class="muted">${esc(r.text.replace(/\n/g, ' ').slice(0, 64))}</span>`;
+  return '';
+}
+function dockTabs() {
+  return `<div class="bar" style="padding:6px 8px; gap:4px">
+      <span class="chip on">仓库</span><span class="chip">文件</span><span class="chip">轨迹</span>
+      <span class="grow"></span>
+      <button class="btn ghost" data-act="close-dock" title="收起右侧栏">✕</button>
+    </div>`;
+}
+function detailHTML(r) {
+  if (!r) return '<div class="empty">选一条看看详情。</div>';
+  const masked = r.category === 'secret' && !state.showSecret;
+  const body = r.text
+    ? `<div class="bodybox${masked ? ' masked' : ''}">${esc(masked ? '••••••••••••••••••••••••' : r.text)}</div>`
+    : '';
+  const thumb = r.shot
+    ? `<div class="thumb" style="width:100%;height:150px;margin-bottom:10px">图片（本机渲染）</div>`
+    : '';
+  return `<div class="detail">
+    ${thumb}
+    <h3>${r.title ? esc(r.title) : '<span class="muted">（无标题）</span>'}</h3>
+    <div class="meta">
+      <b>类目</b><span>${esc(cat(r.category))} <span class="tiny muted">· ${esc(CATSOURCE[r.catSource])}</span></span>
+      <b>类型</b><span>${esc(KIND[r.kind])}${r.platform ? ` · ${esc(r.platform)}` : ''}</span>
+      <b>状态</b><span>${r.status === 'unread' ? '未读' : '已读'}</span>
+      <b>来源</b><span>${esc(SRC[r.source])}</span>
+      <b>存入</b><span>${esc(r.at)}</span>
+      ${r.att ? `<b>附件</b><span>${esc(r.att)}</span>` : ''}
+      ${r.url ? `<b>链接</b><span class="mono tiny">${esc(r.url)}</span>` : ''}
+    </div>
+    ${body}
+    <div class="tiny muted" style="margin:-4px 0 10px">描述（你写的永远优先于模型）：${esc(r.note || '—')}</div>
+    <div class="acts">
+      <button class="btn" data-act="toggle-read" data-id="${r.id}">${r.status === 'unread' ? '标为已读' : '标为未读'}</button>
+      ${r.category === 'secret' ? `<button class="btn" data-act="show-secret">${state.showSecret ? '遮住' : '查看明文'}</button>` : ''}
+      <select class="btn" data-act="set-cat" data-id="${r.id}" style="padding:4px 6px">
+        ${CATS.map(([id, label]) => `<option value="${id}"${id === r.category ? ' selected' : ''}>移到：${label}</option>`).join('')}
+      </select>
+      <button class="btn" data-act="delete" data-id="${r.id}">删除</button>
+    </div>
+  </div>`;
+}
+
+/* ============================ 各方案渲染 ============================ */
+function renderA() {
+  const list = visible();
+  const page = Math.min(state.page, pages(list.length));
+  const slice = list.slice((page - 1) * PAGE_SIZE, (page - 1) * PAGE_SIZE + PAGE_SIZE);
+  const rail = [['all', '全部'], ['unread', `未读 ${String(unreadCount())}`], ['bin', '回收站']]
+    .map(([k, l]) => `<button class="item${state.filter === k ? ' on' : ''}" data-act="filter" data-v="${k}"><span>${l}</span></button>`)
+    .join('')
+    + '<div class="side-h" style="padding:12px 8px 4px">类目</div>'
+    + CATS.map(([id, label]) => `<button class="item${state.cat === id ? ' on' : ''}" data-act="cat" data-v="${id}"><span>${label}</span><span class="tiny">${String(catCount(id))}</span></button>`).join('');
+
+  return {
+    main: `<div class="bar">
+        <span class="title">仓库</span>
+        <span class="tiny muted">共 ${String(RECORDS.length)} 条 · 未读 ${String(unreadCount())}</span>
+        <span class="grow"></span>
+        <input class="search" id="q" placeholder="搜标题 / 正文 / 链接 / 标签" value="${esc(state.q)}" style="max-width:280px" />
+        <button class="btn ghost" data-act="settings">⚙ 入库</button>
+        ${state.dock ? '' : '<button class="btn ghost" data-act="open-dock">右栏</button>'}
+      </div>
+      <div class="a-shell">
+        <div class="a-rail">${rail}</div>
+        <div class="a-list">
+          <div class="scroll">
+            ${slice.length === 0 ? '<div class="empty">这里没有匹配的记录。</div>' : slice.map((r) => `
+              <button class="a-row${r.id === state.sel ? ' on' : ''}${r.status === 'read' ? ' read' : ''}" data-act="select" data-id="${r.id}">
+                <span style="padding-top:4px">${r.status === 'unread' ? '<span class="dot"></span>' : '<span class="dot" style="background:#43454a"></span>'}</span>
+                <span style="flex:1;min-width:0;text-align:left">
+                  <span style="display:block">${titleOf(r)}</span>
+                  <span style="display:block;margin-top:2px">${previewOf(r)}</span>
+                  <span class="tiny muted" style="display:block;margin-top:3px">${esc(KIND[r.kind])} · ${esc(cat(r.category))} · ${esc(SRC[r.source])} · ${esc(r.at)}${(r.tags || []).map((t) => ` · <span class="tag">#${esc(t)}</span>`).join('')}</span>
+                </span>
+              </button>`).join('')}
+          </div>
+          <div class="pager">
+            <span>匹配 ${String(list.length)} 条 · 第 ${String(page)}/${String(pages(list.length))} 页</span>
+            <span class="grow"></span>
+            <button class="btn" data-act="page" data-v="${String(page - 1)}"${page <= 1 ? ' disabled style="opacity:.4"' : ''}>上一页</button>
+            <button class="btn" data-act="page" data-v="${String(page + 1)}"${page >= pages(list.length) ? ' disabled style="opacity:.4"' : ''}>下一页</button>
+          </div>
+        </div>
+        <div class="a-detail">${detailHTML(byId(state.sel))}</div>
+      </div>`,
+    dock: `${dockTabs()}
+      <div class="scroll" style="padding:10px">
+        <div class="tiny muted" style="margin-bottom:8px">下一步：未读里最旧的 5 条（在这里点掉，不必切主区域）</div>
+        ${RECORDS.filter((r) => r.status === 'unread').slice(0, 5).map((r) => `
+          <div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--b1)">
+            <span class="dot"></span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${titleOf(r)}</span>
+            <button class="btn ghost" data-act="toggle-read" data-id="${r.id}">✓</button>
+          </div>`).join('')}
+      </div>`,
+  };
+}
+
+function renderB() {
+  const sel = byId(state.sel);
+  const columns = CATS.map(([id, label]) => {
+    const items = RECORDS.filter((r) => r.category === id && (state.filter !== 'unread' || r.status === 'unread'));
+    return `<div class="col">
+      <div class="col-h"><span>${label}</span><span class="tiny muted">${String(items.length)}</span></div>
+      <div class="col-b">
+        ${items.length === 0 ? '<div class="tiny muted" style="padding:6px">空</div>' : items.map((r) => `
+          <div class="kcard${r.id === state.sel ? ' on' : ''}">
+            <button style="width:100%;text-align:left" data-act="select" data-id="${r.id}">
+              <span class="t">${titleOf(r)}</span>
+              <span class="tiny muted">${esc(KIND[r.kind])}${r.platform ? ' · ' + esc(r.platform) : ''} · ${esc(r.at.slice(5))}</span>
+            </button>
+            <div class="move">
+              <button data-act="shift-cat" data-id="${r.id}" data-v="-1" title="移到上一个类目">←</button>
+              <button data-act="shift-cat" data-id="${r.id}" data-v="1" title="移到下一个类目">→</button>
+              <span class="grow"></span>
+              <button data-act="toggle-read" data-id="${r.id}">${r.status === 'unread' ? '✓ 已读' : '未读'}</button>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  return {
+    main: `<div class="bar">
+        <span class="title">仓库 · 看板</span>
+        <span class="tiny muted">${String(RECORDS.length)} 条 · 未读 ${String(unreadCount())} · 直接拖不用，先按类目看</span>
+        <span class="grow"></span>
+        <button class="chip${state.filter === 'all' ? ' on' : ''}" data-act="filter" data-v="all">全部</button>
+        <button class="chip${state.filter === 'unread' ? ' on' : ''}" data-act="filter" data-v="unread">只看未读</button>
+        <input class="search" id="q" placeholder="搜索" value="${esc(state.q)}" style="max-width:180px" />
+        <button class="btn ghost" data-act="settings">⚙ 入库</button>
+        ${state.dock ? '' : '<button class="btn ghost" data-act="open-dock">右栏</button>'}
+      </div>
+      <div class="board">${columns}</div>`,
+    dock: `${dockTabs()}
+      <div class="scroll" style="padding:12px">
+        <div class="tiny muted" style="margin-bottom:8px">右栏 = 选中那条的「整理面板」：改类目、写一句话、标已读</div>
+        ${detailHTML(sel)}
+      </div>`,
+  };
+}
+
+function renderC() {
+  const list = visible();
+  const shown = list.slice(0, state.loaded);
+  const days = [...new Set(shown.map((r) => day(r.at)))];
+  const feed = days.map((d) => `
+    <div class="day">${dayLabel(d)} · ${String(shown.filter((r) => day(r.at) === d).length)} 条</div>
+    ${shown.filter((r) => day(r.at) === d).map((r) => `
+      <div class="card${r.id === state.sel ? ' on' : ''}">
+        <button style="width:100%;text-align:left" data-act="select" data-id="${r.id}">
+          <div class="head">
+            <span class="strip" style="background:${r.status === 'unread' ? 'var(--accent)' : '#43454a'}"></span>
+            ${r.shot ? '<span class="thumb">图片</span>' : ''}
+            <span class="body">
+              <span style="display:block;font-size:13px;margin-bottom:3px">${titleOf(r)}</span>
+              <span style="display:block">${previewOf(r) || '<span class="tiny muted">（附件）</span>'}</span>
+              ${r.note ? `<span class="tiny muted" style="display:block;margin-top:5px">📝 ${esc(r.note)}</span>` : ''}
+            </span>
+          </div>
+        </button>
+        <div class="foot">
+          <span>${esc(cat(r.category))}</span><span>·</span><span>${esc(KIND[r.kind])}</span>
+          ${r.platform ? `<span>·</span><span>${esc(r.platform)}</span>` : ''}
+          <span>·</span><span>${esc(r.at.slice(11))}</span>
+          ${(r.tags || []).map((t) => `<span class="tag">#${esc(t)}</span>`).join('')}
+          <span class="grow"></span>
+          <button class="btn ghost" data-act="toggle-read" data-id="${r.id}">${r.status === 'unread' ? '标已读' : '标未读'}</button>
+          <button class="btn ghost" data-act="open-dock">在右栏打开</button>
+        </div>
+      </div>`).join('')}`).join('');
+
+  return {
+    main: `<div class="bar">
+        <span class="title">仓库 · 流</span>
+        <span class="grow"></span>
+        <button class="chip${state.filter === 'all' ? ' on' : ''}" data-act="filter" data-v="all">全部</button>
+        <button class="chip${state.filter === 'unread' ? ' on' : ''}" data-act="filter" data-v="unread">未读 ${String(unreadCount())}</button>
+        <button class="chip${state.cat === 'image' ? ' on' : ''}" data-act="cat" data-v="image">图片</button>
+        <input class="search" id="q" placeholder="搜索" value="${esc(state.q)}" style="max-width:180px" />
+        ${state.dock ? '' : '<button class="btn ghost" data-act="open-dock">右栏</button>'}
+      </div>
+      <div class="scroll"><div class="feed">${feed || '<div class="empty">没有匹配的记录。</div>'}</div>
+        ${state.loaded < list.length ? `<div style="text-align:center;padding:4px 0 18px"><button class="btn" data-act="loadmore">继续往下加载（已显示 ${String(shown.length)}/${String(list.length)}，滚到底自动加载）</button></div>` : '<div class="tiny muted" style="text-align:center;padding:6px 0 18px">到底了 · 用无限滚动代替分页按钮</div>'}
+      </div>`,
+    dock: `${dockTabs()}
+      <div class="scroll" style="padding:12px">${detailHTML(byId(state.sel))}</div>`,
+  };
+}
+
+function renderD() {
+  const list = visible();
+  const page = Math.min(state.page, pages(list.length));
+  const slice = list.slice((page - 1) * PAGE_SIZE, (page - 1) * PAGE_SIZE + PAGE_SIZE);
+  return {
+    main: `<div class="bar" style="min-height:38px">
+        <span class="title">仓库</span><span class="tiny muted">${String(list.length)} 条匹配</span>
+        <span class="grow"></span>
+        <span class="hint">j/k 移动 · Enter 打开 · x 删除 · d 右栏 · / 搜索</span>
+        <button class="btn ghost" data-act="settings">⚙</button>
+        ${state.dock ? '' : '<button class="btn ghost" data-act="open-dock">右栏</button>'}
+      </div>
+      <div class="cmd">
+        <span class="hint">›</span>
+        <input class="search" id="q" placeholder="命令或筛选：/ 搜「缓存」；未读；类目:文章" value="${esc(state.q)}" />
+        <button class="chip${state.filter === 'all' ? ' on' : ''}" data-act="filter" data-v="all">全部</button>
+        <button class="chip${state.filter === 'unread' ? ' on' : ''}" data-act="filter" data-v="unread">未读</button>
+        <select class="btn" data-act="pick-cat" style="padding:4px 6px">
+          <option value="">全部类目</option>
+          ${CATS.map(([id, label]) => `<option value="${id}"${state.cat === id ? ' selected' : ''}>${label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="dwrap"><div class="scroll">
+        <table>
+          <thead><tr><th style="width:54px">类型</th><th style="width:92px">类目</th><th>标题 / 摘要</th><th style="width:78px">来源</th><th style="width:74px">状态</th><th style="width:104px">存入</th></tr></thead>
+          <tbody>
+            ${slice.map((r) => `<tr class="${r.id === state.sel ? 'on' : ''} ${r.status === 'read' ? 'read' : ''}" data-act="select" data-id="${r.id}">
+              <td>${esc(KIND[r.kind])}${r.platform ? `<br /><span class="tiny muted">${esc(r.platform)}</span>` : ''}</td>
+              <td>${esc(cat(r.category))}</td>
+              <td>${titleOf(r)} ${previewOf(r)}</td>
+              <td class="tiny muted">${esc(SRC[r.source])}</td>
+              <td>${r.status === 'unread' ? '未读' : '已读'}</td>
+              <td class="tiny muted">${esc(r.at.slice(5))}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <span>第 ${String(page)}/${String(pages(list.length))} 页 · 每页 ${String(PAGE_SIZE)}</span><span class="grow"></span>
+        <button class="btn" data-act="page" data-v="${String(page - 1)}"${page <= 1 ? ' disabled style="opacity:.4"' : ''}>‹</button>
+        <button class="btn" data-act="page" data-v="${String(page + 1)}"${page >= pages(list.length) ? ' disabled style="opacity:.4"' : ''}>›</button>
+        <span class="tiny muted">下个版本做虚拟滚动，2000 条也不掉帧</span>
+      </div></div>`,
+    dock: `${dockTabs()}
+      <div class="scroll" style="padding:12px">${detailHTML(byId(state.sel))}</div>`,
+  };
+}
+
+/* ============================ 外壳与交互 ============================ */
+const VARIANTS = ['A', 'B', 'C', 'D'];
+const NAMES = { A: '三栏分诊', B: '类目看板', C: '卡片流 + dock', D: '密度优先表格' };
+let variant = 'A';
+
+function draw() {
+  const out = { A: renderA, B: renderB, C: renderC, D: renderD }[variant]();
+  document.getElementById('main').innerHTML = out.main;
+  const dock = document.getElementById('dock');
+  dock.className = 'dock' + (state.dock ? '' : ' closed');
+  dock.innerHTML = out.dock;
+  document.getElementById('sw-label').textContent = variant;
+  document.getElementById('sw-name').textContent = NAMES[variant];
+  document.getElementById('banner-why').textContent = VARIANT_WHY[variant];
+  const q = document.getElementById('q');
+  if (q && state.q) { q.value = state.q; }
+}
+
+function setVariant(next) {
+  variant = next;
+  state.page = 1;
+  state.loaded = PAGE_SIZE;
+  try { history.replaceState(null, '', '?variant=' + variant); } catch { /* file:// 下浏览器不让改地址，无所谓 */ }
+  draw();
+}
+
+document.addEventListener('click', (event) => {
+  const nav = event.target.closest('[data-nav]');
+  if (nav) {
+    const step = Number(nav.dataset.nav);
+    const i = (VARIANTS.indexOf(variant) + step + VARIANTS.length) % VARIANTS.length;
+    setVariant(VARIANTS[i]);
+    return;
+  }
+  const el = event.target.closest('[data-act]');
+  if (!el) return;
+  const act = el.dataset.act;
+  const id = el.dataset.id;
+  const rec = id ? byId(id) : undefined;
+  if (act === 'select') { state.sel = id; state.showSecret = false; }
+  else if (act === 'filter') { state.filter = el.dataset.v; state.page = 1; }
+  else if (act === 'cat') { state.cat = state.cat === el.dataset.v ? null : el.dataset.v; state.page = 1; }
+  else if (act === 'toggle-read' && rec) { rec.status = rec.status === 'unread' ? 'read' : 'unread'; }
+  else if (act === 'delete' && rec) { RECORDS = RECORDS.filter((r) => r.id !== rec.id); state.sel = RECORDS[0]?.id ?? ''; }
+  else if (act === 'shift-cat' && rec) {
+    const i = CATS.findIndex(([cid]) => cid === rec.category);
+    rec.category = CATS[(i + Number(el.dataset.v) + CATS.length) % CATS.length][0];
+    rec.catSource = 'user';
+  }
+  else if (act === 'page') { state.page = Math.max(1, Number(el.dataset.v)); }
+  else if (act === 'loadmore') { state.loaded += PAGE_SIZE; }
+  else if (act === 'open-dock') { state.dock = true; }
+  else if (act === 'close-dock') { state.dock = false; }
+  else if (act === 'show-secret') { state.showSecret = !state.showSecret; }
+  else if (act === 'settings') { alert('原型里不做设置表单：真实实现里这一格打开的就是现在那个 ⚙ 入库设置（WebDAV / S3 / 客户端标识）。'); }
+  else if (act === 'select') { /* noop */ }
+  draw();
+});
+
+document.addEventListener('change', (event) => {
+  const el = event.target.closest('[data-act]');
+  if (!el) return;
+  if (el.dataset.act === 'set-cat') {
+    const rec = byId(el.dataset.id);
+    rec.category = el.value; rec.catSource = 'user';
+    draw();
+  } else if (el.dataset.act === 'pick-cat') {
+    state.cat = el.value || null; state.page = 1; draw();
+  }
+});
+
+document.addEventListener('input', (event) => {
+  if (event.target.id === 'q') {
+    state.q = event.target.value;
+    state.page = 1;
+    const pos = event.target.selectionStart;
+    draw();
+    const q = document.getElementById('q');
+    if (q) { q.focus(); q.setSelectionRange(pos, pos); }
+  }
+});
+
+document.addEventListener('keydown', (event) => {
+  const t = event.target;
+  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+  if (event.key === 'ArrowRight' && !typing) { setVariant(VARIANTS[(VARIANTS.indexOf(variant) + 1) % VARIANTS.length]); return; }
+  if (event.key === 'ArrowLeft' && !typing) { setVariant(VARIANTS[(VARIANTS.indexOf(variant) + VARIANTS.length - 1) % VARIANTS.length]); return; }
+  if (typing) return;
+  const list = visible();
+  const i = list.findIndex((r) => r.id === state.sel);
+  if (event.key === 'j' || event.key === 'k') {
+    const next = Math.min(list.length - 1, Math.max(0, i + (event.key === 'j' ? 1 : -1)));
+    if (list[next]) state.sel = list[next].id;
+    draw();
+  } else if (event.key === 'Enter' && list[i]) {
+    const rec = list[i];
+    rec.status = rec.status === 'unread' ? 'read' : 'unread';
+    draw();
+  } else if (event.key === 'd') { state.dock = !state.dock; draw(); }
+  else if (event.key === '/') { const q = document.getElementById('q'); if (q) { q.focus(); event.preventDefault(); } }
+});
+
+// 滚动到底自动加载（C 方案用；其他方案滚到底没影响）
+document.addEventListener('scroll', (event) => {
+  const el = event.target;
+  if (!el.classList || !el.classList.contains('scroll')) return;
+  if (variant !== 'C') return;
+  if (el.scrollTop + el.clientHeight > el.scrollHeight - 40) {
+    const total = visible().length;
+    if (state.loaded < total) { state.loaded += PAGE_SIZE; draw(); }
+  }
+}, true);
+
+const initial = new URLSearchParams(location.search).get('variant');
+if (initial && VARIANTS.includes(initial.toUpperCase())) variant = initial.toUpperCase();
+draw();
+</script>
+</body>
+</html>
