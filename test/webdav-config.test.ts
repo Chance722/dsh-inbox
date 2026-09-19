@@ -133,13 +133,17 @@ describe('saving the configuration', () => {
     expect(settings.current().baseUrl).toBe('https://b')
   })
 
-  it('refuses a signature version it does not implement', async () => {
+  it('accepts v4 and v2, and refuses anything else', async () => {
     const settings = fakeSettings()
-    const result = await saveWebdav(context({ settings }), undefined, DEFAULT_SETTINGS, {
-      signatureVersion: 'v2',
-    })
-    expect(result.ok).toBe(false)
-    expect(result.reason).toContain('v4')
+    const ctx = context({ settings })
+
+    expect((await saveWebdav(ctx, undefined, DEFAULT_SETTINGS, { signatureVersion: 'V2' })).ok).toBe(true)
+    expect(settings.current().signatureVersion).toBe('v2')
+    expect((await saveWebdav(ctx, undefined, DEFAULT_SETTINGS, { signatureVersion: 'v4' })).ok).toBe(true)
+
+    const nonsense = await saveWebdav(ctx, undefined, DEFAULT_SETTINGS, { signatureVersion: 'v9' })
+    expect(nonsense.ok).toBe(false)
+    expect(nonsense.reason).toContain('v4 或 v2')
   })
 
   it('adds https to a bare host, and keeps an explicit scheme', async () => {

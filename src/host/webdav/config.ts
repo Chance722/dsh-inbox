@@ -188,8 +188,10 @@ export async function saveWebdav(
   if (patch.region !== undefined) config.region = patch.region.trim() || 'us-east-1'
   if (patch.signatureVersion !== undefined) {
     const version = patch.signatureVersion.trim().toLowerCase()
-    if (version !== 'v4') return { ok: false, reason: `只实现了 v4 签名，收到的是 ${version}` }
-    config.signatureVersion = 'v4'
+    if (version !== 'v4' && version !== 'v2') {
+      return { ok: false, reason: `签名版本只支持 v4 或 v2，收到的是 ${version}` }
+    }
+    config.signatureVersion = version
   }
   if (patch.accessKeyId !== undefined) config.accessKeyId = patch.accessKeyId.trim()
 

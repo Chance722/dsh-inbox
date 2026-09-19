@@ -115,6 +115,69 @@ export interface SignedRequest {
   signature: string
 }
 
+/** `RFC 1123` date, the only one SigV2 accepts. */
+export function rfc1123(now: Date): string {
+  return now.toUTCString()
+}
+
+/**
+ * Sign one request with **SigV2**.
+ *
+ * Not legacy for its own sake: gateways that describe their older clients as
+ * needing "SSL/TLS and path-style addressing" are usually v2-only, and a v4
+ * request to one of them is answered with a bare 401 — which is exactly the
+ * shape of the failure this implementation exists to fix.
+ *
+ * SigV2 signs a different thing than v4: the date, the content type, and the
+ * *canonicalized resource* — and only the query parameters on the sub-resource
+ * list take part, not ordinary ones like `prefix`.
+ *
+ * @param config - endpoint, bucket, region.
+ * @param deps - credentials, fetch, clock.
+ * @param method - HTTP method.
+ * @param key - object key, empty for a bucket operation.
+ * @param query - query parameters.
+ * @returns the URL, headers, and the string that was signed.
+ */
+export function signRequestV2(
+  config: S3Config,
+  deps: S3Deps,
+  method: string,
+  key: string,
+  query: Record<string, string> = {},
+): SignedRequest & { stringToSign: string } {
+  const date = rfc1123(deps.now ?? new Date())
+  const base = config.endpoint.replace(/\/$/, '')
+  const canonicalUri = `/${encodePart(config.bucket, false)}${
+    key.length === 0 ? '' : `/${encodePart(key, false)}`
+  }`
+  const queryString = Object.entries(query)
+    .map(([name, value]) => `${encodePart(name, true)}=${encodePart(value, true)}`)
+    .sort()
+    .join('&')
+
+  // Only the sub-resources below belong in the canonical resource; `prefix`,
+  // `list-type` and friends stay in the URL and out of the signature.
+  const subResource = (['acl', 'location', 'versioning'] as const).find(
+    (name) => query[name] !== undefined,
+  )
+  const canonicalResource = `${canonicalUri}${subResource === undefined ? '' : `?${subResource}`}`
+
+  const stringToSign = [method, '', '', date, canonicalResource].join('\n')
+  const signature = createHmac('sha1', deps.accessKeySecret).update(stringToSign).digest('base64')
+
+  return {
+    url: `${base}${canonicalUri}${queryString.length === 0 ? '' : `?${queryString}`}`,
+    headers: {
+      date,
+      authorization: `AWS ${deps.accessKeyId}:${signature}`,
+    },
+    canonicalRequest: stringToSign,
+    signature,
+    stringToSign,
+  }
+}
+
 /**
  * Sign one request.
  *
@@ -237,7 +300,7 @@ export async function listPrefix(
   prefix: string,
   deps: S3Deps,
 ): Promise<RemoteObject[]> {
-  const signed = signRequest(config, deps, 'GET', '', { 'list-type': '2', prefix })
+  const signed = signer(config)(config, deps, 'GET', '', { 'list-type': '2', prefix })
   const response = await deps.fetch(signed.url, { method: 'GET', headers: signed.headers })
   if (!response.ok) throw await refused(response, '列对象')
   return parseListing(await response.text())
@@ -249,10 +312,22 @@ export async function readObject(
   key: string,
   deps: S3Deps,
 ): Promise<{ bytes: Uint8Array; contentType: string }> {
-  const signed = signRequest(config, deps, 'GET', key)
+  const signed = signer(config)(config, deps, 'GET', key)
   const response = await deps.fetch(signed.url, { method: 'GET', headers: signed.headers })
   if (!response.ok) throw await refused(response, '取对象')
   const bytes = new Uint8Array(await response.arrayBuffer())
   const declared = response.headers?.get('content-type') ?? 'application/octet-stream'
   return { bytes, contentType: declared.split(';')[0] ?? 'application/octet-stream' }
+}
+
+/**
+ * Pick the signer for a configuration.
+ *
+ * @param config - endpoint, bucket, region, signatureVersion.
+ * @returns the signer to use.
+ */
+export function signer(
+  config: S3Config,
+): (config: S3Config, deps: S3Deps, method: string, key: string, query?: Record<string, string>) => SignedRequest {
+  return config.signatureVersion?.toLowerCase() === 'v2' ? signRequestV2 : signRequest
 }

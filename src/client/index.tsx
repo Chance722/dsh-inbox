@@ -866,7 +866,8 @@ function WebdavSettings({
               onChange={(event) => setSignatureVersion(event.target.value)}
               style={{ ...inputStyle, padding: '4px 6px' }}
             >
-              <option value="v4">v4（唯一实现）</option>
+              <option value="v4">v4</option>
+              <option value="v2">v2（老网关多半要这个）</option>
             </select>
             <span style={{ opacity: 0.7, minWidth: 40 }}>区域</span>
             <input

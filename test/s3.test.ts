@@ -14,7 +14,10 @@ import {
   listPrefix,
   parseListing,
   readObject,
+  rfc1123,
+  signRequestV2,
   signRequest,
+  signer,
   type S3Deps,
   type S3FetchLike,
 } from '../src/host/s3/client.js'
@@ -94,6 +97,45 @@ describe('signing', () => {
       .signature
 
     for (const other of [otherSecret, otherDay, otherRegion]) expect(other).not.toBe(base)
+  })
+})
+
+describe('signing with v2', () => {
+  it('signs the date and the canonical resource, in RFC 1123', () => {
+    const signed = signRequestV2(CONFIG, deps(), 'GET', '')
+    expect(rfc1123(new Date('2026-09-19T06:30:00.000Z'))).toBe('Sat, 19 Sep 2026 06:30:00 GMT')
+    // Method, empty MD5, empty content type, date, canonical resource.
+    expect(signed.stringToSign).toBe(
+      [
+        'GET',
+        '',
+        '',
+        'Sat, 19 Sep 2026 06:30:00 GMT',
+        '/my-bucket',
+      ].join('\n'),
+    )
+    expect(signed.headers.authorization).toMatch(/^AWS AKIDEXAMPLE:/)
+    expect(signed.headers.date).toBe('Sat, 19 Sep 2026 06:30:00 GMT')
+  })
+
+  it('keeps ordinary query parameters out of the signed resource', () => {
+    // `prefix` and `list-type` are not sub-resources, so they stay in the URL
+    // and out of the signature; `acl` would be signed.
+    const listed = signRequestV2(CONFIG, deps(), 'GET', '', { prefix: 'inbox/', 'list-type': '2' })
+    expect(listed.stringToSign.endsWith('/my-bucket')).toBe(true)
+    expect(listed.url).toBe('https://data.cstcloud.cn/my-bucket?list-type=2&prefix=inbox%2F')
+    expect(signRequestV2(CONFIG, deps(), 'GET', '', { acl: '' }).stringToSign.endsWith('/my-bucket?acl')).toBe(true)
+  })
+
+  it('accepts a scheme-less endpoint, because the config layer adds https', () => {
+    const signed = signRequestV2({ ...CONFIG, endpoint: 'https://s3.cstcloud.cn' }, deps(), 'GET', 'a.txt')
+    expect(signed.url).toBe('https://s3.cstcloud.cn/my-bucket/a.txt')
+  })
+
+  it('routes through the signer the configuration asks for', () => {
+    expect(signer({ ...CONFIG, signatureVersion: 'v2' })).toBe(signRequestV2)
+    expect(signer({ ...CONFIG, signatureVersion: 'v4' })).toBe(signRequest)
+    expect(signer(CONFIG)).toBe(signRequest)
   })
 })
 
