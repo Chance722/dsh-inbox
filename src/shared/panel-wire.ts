@@ -46,6 +46,9 @@ export const INBOX_ENDPOINT_WEBDAV = 'webdav'
 /** Pull the remote folder right now, without waiting for the next start. */
 export const INBOX_ENDPOINT_PULL = 'pull'
 
+/** Ask the remote a handful of questions and report each answer. */
+export const INBOX_ENDPOINT_PROBE = 'probe'
+
 /** What the panel sends to `webdav`: read the status, or save a patch. */
 export interface WebdavRequest {
   action: 'read' | 'save'
@@ -116,6 +119,14 @@ export interface PullResult {
   skipped: number
   /** Set when the pull completed. */
   lastPullAt?: string
+}
+
+/** One row of the connection self-test. */
+export interface ProbeRow {
+  label: string
+  url: string
+  status: number
+  detail: string
 }
 
 /** Raster formats dsh's own attachment store accepts, and we therefore pass through. */

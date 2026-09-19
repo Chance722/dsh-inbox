@@ -40,6 +40,7 @@ import {
   INBOX_ENDPOINT_UPDATE,
   INBOX_ENDPOINT_WEBDAV,
   INBOX_ENDPOINT_PULL,
+  INBOX_ENDPOINT_PROBE,
   INBOX_IMAGE_TYPES,
   LIST_LIMIT,
   MAX_ATTACHMENTS_PER_SUBMISSION,
@@ -70,7 +71,9 @@ import {
   type WebdavPatch,
   type WebdavStatus,
 } from './webdav/config.js'
-import { runPull } from './webdav/run.js'
+import { runPull, s3Fetch } from './webdav/run.js'
+import { probeS3 } from './s3/probe.js'
+import { readS3Secret } from './webdav/config.js'
 import type { PullResult } from '../shared/panel-wire.js'
 import type { Attachment, Item } from './vault/spec.js'
 import type { Vault } from './vault/vault.js'
@@ -475,6 +478,28 @@ async function handlePull(
   return { ok: true, value: result }
 }
 
+/** Run the connection self-test for whichever protocol is configured. */
+async function handleProbe(ctx: Context): Promise<InboxRpcResult<unknown>> {
+  const settings = readSettings(ctx)
+  if (settings.protocol !== 's3') {
+    return failure('inbox/probe-webdav', '自检目前只对 S3 有用：WebDAV 的错误信息已经够直白了')
+  }
+  const secret = await readS3Secret(ctx)
+  if (secret === undefined) return failure('inbox/no-secret', '还没存 AccessKey Secret')
+
+  const rows = await probeS3(
+    {
+      endpoint: settings.endpoint,
+      bucket: settings.bucket,
+      region: settings.region,
+      signatureVersion: settings.signatureVersion,
+    },
+    { fetch: s3Fetch, accessKeyId: settings.accessKeyId, accessKeySecret: secret },
+    settings.directory.replace(/^\//, ''),
+  )
+  return { ok: true, value: rows }
+}
+
 /** Rebuild the store's reference from the metadata we keep. */
 function imageRef(record: Attachment): ImageAttachmentRef {
   return {
@@ -613,6 +638,9 @@ export function registerInboxRpc(ctx: Context, vault: () => Vault | undefined): 
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_PULL}`, () =>
         serialise(() => handlePull(scoped, vault(), attachments)),
+      ),
+      endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_PROBE}`, () =>
+        Promise.resolve(handleProbe(scoped)),
       ),
       {
         path: `${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}`,

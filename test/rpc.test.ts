@@ -37,6 +37,7 @@ import {
   INBOX_ENDPOINT_UPDATE,
   INBOX_ENDPOINT_WEBDAV,
   INBOX_ENDPOINT_PULL,
+  INBOX_ENDPOINT_PROBE,
   type CaptureResult,
   type DetailResult,
   type InboxRpcResult,
@@ -254,6 +255,7 @@ describe('list', () => {
         INBOX_ENDPOINT_UPDATE,
         INBOX_ENDPOINT_WEBDAV,
         INBOX_ENDPOINT_PULL,
+        INBOX_ENDPOINT_PROBE,
       ]
         .map((endpoint) => `${INBOX_API_PREFIX}/${endpoint}`)
         .sort(),

@@ -20,6 +20,7 @@ import {
   INBOX_ENDPOINT_RESTORE,
   INBOX_ENDPOINT_UPDATE,
   INBOX_ENDPOINT_PULL,
+  INBOX_ENDPOINT_PROBE,
   INBOX_ENDPOINT_WEBDAV,
   INBOX_IMAGE_TYPES,
   LIST_LIMIT,
@@ -30,6 +31,7 @@ import {
   type InboxRpcResult,
   type ListResult,
   type PullResult,
+  type ProbeRow,
   type PurgeResult,
   type WebdavRequest,
   type WebdavStatus,
@@ -678,6 +680,7 @@ function WebdavSettings({
   const [signatureVersion, setSignatureVersion] = React.useState('v4')
   const [accessKeyId, setAccessKeyId] = React.useState('')
   const [accessKeySecret, setAccessKeySecret] = React.useState('')
+  const [probe, setProbe] = React.useState<ProbeRow[]>()
   const [notice, setNotice] = React.useState<string>()
   const [busy, setBusy] = React.useState(false)
 
@@ -743,6 +746,23 @@ function WebdavSettings({
     try {
       const result = await call(INBOX_ENDPOINT_PULL, {})
       setNotice(result.ok ? describePull(result.value as PullResult) : `拉取失败：${result.error.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Ask the remote every shape of question at once. */
+  const selfTest = async (): Promise<void> => {
+    setBusy(true)
+    setProbe(undefined)
+    try {
+      const result = await call(INBOX_ENDPOINT_PROBE, {})
+      if (!result.ok) {
+        setNotice(`自检失败：${result.error.message}`)
+        return
+      }
+      setProbe(result.value as ProbeRow[])
+      setNotice('自检结果见下方')
     } finally {
       setBusy(false)
     }
@@ -914,8 +934,31 @@ function WebdavSettings({
         <button type="button" style={buttonStyle} disabled={busy} onClick={() => void pull()}>
           {busy ? '处理中…' : '立即拉取'}
         </button>
+        <button type="button" style={buttonStyle} disabled={busy} onClick={() => void selfTest()}>
+          自检
+        </button>
         {detailNotice(notice)}
       </div>
+
+      {probe !== undefined && (
+        <pre
+          style={{
+            ...inputStyle,
+            margin: 0,
+            maxHeight: 220,
+            overflow: 'auto',
+            whiteSpace: 'pre-wrap',
+            fontSize: 12,
+          }}
+        >
+          {probe
+            .map(
+              (row) =>
+                `${row.status === 0 ? 'ERR' : String(row.status)}  ${row.label}\n     ${row.url}\n     ${row.detail}`,
+            )
+            .join('\n')}
+        </pre>
+      )}
 
       <p style={{ margin: 0, opacity: 0.6 }}>
         只做单向：远端往里扔，本机拉下来入库。密码走 dsh 的凭证库，不写进配置。
