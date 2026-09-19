@@ -531,7 +531,7 @@ async function handleUi(ctx: Context, payload: unknown): Promise<InboxRpcResult<
   const parsed = z
     .object({
       action: z.enum(['read', 'save']).default('read'),
-      listMode: z.enum(['rows', 'grid', 'compact']).optional(),
+      listMode: z.enum(['grid', 'compact']).optional(),
     })
     .safeParse(payload)
   if (!parsed.success) return failure('inbox/bad-ui-request', parsed.error.message)

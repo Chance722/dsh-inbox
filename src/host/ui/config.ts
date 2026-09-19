@@ -19,12 +19,12 @@ import { UI_LIST_MODES, type UiListMode, type UiPrefs } from '../../shared/panel
 /** Namespace this plugin owns for panel preferences. */
 export const UI_SETTINGS_NAMESPACE = 'dsh-inbox-ui'
 
-/** What a fresh install looks like: the list people know from before. */
-export const DEFAULT_UI_PREFS: UiPrefs = { listMode: 'rows' }
+/** What a fresh install looks like: two columns of cards, the roomier of the two. */
+export const DEFAULT_UI_PREFS: UiPrefs = { listMode: 'grid' }
 
 /** The namespace's schema; every field optional so a partial layer is valid. */
 export const UiPrefsSchema = z.object({
-  listMode: z.union(['rows', 'grid', 'compact']).default('rows'),
+  listMode: z.union(['grid', 'compact']).default('grid'),
 })
 
 /** The slice of the settings service this file uses. */

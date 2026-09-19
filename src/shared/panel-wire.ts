@@ -336,8 +336,16 @@ export const LIST_LIMIT = 50
  */
 export const PAGE_SIZE = 12
 
-/** The three list densities the panel offers. */
-export const UI_LIST_MODES = ['rows', 'grid', 'compact'] as const
+/**
+ * The two list densities the panel offers.
+ *
+ * There used to be a third (`rows`, one wide card per line). It went when the
+ * user pointed out that the type badge it led with repeated what the metadata
+ * line already said, and that two densities cover both habits: `grid` for
+ * pictures, `compact` for volume. A stored `rows` is no longer a value this
+ * list accepts, so readers fall back to the default — which is `grid`.
+ */
+export const UI_LIST_MODES = ['grid', 'compact'] as const
 export type UiListMode = (typeof UI_LIST_MODES)[number]
 
 /** What the panel remembers about itself. */

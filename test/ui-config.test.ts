@@ -15,8 +15,14 @@ import {
   saveUiPrefs,
 } from '../src/host/ui/config.js'
 
-/** A settings service that keeps one namespace value in memory. */
-function fakeSettings(initial?: Partial<typeof DEFAULT_UI_PREFS>) {
+/**
+ * A settings service that keeps one namespace value in memory.
+ *
+ * `listMode` is typed as a bare string on purpose: a profile written by an older
+ * version can hold a mode this version no longer offers, and the reader has to
+ * cope with exactly that.
+ */
+function fakeSettings(initial?: { listMode?: string }) {
   let current = { ...DEFAULT_UI_PREFS, ...initial }
   let registered = false
   return {
@@ -39,9 +45,9 @@ const context = (settings?: unknown): Context =>
   ({ get: (name: string) => (name === 'settings' ? settings : undefined) }) as unknown as Context
 
 describe('panel preferences', () => {
-  it('falls back to the single-column list with no settings service', () => {
+  it('falls back to the default layout with no settings service', () => {
     expect(readUiPrefs(context())).toEqual({ ...DEFAULT_UI_PREFS, settingsAvailable: false })
-    expect(readUiPrefs(context(fakeSettings())).listMode).toBe('rows')
+    expect(readUiPrefs(context(fakeSettings())).listMode).toBe('grid')
   })
 
   it('remembers the chosen layout', () => {
@@ -59,8 +65,15 @@ describe('panel preferences', () => {
   it('refuses a layout it does not have, and says which ones it does', () => {
     const result = saveUiPrefs(context(fakeSettings()), { listMode: 'masonry' })
     expect(result.ok).toBe(false)
-    expect(result.reason).toContain('rows')
+    expect(result.reason).toContain('grid')
     expect(result.reason).toContain('masonry')
+  })
+
+  it('treats a stored mode that no longer exists as unset', () => {
+    // `rows` was a real choice until the list went to two densities; a profile
+    // that still remembers it must land on the default, not on a blank list.
+    const settings = fakeSettings({ listMode: 'rows' })
+    expect(readUiPrefs(context(settings)).listMode).toBe(DEFAULT_UI_PREFS.listMode)
   })
 
   it('refuses to remember anything when there is nowhere to remember it', () => {

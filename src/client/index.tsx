@@ -29,7 +29,6 @@ import {
   Paperclip,
   RefreshCw,
   RotateCcw,
-  Rows3,
   Settings2,
   Tag,
   Trash2,
@@ -59,6 +58,7 @@ import {
   type UiPrefs,
   type UiRequest,
   type TagRequest,
+  type AttachmentSummary,
   type CaptureResult,
   type DetailResult,
   type EntryDetail,
@@ -287,6 +287,22 @@ const buttonStyle: React.CSSProperties = {
   cursor: 'pointer',
 }
 
+/**
+ * A pager button: the arrow and its word on one centered line.
+ *
+ * `buttonStyle` leaves the button inline, so the icon sat on the text's own
+ * baseline and "‹ 上一页" read as crooked. A flex row with centered items is
+ * what the eye expected.
+ */
+const pagerButtonStyle: React.CSSProperties = {
+  ...buttonStyle,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 4,
+  whiteSpace: 'nowrap',
+}
+
 const chipStyle = (active: boolean): React.CSSProperties => ({
   ...buttonStyle,
   padding: '2px 10px',
@@ -324,11 +340,18 @@ function InboxPanel(): React.ReactElement {
   const [selectedId, setSelectedId] = React.useState<string>()
   const [detail, setDetail] = React.useState<EntryDetail>()
   const [settingsOpen, setSettingsOpen] = React.useState(false)
-  const [listMode, setListMode] = React.useState<ListMode>('rows')
+  const [listMode, setListMode] = React.useState<ListMode>('grid')
   const [page, setPage] = React.useState(0)
   /** The attachment being looked at full size, if any. */
   const [zoom, setZoom] = React.useState<{ src: string; label: string }>()
-  /** How much room the panel actually got — three columns need about 900px. */
+  /**
+   * How much room the panel actually got.
+   *
+   * Three columns need about 960px now: the rail is 176, the list will not go
+   * below 320, and the detail column takes 320–380 — 380 being the width that
+   * keeps its three action buttons on one line. Below that the detail becomes a
+   * sheet over the list.
+   */
   const [panelWidth, setPanelWidth] = React.useState(1200)
   const [railOpen, setRailOpen] = React.useState(false)
   const panelRef = React.useRef<HTMLDivElement>(null)
@@ -344,7 +367,7 @@ function InboxPanel(): React.ReactElement {
   }, [])
 
   /** Narrow means: no room for a detail column, so it becomes a sheet. */
-  const narrow = panelWidth < 900
+  const narrow = panelWidth < 960
   const hairline = 'color-mix(in srgb, currentColor 12%, transparent)'
 
   /** One POST to the vault channel; see the transport note in panel-wire.ts. */
@@ -925,11 +948,13 @@ function InboxPanel(): React.ReactElement {
         style={{
           display: 'grid',
           // The list is the working surface; the detail is a reader pane beside
-          // it, so it gets a width rather than half the room — and below 900px
-          // the whole thing collapses to one column.
+          // it, so it gets a width rather than half the room. 320–380 rather
+          // than 250–300 because the detail's own action row ("保存描述与标签"
+          // next to "标为待看" next to "删除") is only one line at that width —
+          // and below 960px the whole thing collapses to one column.
           gridTemplateColumns: narrow
             ? 'minmax(0, 1fr)'
-            : '176px minmax(320px, 1fr) minmax(250px, 300px)',
+            : '176px minmax(320px, 1fr) minmax(320px, 380px)',
           gap: 14,
           // Fill what the chrome above left, so the list can scroll inside it.
           flex: 1,
@@ -1095,8 +1120,16 @@ function InboxPanel(): React.ReactElement {
 
           <div
             style={
-              listMode === 'grid'
+              listMode === 'compact'
                 ? {
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 0,
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: 'auto',
+                  }
+                : {
                     display: 'grid',
                     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                     gap: 12,
@@ -1105,23 +1138,6 @@ function InboxPanel(): React.ReactElement {
                     minHeight: 0,
                     overflowY: 'auto',
                   }
-                : listMode === 'compact'
-                  ? {
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 0,
-                      flex: 1,
-                      minHeight: 0,
-                      overflowY: 'auto',
-                    }
-                  : {
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 10,
-                      flex: 1,
-                      minHeight: 0,
-                      overflowY: 'auto',
-                    }
             }
           >
             {list?.entries.map((entry) => (
@@ -1155,7 +1171,7 @@ function InboxPanel(): React.ReactElement {
               {page > 0 && (
                 <button
                   type="button"
-                  style={buttonStyle}
+                  style={pagerButtonStyle}
                   onClick={() => setPage((current) => Math.max(0, current - 1))}
                 >
                   <ChevronLeft size={13} /> 上一页
@@ -1164,7 +1180,7 @@ function InboxPanel(): React.ReactElement {
               {page + 1 < pageCount && (
                 <button
                   type="button"
-                  style={buttonStyle}
+                  style={pagerButtonStyle}
                   onClick={() => setPage((current) => current + 1)}
                 >
                   下一页 <ChevronRight size={13} />
@@ -1613,13 +1629,11 @@ function detailNotice(notice: string | undefined): React.ReactNode {
   return notice === undefined ? null : <span style={{ opacity: 0.8 }}>{notice}</span>
 }
 
-/** One stored record as a list row. */
-/** How the list is laid out. Three densities, one switch — people differ. */
+/** How the list is laid out. Two densities, one switch — people differ. */
 type ListMode = UiListMode
 
-/** The three modes, in switch order, with their labels. */
+/** The two modes, in switch order, with their labels. */
 const LIST_MODES: readonly { id: ListMode; label: string; icon: React.ReactElement }[] = [
-  { id: 'rows', label: '单列', icon: <Rows3 size={14} /> },
   { id: 'grid', label: '网格', icon: <LayoutGrid size={14} /> },
   { id: 'compact', label: '紧凑', icon: <Layers size={14} /> },
 ]
@@ -1724,8 +1738,8 @@ function RailRow({
  * One record as a card.
  *
  * The frame is identical for every kind on purpose: what changes inside is the
- * picture and the one line under the title. A row that reads `图片 · 图片 ·
- * 未读 · 1 个附件 · 规则判的` said the same thing three times.
+ * glyph, the picture, and the words. Two layouts share it — `grid` spends two
+ * columns and shows the thumbnail, `compact` is a thin row without one.
  *
  * @param props - the summary, whether it is selected, and how to lay it out.
  * @returns the card.
@@ -1848,20 +1862,12 @@ function EntryCard({
           gap: 3,
         }}
       >
-        {/* The type is a badge in the corner, where a reader looks for "what is
-            this" before "what is it about". */}
-        <span
-          style={{
-            alignSelf: 'flex-start',
-            border: `1px solid ${hairline}`,
-            borderRadius: 5,
-            padding: '0 5px',
-            fontSize: 11,
-            opacity: 0.85,
-          }}
-        >
-          {KIND_LABELS[entry.kind]}
-        </span>
+        {/*
+          No type badge above the title any more: it took a line of its own, and
+          it said what the metadata line below already says (the category) —
+          the glyph on the left names the kind as well. One line less per card
+          is one more card on screen.
+        */}
         {/*
           One line each, ellipsised. A card whose height depends on how long its
           URL is turns the list into a ragged column you cannot scan — and in a
@@ -1958,7 +1964,29 @@ function EntryPane({
   const inBin = detail.deletedAt !== undefined
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    /*
+      The pane is a column with its timestamps pinned to the bottom, out of the
+      flow. They used to share the header row (`marginLeft: auto`), where one
+      long category or platform string wrapped them onto a line of their own —
+      and in what was a 250–300px column "存入 2026/9/19 17:00:40 · 更新 …"
+      always wrapped. Absolute positioning ends that argument: nothing above
+      can push them, and they never push anything. `paddingBottom` keeps the
+      actions clear of the band they occupy.
+    */
+    <div
+      style={{
+        position: 'relative',
+        // 100% of the card (or the sheet) rather than of the content, so the
+        // line sits at the pane's bottom even when the record is short. Where
+        // the parent's height is not definite the percentage resolves to auto,
+        // which lands the line right under the actions instead — still fine.
+        minHeight: '100%',
+        paddingBottom: 22,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+      }}
+    >
       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
         <strong>{KIND_LABELS[detail.kind]}</strong>
         <span style={{ opacity: 0.6 }}>
@@ -1968,12 +1996,6 @@ function EntryPane({
             : ` · ${CATEGORY_SOURCE_LABELS[detail.categorySource]}`}
         </span>
         {detail.platform !== undefined && <span style={{ opacity: 0.6 }}>· {detail.platform}</span>}
-        <span style={{ marginLeft: 'auto', opacity: 0.6 }}>
-          存入 {new Date(detail.createdAt).toLocaleString()}
-          {detail.updatedAt === detail.createdAt
-            ? ''
-            : ` · 更新 ${new Date(detail.updatedAt).toLocaleTimeString()}`}
-        </span>
       </div>
 
       {detail.url !== undefined && (
@@ -1999,46 +2021,65 @@ function EntryPane({
       )}
 
       {detail.attachments.length > 0 && (
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {detail.attachments.map((attachment) => (
-            <figure
-              key={attachment.id}
-              style={{ ...cardStyle, margin: 0, padding: 8, textAlign: 'center' }}
-            >
-              {attachment.image ? (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+          {detail.attachments.map((attachment) => {
+            const src = `${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}?id=${encodeURIComponent(attachment.id)}`
+            const caption = attachmentCaption(attachment)
+            /*
+              A picture is not a document: no frame around it, and the picture
+              and its caption both sit on the pane's centre line. Everything
+              else keeps the framed box — a bare 📄 glyph would float.
+            */
+            if (!attachment.image) {
+              return (
+                <figure
+                  key={attachment.id}
+                  style={{ ...cardStyle, margin: 0, padding: 8, textAlign: 'center' }}
+                >
+                  <div style={{ opacity: 0.7 }}>📄</div>
+                  <figcaption style={{ opacity: 0.7, marginTop: 4, fontSize: 12 }}>
+                    {caption}
+                  </figcaption>
+                </figure>
+              )
+            }
+            return (
+              <figure
+                key={attachment.id}
+                style={{
+                  margin: 0,
+                  maxWidth: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
                 <button
                   type="button"
                   title="放大查看"
-                  onClick={() =>
-                    onZoom(
-                      `${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}?id=${encodeURIComponent(attachment.id)}`,
-                      `${attachment.filename ?? attachment.mime}${
-                        attachment.width === undefined || attachment.height === undefined
-                          ? ''
-                          : ` · ${String(attachment.width)}×${String(attachment.height)}`
-                      }`,
-                    )
-                  }
+                  onClick={() => onZoom(src, caption)}
                   style={{ padding: 0, border: 'none', background: 'none', cursor: 'zoom-in' }}
                 >
                   <img
-                    src={`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}?id=${encodeURIComponent(attachment.id)}`}
+                    src={src}
                     alt={attachment.filename ?? ''}
                     style={{ maxWidth: 220, maxHeight: 220, borderRadius: 6, display: 'block' }}
                   />
                 </button>
-              ) : (
-                <div style={{ opacity: 0.7 }}>📄</div>
-              )}
-              <figcaption style={{ opacity: 0.7, marginTop: 4, fontSize: 12 }}>
-                {attachment.filename ?? attachment.mime}
-                {attachment.width === undefined || attachment.height === undefined
-                  ? ''
-                  : ` · ${String(attachment.width)}×${String(attachment.height)}`}
-                {` · ${formatBytes(attachment.bytes)}`}
-              </figcaption>
-            </figure>
-          ))}
+                <figcaption
+                  style={{
+                    opacity: 0.7,
+                    fontSize: 12,
+                    textAlign: 'center',
+                    overflowWrap: 'anywhere',
+                  }}
+                >
+                  {caption}
+                </figcaption>
+              </figure>
+            )
+          })}
         </div>
       )}
 
@@ -2111,10 +2152,17 @@ function EntryPane({
         />
       </label>
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      {/*
+        The three actions want one line — that is half of what the wider detail
+        column is for. Each label is `nowrap` (a verb does not break into two)
+        and the gap is 6 instead of 8; together with the 380px column the row
+        「保存描述与标签 / 标为待看 / 删除」 fits with room to spare. Wrapping
+        stays on as the fallback for a pane squeezed to its minimum.
+      */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <button
           type="button"
-          style={primaryStyle}
+          style={{ ...primaryStyle, whiteSpace: 'nowrap' }}
           disabled={busy}
           onClick={() =>
             void onUpdate({
@@ -2131,7 +2179,7 @@ function EntryPane({
         </button>
         <button
           type="button"
-          style={actionStyle}
+          style={{ ...actionStyle, whiteSpace: 'nowrap' }}
           disabled={busy || inBin}
           onClick={() => void onUpdate({ watchLater: detail.watchLater !== true })}
         >
@@ -2139,14 +2187,41 @@ function EntryPane({
           {detail.watchLater === true ? '取消待看' : '标为待看'}
         </button>
         {inBin ? (
-          <button type="button" style={actionStyle} disabled={busy} onClick={() => void onRestore()}>
+          <button
+            type="button"
+            style={{ ...actionStyle, whiteSpace: 'nowrap' }}
+            disabled={busy}
+            onClick={() => void onRestore()}
+          >
             <RotateCcw size={14} /> 恢复
           </button>
         ) : (
-          <button type="button" style={dangerStyle} disabled={busy} onClick={() => void onDelete()}>
+          <button
+            type="button"
+            style={{ ...dangerStyle, whiteSpace: 'nowrap' }}
+            disabled={busy}
+            onClick={() => void onDelete()}
+          >
             <Trash2 size={14} /> 删除
           </button>
         )}
+      </div>
+      {/* The timestamps: absolute, so nothing above and nothing below moves. */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          fontSize: 12,
+          opacity: 0.6,
+          overflowWrap: 'anywhere',
+        }}
+      >
+        存入 {new Date(detail.createdAt).toLocaleString()}
+        {detail.updatedAt === detail.createdAt
+          ? ''
+          : ` · 更新 ${new Date(detail.updatedAt).toLocaleString()}`}
       </div>
     </div>
   )
@@ -2169,6 +2244,15 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+/** `name · 1920×1080 · 2.3 MB` — the one line under an attachment. */
+function attachmentCaption(attachment: AttachmentSummary): string {
+  const pixels =
+    attachment.width === undefined || attachment.height === undefined
+      ? ''
+      : ` · ${String(attachment.width)}×${String(attachment.height)}`
+  return `${attachment.filename ?? attachment.mime}${pixels} · ${formatBytes(attachment.bytes)}`
 }
 
 /**
