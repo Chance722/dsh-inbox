@@ -49,6 +49,9 @@ export const INBOX_ENDPOINT_PULL = 'pull'
 /** Ask the remote a handful of questions and report each answer. */
 export const INBOX_ENDPOINT_PROBE = 'probe'
 
+/** Read or write the panel's own preferences (list mode and friends). */
+export const INBOX_ENDPOINT_UI = 'ui'
+
 /** What the panel sends to `webdav`: read the status, or save a patch. */
 export interface WebdavRequest {
   action: 'read' | 'save'
@@ -312,6 +315,30 @@ export type InboxRpcResult<T> = { ok: true; value: T } | { ok: false; error: Inb
 
 /** How many records one page holds. */
 export const LIST_LIMIT = 50
+
+/**
+ * How many records the panel asks for at a time.
+ *
+ * Twelve, not fifty: the list is made of cards now, and a page that has to be
+ * scrolled twice before you see the pager is a page you cannot count.
+ */
+export const PAGE_SIZE = 12
+
+/** The three list densities the panel offers. */
+export const UI_LIST_MODES = ['rows', 'grid', 'compact'] as const
+export type UiListMode = (typeof UI_LIST_MODES)[number]
+
+/** What the panel remembers about itself. */
+export interface UiPrefs {
+  /** How the record list is laid out. */
+  listMode: UiListMode
+}
+
+/** What the panel sends to `ui`: read the preferences, or change them. */
+export interface UiRequest {
+  action: 'read' | 'save'
+  listMode?: UiListMode
+}
 
 /** How much stored text a list row shows before the panel truncates it. */
 export const PREVIEW_CHARS = 140

@@ -41,6 +41,7 @@ import {
   INBOX_ENDPOINT_WEBDAV,
   INBOX_ENDPOINT_PULL,
   INBOX_ENDPOINT_PROBE,
+  INBOX_ENDPOINT_UI,
   INBOX_IMAGE_TYPES,
   LIST_LIMIT,
   MAX_ATTACHMENTS_PER_SUBMISSION,
@@ -75,6 +76,7 @@ import {
 import { runPull, s3Fetch } from './webdav/run.js'
 import { probeS3 } from './s3/probe.js'
 import { readS3Secret } from './webdav/config.js'
+import { readUiPrefs, saveUiPrefs } from './ui/config.js'
 import type { PullResult } from '../shared/panel-wire.js'
 import type { Attachment, Item } from './vault/spec.js'
 import type { Vault } from './vault/vault.js'
@@ -504,6 +506,23 @@ async function handleProbe(ctx: Context): Promise<InboxRpcResult<unknown>> {
   return { ok: true, value: rows }
 }
 
+/** Read or change the panel's own preferences (which list layout it remembers). */
+async function handleUi(ctx: Context, payload: unknown): Promise<InboxRpcResult<unknown>> {
+  const parsed = z
+    .object({
+      action: z.enum(['read', 'save']).default('read'),
+      listMode: z.enum(['rows', 'grid', 'compact']).optional(),
+    })
+    .safeParse(payload)
+  if (!parsed.success) return failure('inbox/bad-ui-request', parsed.error.message)
+
+  if (parsed.data.action === 'save' && parsed.data.listMode !== undefined) {
+    const saved = saveUiPrefs(ctx, { listMode: parsed.data.listMode })
+    if (!saved.ok) return failure('inbox/ui-unsaved', saved.reason ?? '存不进去')
+  }
+  return { ok: true, value: readUiPrefs(ctx) }
+}
+
 /** Rebuild the store's reference from the metadata we keep. */
 function imageRef(record: Attachment): ImageAttachmentRef {
   return {
@@ -645,6 +664,9 @@ export function registerInboxRpc(ctx: Context, vault: () => Vault | undefined): 
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_PROBE}`, () =>
         Promise.resolve(handleProbe(scoped)),
+      ),
+      endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_UI}`, (payload) =>
+        serialise(() => handleUi(scoped, payload)),
       ),
       {
         path: `${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}`,

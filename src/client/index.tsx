@@ -10,6 +10,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import React from 'react'
 import {
   Check,
+  ChevronLeft,
+  ChevronRight,
   FileText,
   Film,
   Image as ImageIcon,
@@ -21,6 +23,7 @@ import {
   RefreshCw,
   Rows3,
   Settings2,
+  X,
 } from 'lucide-react'
 
 import {
@@ -35,9 +38,15 @@ import {
   INBOX_ENDPOINT_UPDATE,
   INBOX_ENDPOINT_PULL,
   INBOX_ENDPOINT_PROBE,
+  INBOX_ENDPOINT_UI,
   INBOX_ENDPOINT_WEBDAV,
   INBOX_IMAGE_TYPES,
   LIST_LIMIT,
+  PAGE_SIZE,
+  UI_LIST_MODES,
+  type UiListMode,
+  type UiPrefs,
+  type UiRequest,
   type CaptureResult,
   type DetailResult,
   type EntryDetail,
@@ -203,6 +212,9 @@ function InboxPanel(): React.ReactElement {
   const [detail, setDetail] = React.useState<EntryDetail>()
   const [settingsOpen, setSettingsOpen] = React.useState(false)
   const [listMode, setListMode] = React.useState<ListMode>('rows')
+  const [page, setPage] = React.useState(0)
+  /** The attachment being looked at full size, if any. */
+  const [zoom, setZoom] = React.useState<{ src: string; label: string }>()
 
   /** One POST to the vault channel; see the transport note in panel-wire.ts. */
   const call = React.useCallback(
@@ -247,7 +259,8 @@ function InboxPanel(): React.ReactElement {
         ...(category === undefined ? {} : { categories: [category] }),
         ...(tag === undefined ? {} : { tags: [tag] }),
         ...(query.trim().length === 0 ? {} : { text: query.trim() }),
-        limit: LIST_LIMIT,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
       })
       if (!result.ok) {
         setNotice(`读取列表失败：${result.error.message}`)
@@ -260,12 +273,52 @@ function InboxPanel(): React.ReactElement {
         setDetail(undefined)
       }
     },
-    [call, category, query, scope, selectedId, tag, unreadOnly],
+    [call, category, page, query, scope, selectedId, tag, unreadOnly],
   )
 
   React.useEffect(() => {
     void refresh()
   }, [refresh])
+
+  /** Any filter change sends you back to the first page. */
+  React.useEffect(() => {
+    setPage(0)
+  }, [scope, unreadOnly, category, tag, query])
+
+  /** Escape closes whatever is stacked on top of the panel. */
+  React.useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      setZoom(undefined)
+      setSettingsOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  /**
+   * The layout the panel remembers for next time.
+   *
+   * Read once on mount and written on every change: this is a preference, not
+   * state the host needs to be told about immediately, so a failed write only
+   * means the choice does not survive a reload.
+   */
+  React.useEffect(() => {
+    void (async () => {
+      const answer = await call(INBOX_ENDPOINT_UI, { action: 'read' } satisfies UiRequest)
+      if (!answer.ok) return
+      const prefs = answer.value as UiPrefs
+      if (UI_LIST_MODES.includes(prefs.listMode)) setListMode(prefs.listMode)
+    })()
+  }, [call])
+
+  const chooseListMode = React.useCallback(
+    (mode: ListMode): void => {
+      setListMode(mode)
+      void call(INBOX_ENDPOINT_UI, { action: 'save', listMode: mode } satisfies UiRequest)
+    },
+    [call],
+  )
 
   /** Debounce the search box so typing does not spam the host. */
   React.useEffect(() => {
@@ -423,7 +476,63 @@ function InboxPanel(): React.ReactElement {
         </div>
       </header>
 
-      {settingsOpen && <WebdavSettings call={call} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <div
+          role="dialog"
+          aria-label="入库设置"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 40,
+            background: 'color-mix(in srgb, #000 55%, transparent)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            padding: '6vh 16px',
+            overflow: 'auto',
+          }}
+          onClick={(event) => {
+            // The sheet itself stops the click; the wash behind it closes.
+            if (event.target === event.currentTarget) setSettingsOpen(false)
+          }}
+        >
+          <div style={{ ...cardStyle, width: 'min(560px, 100%)', background: 'Canvas' }}>
+            <WebdavSettings call={call} onClose={() => setSettingsOpen(false)} />
+          </div>
+        </div>
+      )}
+
+      {zoom !== undefined && (
+        <div
+          role="dialog"
+          aria-label="放大查看"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 50,
+            background: 'color-mix(in srgb, #000 78%, transparent)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 10,
+            padding: 20,
+          }}
+          onClick={() => setZoom(undefined)}
+        >
+          <img
+            src={zoom.src}
+            alt={zoom.label}
+            style={{ maxWidth: '92vw', maxHeight: '80vh', borderRadius: 8, background: '#000' }}
+          />
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 12, opacity: 0.85 }}>
+            <span style={{ overflowWrap: 'anywhere' }}>{zoom.label}</span>
+            <button type="button" style={buttonStyle} onClick={() => setZoom(undefined)}>
+              <X size={13} /> 关闭
+            </button>
+          </div>
+        </div>
+      )}
 
       <div
         style={{
@@ -596,7 +705,7 @@ function InboxPanel(): React.ReactElement {
               type="button"
               title={`列表模式：${mode.label}`}
               aria-pressed={listMode === mode.id}
-              onClick={() => setListMode(mode.id)}
+              onClick={() => chooseListMode(mode.id)}
               style={{
                 ...buttonStyle,
                 border: 'none',
@@ -675,6 +784,40 @@ function InboxPanel(): React.ReactElement {
               />
             ))}
           </div>
+
+          {(list?.matched ?? 0) > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginTop: 10,
+                opacity: 0.75,
+                fontSize: 12,
+              }}
+            >
+              <span>
+                第 {String(page + 1)} / {String(Math.max(1, Math.ceil((list?.matched ?? 0) / PAGE_SIZE)))} 页
+              </span>
+              <span style={{ marginLeft: 'auto' }} />
+              <button
+                type="button"
+                style={buttonStyle}
+                disabled={page === 0}
+                onClick={() => setPage((current) => Math.max(0, current - 1))}
+              >
+                <ChevronLeft size={13} /> 上一页
+              </button>
+              <button
+                type="button"
+                style={buttonStyle}
+                disabled={(page + 1) * PAGE_SIZE >= (list?.matched ?? 0)}
+                onClick={() => setPage((current) => current + 1)}
+              >
+                下一页 <ChevronRight size={13} />
+              </button>
+            </div>
+          )}
         </section>
 
         <section style={{ ...cardStyle, minWidth: 0 }}>
@@ -687,6 +830,7 @@ function InboxPanel(): React.ReactElement {
               onUpdate={(patch) => mutate(INBOX_ENDPOINT_UPDATE, { id: detail.id, ...patch })}
               onDelete={() => mutate(INBOX_ENDPOINT_DELETE, { id: detail.id }, { dropSelection: true })}
               onRestore={() => mutate(INBOX_ENDPOINT_RESTORE, { id: detail.id }, { dropSelection: true })}
+              onZoom={(src, label) => setZoom({ src, label })}
             />
           )}
         </section>
@@ -1062,10 +1206,10 @@ function detailNotice(notice: string | undefined): React.ReactNode {
 
 /** One stored record as a list row. */
 /** How the list is laid out. Three densities, one switch — people differ. */
-export type ListMode = 'rows' | 'grid' | 'compact'
+type ListMode = UiListMode
 
 /** The three modes, in switch order, with their labels. */
-export const LIST_MODES: readonly { id: ListMode; label: string; icon: React.ReactElement }[] = [
+const LIST_MODES: readonly { id: ListMode; label: string; icon: React.ReactElement }[] = [
   { id: 'rows', label: '单列', icon: <Rows3 size={14} /> },
   { id: 'grid', label: '网格', icon: <LayoutGrid size={14} /> },
   { id: 'compact', label: '紧凑', icon: <Layers size={14} /> },
@@ -1187,12 +1331,15 @@ function EntryPane({
   onUpdate,
   onDelete,
   onRestore,
+  onZoom,
 }: {
   detail: EntryDetail
   busy: boolean
   onUpdate: (patch: Record<string, unknown>) => Promise<boolean>
   onDelete: () => Promise<boolean>
   onRestore: () => Promise<boolean>
+  /** Open one attachment full size, out of the panel's own layout. */
+  onZoom: (src: string, label: string) => void
 }): React.ReactElement {
   const [note, setNote] = React.useState(detail.note ?? '')
   const [tags, setTags] = React.useState(detail.tags.join(', '))
@@ -1253,11 +1400,27 @@ function EntryPane({
               style={{ ...cardStyle, margin: 0, padding: 8, textAlign: 'center' }}
             >
               {attachment.image ? (
-                <img
-                  src={`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}?id=${encodeURIComponent(attachment.id)}`}
-                  alt={attachment.filename ?? ''}
-                  style={{ maxWidth: 220, maxHeight: 220, borderRadius: 6, display: 'block' }}
-                />
+                <button
+                  type="button"
+                  title="放大查看"
+                  onClick={() =>
+                    onZoom(
+                      `${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}?id=${encodeURIComponent(attachment.id)}`,
+                      `${attachment.filename ?? attachment.mime}${
+                        attachment.width === undefined || attachment.height === undefined
+                          ? ''
+                          : ` · ${String(attachment.width)}×${String(attachment.height)}`
+                      }`,
+                    )
+                  }
+                  style={{ padding: 0, border: 'none', background: 'none', cursor: 'zoom-in' }}
+                >
+                  <img
+                    src={`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}?id=${encodeURIComponent(attachment.id)}`}
+                    alt={attachment.filename ?? ''}
+                    style={{ maxWidth: 220, maxHeight: 220, borderRadius: 6, display: 'block' }}
+                  />
+                </button>
               ) : (
                 <div style={{ opacity: 0.7 }}>📄</div>
               )}

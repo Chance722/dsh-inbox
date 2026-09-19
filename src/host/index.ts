@@ -5,6 +5,7 @@ import { MILESTONE, PACKAGE_NAME } from '../shared/constants.js'
 import { registerInboxCommand } from './command.js'
 import { registerInboxRpc } from './rpc.js'
 import { registerInboxTools } from './tools.js'
+import { installUiSettings } from './ui/config.js'
 import { Vault } from './vault/vault.js'
 import { runPull } from './webdav/run.js'
 import { installWebdavSettings } from './webdav/config.js'
@@ -32,6 +33,7 @@ export function apply(ctx: Context): void {
   // the user's stored values.
   ctx.inject(['settings'], (withSettings) => {
     installWebdavSettings(withSettings)
+    installUiSettings(withSettings)
   })
   let vault: Vault | undefined
   let openError: string | undefined
