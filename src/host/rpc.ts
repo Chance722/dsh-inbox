@@ -241,6 +241,7 @@ async function handleCapture(
   vault: Vault | undefined,
   attachments: AttachmentStore,
   payload: unknown,
+  ctx: Context,
 ): Promise<InboxRpcResult<unknown>> {
   if (vault === undefined) {
     return failure('inbox/vault-closed', 'inbox 仓库还没打开（或打开失败），稍后再试')
@@ -267,7 +268,9 @@ async function handleCapture(
   }
 
   try {
-    const summary: CaptureResult = await capture(vault, { text, attachments: stored }, 'panel')
+    const summary: CaptureResult = await capture(vault, { text, attachments: stored }, 'panel', {
+      ctx,
+    })
     return { ok: true, value: summary }
   } catch (error) {
     return failure('inbox/capture-failed', reasonOf(error))
@@ -506,7 +509,7 @@ export function registerInboxRpc(ctx: Context, vault: () => Vault | undefined): 
 
     const routes: readonly ConnectionFetchRoute[] = [
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_CAPTURE}`, (payload) =>
-        serialise(() => handleCapture(vault(), attachments, payload)),
+        serialise(() => handleCapture(vault(), attachments, payload, scoped)),
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_LIST}`, (payload) =>
         Promise.resolve(handleList(vault(), payload)),

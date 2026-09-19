@@ -4,8 +4,17 @@
  * link or an image belongs to) is M5's job.
  */
 
+import type { Context } from '@deepseek-ai/cordis'
+
 import type { Source } from '../shared/vocabulary.js'
-import { classifyImage, classifyLink, classifyText, platformOf } from './classify/rules.js'
+import { classifyWithModel } from './classify/model.js'
+import {
+  classifyImage,
+  classifyLink,
+  classifyText,
+  platformOf,
+  type Classification,
+} from './classify/rules.js'
 import type { Attachment, Item } from './vault/spec.js'
 import type { NewItem, Vault } from './vault/vault.js'
 
@@ -72,6 +81,8 @@ export interface CaptureOutcome {
   item: Item
   /** True when an existing record absorbed this capture. */
   merged: boolean
+  /** What the rules concluded, so a caller can decide whether to ask a model. */
+  verdict: Classification
 }
 
 /** Keep a note the user already wrote; accept the incoming one only if empty. */
@@ -91,7 +102,11 @@ async function absorb(
       ? { title: incoming.title }
       : {}),
   })
-  return { item: next, merged: true }
+  return {
+    item: next,
+    merged: true,
+    verdict: { category: next.category, confidence: 'decided', reason: '合并到已有记录，不重复分类' },
+  }
 }
 
 /**
@@ -139,7 +154,7 @@ export async function captureText(
     )
 
   if (existing !== undefined) return absorb(vault, existing, { note })
-  return { item: await vault.create(candidate), merged: false }
+  return { item: await vault.create(candidate), merged: false, verdict }
 }
 
 /** Re-exported so callers do not reach into the rules module for this. */
@@ -201,7 +216,7 @@ export async function captureImage(
     ...(note === undefined || note.length === 0 ? {} : { note }),
     attachmentIds: [record.id],
   })
-  return { item, merged: false }
+  return { item, merged: false, verdict }
 }
 
 /** What one capture submission carried: free text and/or durable attachments. */
@@ -214,6 +229,12 @@ export interface CapturePayload {
 export interface CaptureSummary {
   stored: number
   merged: number
+}
+
+/** What a caller may want to do once something is safely stored. */
+export interface CaptureOptions {
+  /** When present, records no rule could judge are handed to the model. */
+  ctx?: Context
 }
 
 /**
@@ -231,12 +252,26 @@ export async function capture(
   vault: Vault,
   payload: CapturePayload,
   source: Source,
+  options: CaptureOptions = {},
 ): Promise<CaptureSummary> {
   let stored = 0
   let merged = 0
   const tally = (outcome: CaptureOutcome): void => {
     if (outcome.merged) merged += 1
     else stored += 1
+    // Fire and forget: classification must never delay the paste, and a failure
+    // leaves the rule's verdict standing.
+    if (options.ctx !== undefined && !outcome.merged) {
+      // A background nicety must never break the primary path: swallow both a
+      // synchronous throw (a composition without the service) and a rejection.
+      try {
+        void classifyWithModel(options.ctx, vault, outcome.item, outcome.verdict).catch(
+          () => undefined,
+        )
+      } catch {
+        // Nothing to do: the rule verdict is already stored.
+      }
+    }
   }
 
   for (const attachment of payload.attachments ?? []) {

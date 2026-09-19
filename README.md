@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-> **Status: pre-alpha — M0–M5 (rules) done.** File things two ways, browse and manage them in the panel, ask for them in conversation, and things now arrive **already classified** by rules. Sync is still ahead, and so is the model fallback for text a rule cannot judge. Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
+> **Status: pre-alpha — M0–M5 done.** File things two ways, browse and manage them in the panel, ask for them in conversation, and things arrive **already classified**: rules decide what they can prove, and a capped `deepseek-flash` pass judges the rest. Sync (M6) is next. Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
 
 A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`): paste links, images, text and credentials into one local vault, get them classified, browse them from the sidebar, and pull them back through conversation.
 
@@ -21,7 +21,8 @@ A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/de
 | ✅ Own conversation card | Tool results render as dsh-inbox cards: links become clickable, and image markers become thumbnails drawn on this machine |
 | ✅ Classification by rule | A video page becomes 视频/音频, a public-account article 文章, a credential-shaped paste 密钥/账密 (and is then never echoed), and a card-shaped image gets a 疑似证件 tag — all decided locally, no bytes or text leaving the machine |
 | ✅ Your word wins | Set the category yourself and it is marked as yours; nothing overwrites it |
-| ❌ Not yet | Model fallback for text no rule can judge, sync (M6) |
+| ✅ Model fallback, capped | Text or a recognised-host link no rule could judge gets one `deepseek-flash` call, redacted first. Capped at 200 calls / 100k tokens per day, recorded in the vault, and a failure leaves the rule's verdict standing. Images are never sent. |
+| ❌ Not yet | Sync (M6) |
 
 ### Where your data lives
 

@@ -30,6 +30,7 @@ let definition: CommandDefinition
 /** Capture the definition the plugin registers, without a command registry. */
 function register(): void {
   const fake = {
+    get: () => undefined,
     commands: {
       register: (candidate: CommandDefinition) => {
         definition = candidate

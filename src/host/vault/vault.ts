@@ -251,6 +251,14 @@ export class Vault {
     await this.domain.global.set(vaultGlobalSchema.parse(value))
   }
 
+  /** Record today's model-fallback spend. */
+  async setModelSpend(
+    spend: NonNullable<VaultGlobal['model']>,
+    last?: string,
+  ): Promise<void> {
+    await this.setGlobal({ ...this.global, model: { ...spend, ...(last === undefined ? {} : { last }) } })
+  }
+
   /** Release the domain handle. Idempotent. */
   async close(): Promise<void> {
     if (this.closed) return

@@ -63,6 +63,7 @@ export function registerInboxCommand(ctx: Context, vault: () => Vault | undefine
         open,
         { text: invocation.rawInput, attachments: invocation.attachments.map(toCaptured) },
         'chat',
+        { ctx },
       )
 
       if (summary.stored === 0 && summary.merged === 0) {

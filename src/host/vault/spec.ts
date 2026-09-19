@@ -86,6 +86,17 @@ export const vaultGlobalSchema = z.object({
     lastPullAt: z.string().optional(),
     cursor: z.string().optional(),
   }),
+  /** Today's model-fallback spend, so a restart cannot reset the meter. */
+  model: z
+    .object({
+      day: z.string(),
+      calls: z.number().int().nonnegative(),
+      tokens: z.number().int().nonnegative(),
+      /** Why the last attempt ended the way it did; the only place to look when
+       * a category did not change and the log is long gone. */
+      last: z.string().optional(),
+    })
+    .optional(),
 })
 
 export type Item = z.infer<typeof itemSchema>
