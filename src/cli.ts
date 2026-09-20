@@ -18,8 +18,10 @@
  *   3. point the user-level default preset at it (backing the settings file up
  *      first, because that file is the user's, not ours)
  *
- * It never edits the plugin's own composition in place: the copy is the user's
- * to edit afterwards, and re-running only adds what is missing.
+ * The copy is the user's to edit afterwards: re-running adds the row when it is
+ * missing, and otherwise leaves the file alone — the one exception being that
+ * row's package name, which is ours to keep pointing at the real package (see
+ * `PRESET_ROW_PATTERN`).
  */
 
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -30,12 +32,48 @@ import { spawnSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 
 /** What the plugin calls itself, and the row an agent preset needs. */
-const PACKAGE_NAME = '@duoyu/dsh-inbox'
+const PACKAGE_NAME = '@chance722/dsh-inbox'
 const PRESET_ROW = `
 # dsh-inbox: the vault's conversation tools (inbox_search / inbox_get).
 - id: dsh-inbox
   name: '${PACKAGE_NAME}'
 `
+
+/**
+ * The plugin's row in a preset composition, matched **by id**.
+ *
+ * Matching by package name was wrong the day the package got renamed: the old
+ * name would still be sitting in the preset, `includes(PACKAGE_NAME)` would say
+ * "not there", and the installer would append a second row pointing at a
+ * package that no longer resolves — leaving the preset with one row that works
+ * and one that cannot load. The id is what stays put.
+ */
+const PRESET_ROW_PATTERN = /(^[ \t]*-[ \t]*id:[ \t]*dsh-inbox[ \t]*\r?\n[ \t]*name:[ \t]*['"]?)([^'"\r\n]+)(['"]?[ \t]*$)/m
+
+/** What one pass over a preset composition had to do to our row. */
+export interface PresetRowOutcome {
+  /** The text to write back; identical to the input when nothing changed. */
+  body: string
+  change: 'added' | 'unchanged' | 'renamed'
+  /** The package the row used to point at, when it was renamed. */
+  from?: string
+}
+
+/**
+ * Make sure the composition carries our row — once, pointing at the real package.
+ *
+ * @param body - the preset's `agent.cordis.yml` text.
+ * @returns the text to write, and what had to happen.
+ */
+export function ensurePresetRow(body: string): PresetRowOutcome {
+  const row = PRESET_ROW_PATTERN.exec(body)
+  if (row === null) {
+    return { body: `${body.replace(/\s*$/, '')}\n${PRESET_ROW}`, change: 'added' }
+  }
+  const from = (row[2] ?? '').trim()
+  if (from === PACKAGE_NAME) return { body, change: 'unchanged' }
+  return { body: body.replace(PRESET_ROW_PATTERN, `$1${PACKAGE_NAME}$3`), change: 'renamed', from }
+}
 
 export interface Options {
   profile: string
@@ -284,9 +322,13 @@ function main(argv: readonly string[]): number {
   }
   const composition = join(presetDir, 'agent.cordis.yml')
   const body = readFileSync(composition, 'utf8')
-  if (!body.includes(PACKAGE_NAME)) {
-    writeFileSync(composition, `${body.replace(/\s*$/, '')}\n${PRESET_ROW}`, 'utf8')
+  const outcome = ensurePresetRow(body)
+  if (outcome.change === 'added') {
+    writeFileSync(composition, outcome.body, 'utf8')
     process.stdout.write(`   已把 ${PACKAGE_NAME} 追加进 preset 的组合\n`)
+  } else if (outcome.change === 'renamed') {
+    writeFileSync(composition, outcome.body, 'utf8')
+    process.stdout.write(`   preset 里那一行的来源从 ${String(outcome.from)} 改成 ${PACKAGE_NAME}\n`)
   } else {
     process.stdout.write('   preset 里已经有这个插件，跳过\n')
   }
