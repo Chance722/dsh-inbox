@@ -115,6 +115,18 @@ describe('/inbox command', () => {
     expect(vault?.size).toBe(1)
   })
 
+  it('says so when a repeat pulls a record back out of the recycle bin', async () => {
+    const first = await invoke('会被删掉的')
+    expect(first.kind).toBe('success')
+    await vault?.softDelete(vault.list()[0]?.id ?? '')
+    expect(vault?.list()).toHaveLength(0)
+
+    const again = await invoke('会被删掉的')
+
+    expect(again).toEqual({ kind: 'success', text: '从回收站取回 1 条' })
+    expect(vault?.list()).toHaveLength(1)
+  })
+
   it('refuses an empty submission', async () => {
     const result = await invoke('   ')
     expect(result.kind).toBe('error')

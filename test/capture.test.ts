@@ -181,13 +181,17 @@ describe('capture against a real vault', () => {
       'chat',
     )
 
-    expect(summary).toEqual({ stored: 2, merged: 0 })
+    expect(summary).toEqual({ stored: 2, merged: 0, restored: 0 })
     expect(vault.list().map((item) => item.kind).sort()).toEqual(['image', 'link'])
   })
 
   it('reports an empty submission as nothing to store', async () => {
-    expect(await capture(vault, { text: '   ' }, 'chat')).toEqual({ stored: 0, merged: 0 })
-    expect(await capture(vault, {}, 'chat')).toEqual({ stored: 0, merged: 0 })
+    expect(await capture(vault, { text: '   ' }, 'chat')).toEqual({
+      stored: 0,
+      merged: 0,
+      restored: 0,
+    })
+    expect(await capture(vault, {}, 'chat')).toEqual({ stored: 0, merged: 0, restored: 0 })
   })
 
   it('merges both halves of a repeated mixed submission', async () => {
@@ -196,7 +200,62 @@ describe('capture against a real vault', () => {
       attachments: [{ id: 'att-4', mime: 'image/png', bytes: 100, width: 10, height: 10 }],
     }
     await capture(vault, payload, 'chat')
-    expect(await capture(vault, payload, 'panel')).toEqual({ stored: 0, merged: 2 })
+    expect(await capture(vault, payload, 'panel')).toEqual({ stored: 0, merged: 2, restored: 0 })
     expect(vault.size).toBe(2)
+  })
+
+  describe('re-capturing something that is in the recycle bin', () => {
+    it('takes the record back out instead of leaving it invisible', async () => {
+      const first = await captureText(vault, '一段灵感', 'panel', '写给自己的描述')
+      await vault.setWatchLater(first.item.id)
+      await vault.softDelete(first.item.id)
+      expect(vault.list()).toHaveLength(0)
+
+      const again = await captureText(vault, '一段灵感', 'panel')
+
+      expect(again.merged).toBe(true)
+      expect(again.restored).toBe(true)
+      // The same record, with everything the user had put on it still there.
+      expect(again.item.id).toBe(first.item.id)
+      expect(again.item.createdAt).toBe(first.item.createdAt)
+      expect(again.item.note).toBe('写给自己的描述')
+      expect(again.item.watchLater).toBe(true)
+      expect(again.item.deletedAt).toBeUndefined()
+      expect(vault.getBin()).toHaveLength(0)
+      expect(vault.list()).toHaveLength(1)
+    })
+
+    it('does the same for an image, whose dedupe key is the attachment', async () => {
+      const ref = { id: 'att-bin', mime: 'image/png', bytes: 2048, width: 800, height: 600 }
+      const first = await captureImage(vault, ref, 'chat')
+      await vault.softDelete(first.item.id)
+
+      const again = await captureImage(vault, ref, 'panel')
+
+      expect(again.restored).toBe(true)
+      expect(again.item.id).toBe(first.item.id)
+      expect(again.item.deletedAt).toBeUndefined()
+      // No second attachment row either — the original reference is still good.
+      expect(vault.size).toBe(1)
+    })
+
+    it('leaves a record that was never deleted alone', async () => {
+      const first = await captureText(vault, '一段灵感', 'panel')
+      const again = await captureText(vault, '一段灵感', 'panel')
+      expect(again.merged).toBe(true)
+      expect(again.restored).toBe(false)
+      expect(again.item.id).toBe(first.item.id)
+    })
+
+    it('counts the rescue in the submission summary', async () => {
+      const filed = await captureText(vault, '一段灵感', 'panel')
+      await vault.softDelete(filed.item.id)
+
+      const summary = await capture(vault, { text: '一段灵感' }, 'panel')
+
+      // One merged record, and that one is the rescued one: the panel says
+      // 「从回收站取回 1 条」 and never also 「合并 1 条重复项」.
+      expect(summary).toEqual({ stored: 0, merged: 1, restored: 1 })
+    })
   })
 })

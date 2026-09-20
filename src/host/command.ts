@@ -11,11 +11,15 @@ import type { CommandInvocation } from '@deepseek-ai/dsh-commands'
 import { capture, type CapturedAttachment } from './capture.js'
 import type { Vault } from './vault/vault.js'
 
-/** One-line result text for the composer. */
-function describe(summary: { stored: number; merged: number }): string {
+/** One-line result text for the composer; the same words the panel uses. */
+function describe(summary: { stored: number; merged: number; restored: number }): string {
   const parts: string[] = []
   if (summary.stored > 0) parts.push(`已存入 ${summary.stored} 条`)
-  if (summary.merged > 0) parts.push(`合并 ${summary.merged} 条重复项`)
+  // A record taken back out of the recycle bin is not "a repeat that did
+  // nothing": it is back in the list, and saying so is the whole point.
+  const repeats = summary.merged - summary.restored
+  if (repeats > 0) parts.push(`合并 ${repeats} 条重复项`)
+  if (summary.restored > 0) parts.push(`从回收站取回 ${summary.restored} 条`)
   return parts.join('，')
 }
 

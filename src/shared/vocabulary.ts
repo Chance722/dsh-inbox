@@ -52,8 +52,26 @@ export const KIND_LABELS: Record<Kind, string> = {
 }
 
 
+/**
+ * Display labels for the three answers to "who judged this category".
+ *
+ * The first cut was 「规则 / 模型 / 你」, three bare nouns sitting after a `·` next
+ * to the category — they named the *thing* and never the *question*, which is
+ * why they read as decoration rather than as a fact about the record. Each
+ * label now carries the verb.
+ *
+ * `user` is 「手动判定」 and not the obvious 「自判定」: 自 at a glance reads as 自动,
+ * which says the exact opposite of what happened (the machine judged it).
+ */
 export const CATEGORY_SOURCE_LABELS: Record<CategorySource, string> = {
-  rule: '规则',
-  model: '模型',
-  user: '你',
+  rule: '规则判定',
+  model: '模型判定',
+  user: '手动判定',
+}
+
+/** One sentence per source: what it means, and what it implies about the record. */
+export const CATEGORY_SOURCE_HINTS: Record<CategorySource, string> = {
+  rule: '本地规则按链接、文本、图片的形状判的，没有联网',
+  model: '规则判不出来才交给模型判的；你说的话永远优先，随时可以改',
+  user: '你自己选的类目，规则和模型都不会覆盖它',
 }

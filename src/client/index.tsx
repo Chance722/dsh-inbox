@@ -82,9 +82,11 @@ import { headingOf, headingTooltipOf, isSecret } from './heading.js'
 import {
   CATEGORIES,
   CATEGORY_LABELS,
+  CATEGORY_SOURCE_HINTS,
   CATEGORY_SOURCE_LABELS,
   KIND_LABELS,
   type Category,
+  type CategorySource,
 } from '../shared/vocabulary.js'
 
 /** Stable Cordis plugin name for the browser half. */
@@ -249,6 +251,27 @@ const dangerStyle: React.CSSProperties = {
 const WATCH_COLOR = '#6e9ef7'
 
 /**
+ * The colour of a 「模型判定」 badge.
+ *
+ * A `currentColor` mix cannot say "a machine guessed this": every mix of grey is
+ * grey. Violet separates it from the user's own choice (`WATCH_COLOR`) without
+ * competing with the alarm colours.
+ */
+const MODEL_COLOR = '#a78bfa'
+
+/**
+ * The height every control in a toolbar row ships at.
+ *
+ * The panel declares `14px/1.6 system-ui` for itself, so one line box is 22.4px;
+ * add the 5px padding above and below plus the 1px border and every control
+ * lands on 34.4px. Written as a formula rather than as `34.4` so it keeps
+ * tracking the font if that ever moves — the point is that the search box, the
+ * list-mode group and the refresh button share one edge, which is what the eye
+ * reads as "aligned".
+ */
+const CONTROL_HEIGHT = 'calc(1.6em + 12px)'
+
+/**
  * One row of the detail pane.
  *
  * `flex: none` on every row, and it is not decoration: the pane is a scrolling
@@ -344,21 +367,31 @@ const buttonStyle: React.CSSProperties = {
   background: 'transparent',
   color: 'inherit',
   cursor: 'pointer',
+  /*
+    A flex row rather than an inline box.
+
+    Every one of these buttons is either a bare glyph or a glyph next to a word,
+    and an inline SVG lands on the text baseline: the icon reads as sitting low
+    in its own frame. It is the same defect the pager and the list-mode buttons
+    were fixed for one at a time (M7.12 / M7.13); the difference here is that it
+    is fixed once, for all of them.
+  */
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
 }
 
 /**
  * A pager button: the arrow and its word on one centered line.
  *
- * `buttonStyle` leaves the button inline, so the icon sat on the text's own
- * baseline and "‹ 上一页" read as crooked. A flex row with centered items is
- * what the eye expected.
+ * Back when `buttonStyle` was still an inline box the icon sat on the text's own
+ * baseline and "‹ 上一页" read as crooked; this was the first button fixed for
+ * it. `buttonStyle` is a centred flex row for every button now, so all that is
+ * left here is `whiteSpace`, which the pager still needs.
  */
 const pagerButtonStyle: React.CSSProperties = {
   ...buttonStyle,
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 4,
   whiteSpace: 'nowrap',
 }
 
@@ -745,6 +778,28 @@ function InboxPanel(): React.ReactElement {
   /** How many pages the current filter has, for the pager's own rules. */
   const pageCount = Math.max(1, Math.ceil((list?.matched ?? 0) / PAGE_SIZE))
 
+  /**
+   * What the list is showing, in the filter's own words.
+   *
+   * The heading used to be the constant 「存入的」, which describes the panel
+   * rather than the list: it stayed 「存入的」 while you were looking at a single
+   * category, and it said nothing about which one. Naming the current filter
+   * costs one line and answers the question the heading is there to answer.
+   * The words are the rail's own labels, so the two surfaces cannot drift.
+   */
+  const listTitle = (() => {
+    const parts: string[] = []
+    // Category and 待看 reset when you step into the bin, but a tag does not —
+    // so 回收站 can still be narrowing, and the heading says so.
+    if (scope === 'bin') parts.push('回收站')
+    else {
+      if (category !== undefined) parts.push(CATEGORY_LABELS[category])
+      if (watchOnly) parts.push('待看')
+    }
+    if (tag !== undefined) parts.push(`#${tag}`)
+    return parts.length === 0 ? '全部' : parts.join(' · ')
+  })()
+
   /** Which face the lightbox shows; a hand-off (no bytes) falls through to image. */
   const zoomKind =
     zoom?.mime?.startsWith('video/') === true
@@ -1042,8 +1097,12 @@ function InboxPanel(): React.ReactElement {
           style={{
             position: 'fixed',
             left: '50%',
-            bottom: 28,
-            transform: 'translateX(-50%)',
+            top: '50%',
+            // Dead centre, not near the foot of the window: at `bottom: 28` the
+            // toast sat in the corner you are least likely to be looking at,
+            // and on a tall window it was a long way from the thing it was
+            // reporting on.
+            transform: 'translate(-50%, -50%)',
             zIndex: 60,
             padding: '8px 14px',
             borderRadius: 999,
@@ -1053,6 +1112,9 @@ function InboxPanel(): React.ReactElement {
             boxShadow: '0 10px 30px #0006',
             fontSize: 13,
             maxWidth: '80vw',
+            // It reports; it does not invite a click. Centred over the list it
+            // would otherwise swallow the first click of whatever is under it.
+            pointerEvents: 'none',
           }}
         >
           {notice}
@@ -1063,7 +1125,12 @@ function InboxPanel(): React.ReactElement {
         {narrow && (
           <button
             type="button"
-            style={{ ...buttonStyle, ...(railOpen ? { borderColor: 'currentColor' } : {}) }}
+            style={{
+              ...buttonStyle,
+              height: CONTROL_HEIGHT,
+              boxSizing: 'border-box',
+              ...(railOpen ? { borderColor: 'currentColor' } : {}),
+            }}
             aria-expanded={railOpen}
             onClick={() => setRailOpen((open) => !open)}
           >
@@ -1074,7 +1141,16 @@ function InboxPanel(): React.ReactElement {
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="搜标题、正文、链接、备注…"
-          style={{ ...inputStyle, flex: 1, minWidth: 180 }}
+          style={{
+            ...inputStyle,
+            flex: 1,
+            minWidth: 180,
+            // The same edge as the two buttons beside it: an input sized by its
+            // own line box happened to land within half a pixel, which is the
+            // kind of "almost" that still reads as crooked.
+            height: CONTROL_HEIGHT,
+            boxSizing: 'border-box',
+          }}
         />
         <span
           role="group"
@@ -1084,6 +1160,8 @@ function InboxPanel(): React.ReactElement {
             border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
             borderRadius: 8,
             overflow: 'hidden',
+            height: CONTROL_HEIGHT,
+            boxSizing: 'border-box',
           }}
         >
           {LIST_MODES.map((mode) => (
@@ -1095,11 +1173,15 @@ function InboxPanel(): React.ReactElement {
               onClick={() => chooseListMode(mode.id)}
               style={{
                 ...buttonStyle,
-                // A bare glyph in a button has to be a flex item: left inline it
-                // lands on the text baseline and reads as sitting low in its box.
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                // The frame itself: no padding of its own (the group's height
+                // decides it), a fixed 38px width, and `height: 100%` of the
+                // group's inner box. With the glyph centred by `buttonStyle` the
+                // icon lands on the row's centre line — measured offset 0.
+                flex: 'none',
+                width: 38,
+                height: '100%',
+                padding: 0,
+                boxSizing: 'border-box',
                 border: 'none',
                 borderRadius: 0,
                 opacity: listMode === mode.id ? 1 : 0.5,
@@ -1109,7 +1191,12 @@ function InboxPanel(): React.ReactElement {
             </button>
           ))}
         </span>
-        <button type="button" style={buttonStyle} disabled={busy} onClick={() => void refreshAll()}>
+        <button
+          type="button"
+          style={{ ...buttonStyle, height: CONTROL_HEIGHT, boxSizing: 'border-box' }}
+          disabled={busy}
+          onClick={() => void refreshAll()}
+        >
           <RefreshCw size={13} /> {busy ? '刷新中…' : '刷新'}
         </button>
       </div>
@@ -1251,7 +1338,7 @@ function InboxPanel(): React.ReactElement {
               marginBottom: 6,
             }}
           >
-            <strong>{scope === 'bin' ? '回收站' : '存入的'}</strong>
+            <strong>{listTitle}</strong>
             {/* The area's own action lives where the count used to sit. */}
             {scope === 'bin' && (list?.deleted ?? 0) > 0 && (
               <button
@@ -1877,6 +1964,57 @@ const CATEGORY_ICONS: Record<(typeof CATEGORIES)[number], React.ReactElement> = 
 }
 
 /**
+ * Who put this record in its category, as a badge.
+ *
+ * It used to be a `· 规则` tail on the category itself: a bare noun after a dot,
+ * which named the *thing* while leaving the *question* unspoken — hence 「云里雾
+ * 里」. The wording now carries the verb (谁判的), the pill shape says this is a
+ * property of this record rather than of the vault, and the colour says whose
+ * judgement it was: grey for the default rule, violet for the model, and the
+ * accent the user's own choice already wears on the 待看 capsule.
+ *
+ * Hovering explains the whole thing; a badge that needs a manual is a badge that
+ * failed.
+ *
+ * @param props - which of the three answers this record carries.
+ * @returns the badge.
+ */
+function SourceBadge({ source }: { source: CategorySource }): React.ReactElement {
+  const tint = source === 'user' ? WATCH_COLOR : source === 'model' ? MODEL_COLOR : undefined
+  return (
+    <span
+      title={CATEGORY_SOURCE_HINTS[source]}
+      style={{
+        flex: 'none',
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '1px 8px',
+        borderRadius: 999,
+        fontSize: 11,
+        fontWeight: 600,
+        whiteSpace: 'nowrap',
+        ...(tint === undefined
+          ? {
+              // The rule is the default, and the default is not news: it stays
+              // grey so the two that mean "somebody made a judgement" stand out.
+              background: 'color-mix(in srgb, currentColor 8%, transparent)',
+              border: '1px solid color-mix(in srgb, currentColor 20%, transparent)',
+              color: 'inherit',
+              opacity: 0.7,
+            }
+          : {
+              background: `color-mix(in srgb, ${tint} 18%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${tint} 55%, transparent)`,
+              color: tint,
+            }),
+      }}
+    >
+      {CATEGORY_SOURCE_LABELS[source]}
+    </span>
+  )
+}
+
+/**
  * One row of the filter rail: glyph, name, count.
  *
  * The rail is where filtering lives — the header keeps only what applies to the
@@ -2291,18 +2429,16 @@ function EntryPane({
           ...paneRowStyle,
           display: 'flex',
           gap: 8,
-          alignItems: 'baseline',
+          // Centre, not baseline: the source is a pill now, and a pill aligned
+          // on the text baseline hangs off the bottom of the line.
+          alignItems: 'center',
           flexWrap: 'wrap',
         }}
       >
         <strong>{KIND_LABELS[detail.kind]}</strong>
-        <span style={{ opacity: 0.6 }}>
-          {CATEGORY_LABELS[detail.category]}
-          {detail.categorySource === undefined
-            ? ''
-            : ` · ${CATEGORY_SOURCE_LABELS[detail.categorySource]}`}
-        </span>
-        {detail.platform !== undefined && <span style={{ opacity: 0.6 }}>· {detail.platform}</span>}
+        <span style={{ opacity: 0.6 }}>{CATEGORY_LABELS[detail.category]}</span>
+        {detail.categorySource !== undefined && <SourceBadge source={detail.categorySource} />}
+        {detail.platform !== undefined && <span style={{ opacity: 0.6 }}>{detail.platform}</span>}
       </div>
 
       {detail.url !== undefined && (
@@ -2597,7 +2733,15 @@ function EntryPane({
 function describe(summary: CaptureResult): string {
   const parts: string[] = []
   if (summary.stored > 0) parts.push(`已存入 ${summary.stored} 条`)
-  if (summary.merged > 0) parts.push(`合并 ${summary.merged} 条重复项`)
+  /*
+    A record pulled back out of the recycle bin is not just "a repeat": it is the
+    difference between "nothing happened" and "it is back in the list", and the
+    user asked for exactly that. So it is counted and said separately, and the
+    plain-repeat count leaves it out rather than reporting the same record twice.
+  */
+  const repeats = summary.merged - summary.restored
+  if (repeats > 0) parts.push(`合并 ${repeats} 条重复项`)
+  if (summary.restored > 0) parts.push(`从回收站取回 ${summary.restored} 条`)
   return parts.join('，')
 }
 

@@ -81,6 +81,11 @@ export interface CaptureOutcome {
   item: Item
   /** True when an existing record absorbed this capture. */
   merged: boolean
+  /**
+   * True when the record it absorbed into was sitting in the recycle bin and
+   * has just been taken back out (see `absorb`).
+   */
+  restored: boolean
   /** What the rules concluded, so a caller can decide whether to ask a model. */
   verdict: Classification
 }
@@ -96,16 +101,33 @@ async function absorb(
   existing: Item,
   incoming: { note?: string; title?: string },
 ): Promise<CaptureOutcome> {
-  const next = await vault.patch(existing.id, {
+  const patched = await vault.patch(existing.id, {
     note: mergedNote(existing, incoming.note),
     ...(existing.title === undefined && incoming.title !== undefined
       ? { title: incoming.title }
       : {}),
   })
+  /*
+   * Capturing something that is only in the recycle bin takes it back out.
+   *
+   * Without this the paste "succeeded" while the record stayed invisible: the
+   * list showed nothing new, the recycle bin still held it, and the only clue
+   * was 「合并 1 条重复项」. Deleted-ness is not something a fresh capture can
+   * honour — handing the same thing over again is the user saying they want it.
+   * The record keeps its id, its createdAt and any note the user had written
+   * (which is why this restores rather than creating a second copy).
+   */
+  const restored = existing.deletedAt !== undefined
+  const item = restored ? await vault.restore(existing.id) : patched
   return {
-    item: next,
+    item,
     merged: true,
-    verdict: { category: next.category, confidence: 'decided', reason: '合并到已有记录，不重复分类' },
+    restored,
+    verdict: {
+      category: item.category,
+      confidence: 'decided',
+      reason: '合并到已有记录，不重复分类',
+    },
   }
 }
 
@@ -154,7 +176,7 @@ export async function captureText(
     )
 
   if (existing !== undefined) return absorb(vault, existing, { note })
-  return { item: await vault.create(candidate), merged: false, verdict }
+  return { item: await vault.create(candidate), merged: false, restored: false, verdict }
 }
 
 /** Re-exported so callers do not reach into the rules module for this. */
@@ -216,7 +238,7 @@ export async function captureImage(
     ...(note === undefined || note.length === 0 ? {} : { note }),
     attachmentIds: [record.id],
   })
-  return { item, merged: false, verdict }
+  return { item, merged: false, restored: false, verdict }
 }
 
 /** What one capture submission carried: free text and/or durable attachments. */
@@ -228,7 +250,16 @@ export interface CapturePayload {
 /** Roll-up of one capture submission. */
 export interface CaptureSummary {
   stored: number
+  /** Records that absorbed this capture. */
   merged: number
+  /**
+   * Of those, the ones that were in the recycle bin and came back out.
+   *
+   * Counted separately because it is the difference between "you already had
+   * this" and "you had deleted this, so I put it back" — the panel says the
+   * second one in its own words.
+   */
+  restored: number
 }
 
 /** What a caller may want to do once something is safely stored. */
@@ -256,9 +287,11 @@ export async function capture(
 ): Promise<CaptureSummary> {
   let stored = 0
   let merged = 0
+  let restored = 0
   const tally = (outcome: CaptureOutcome): void => {
     if (outcome.merged) merged += 1
     else stored += 1
+    if (outcome.restored) restored += 1
     // Fire and forget: classification must never delay the paste, and a failure
     // leaves the rule's verdict standing.
     if (options.ctx !== undefined && !outcome.merged) {
@@ -281,5 +314,5 @@ export async function capture(
   const text = payload.text?.trim() ?? ''
   if (text.length > 0) tally(await captureText(vault, text, source))
 
-  return { stored, merged }
+  return { stored, merged, restored }
 }

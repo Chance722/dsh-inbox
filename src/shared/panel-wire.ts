@@ -200,7 +200,13 @@ export interface CaptureRequest {
 /** How many records a submission stored, and how many merged into existing ones. */
 export interface CaptureResult {
   stored: number
+  /** Records that absorbed this capture instead of a new one being written. */
   merged: number
+  /**
+   * The subset of `merged` that was sitting in the recycle bin and came back
+   * out — a repeat that *does* change the list, and says something different.
+   */
+  restored: number
 }
 
 /** Which shelf a list is asking about. */

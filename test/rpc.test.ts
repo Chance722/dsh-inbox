@@ -209,6 +209,7 @@ describe('capture', () => {
     expect(value<CaptureResult>(await post(INBOX_ENDPOINT_CAPTURE, { text: '一段灵感' }))).toEqual({
       stored: 1,
       merged: 0,
+      restored: 0,
     })
 
     const listed = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {}))
@@ -224,7 +225,7 @@ describe('capture', () => {
     const again = value<CaptureResult>(
       await post(INBOX_ENDPOINT_CAPTURE, { text: `${url}?spm_id_from=333.999` }),
     )
-    expect(again).toEqual({ stored: 0, merged: 1 })
+    expect(again).toEqual({ stored: 0, merged: 1, restored: 0 })
     expect(vault?.size).toBe(1)
   })
 
@@ -235,7 +236,7 @@ describe('capture', () => {
         images: [{ mediaType: 'image/png', data: PNG_BASE64, name: 'shot.png' }],
       }),
     )
-    expect(captured).toEqual({ stored: 2, merged: 0 })
+    expect(captured).toEqual({ stored: 2, merged: 0, restored: 0 })
     expect(store.objects.size).toBe(1)
 
     // The store named it `sha256:<hex>`; the domain must still hold a path-safe
@@ -405,10 +406,26 @@ describe('detail, edit and the recycle bin', () => {
     expect(value<ListResult>(await post(INBOX_ENDPOINT_LIST, { scope: 'bin' })).matched).toBe(0)
   })
 
+  it('pulls a record back out of the bin when the same thing is captured again', async () => {
+    const id = await file('回收站里的那条')
+    await post(INBOX_ENDPOINT_DELETE, { id })
+    expect(value<ListResult>(await post(INBOX_ENDPOINT_LIST, {})).total).toBe(0)
+
+    const again = value<CaptureResult>(await post(INBOX_ENDPOINT_CAPTURE, { text: '回收站里的那条' }))
+
+    expect(again).toEqual({ stored: 0, merged: 1, restored: 1 })
+    // The same record, back in the live list and out of the bin.
+    const live = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {}))
+    expect(live.total).toBe(1)
+    expect(live.deleted).toBe(0)
+    expect(live.entries[0]?.id).toBe(id)
+  })
+
   it('drops the attachment rows when the bin is emptied', async () => {
     await post(INBOX_ENDPOINT_CAPTURE, {
       images: [{ mediaType: 'image/png', data: PNG_BASE64, name: 'shot.png' }],
     })
+
     const image = vault?.list({ kinds: ['image'] })[0]
     const attachmentId = image?.attachmentIds[0] ?? ''
 
