@@ -25,9 +25,6 @@ import {
   Layers,
   LayoutGrid,
   Lightbulb,
-  Link2,
-  Music,
-  Paperclip,
   Play,
   RefreshCw,
   RotateCcw,
@@ -764,6 +761,13 @@ function InboxPanel(): React.ReactElement {
       }
       setStaged([])
       await refresh(false)
+      /*
+        Two things arrive *after* the paste is stored, by design: the category
+        the model decided, and the headline fetched from the link's page. Both
+        are fire-and-forget on the host, so one delayed re-read is what makes
+        them visible without the user hunting for the 刷新 button.
+      */
+      window.setTimeout(() => void refresh(false), 2500)
     } finally {
       setBusy(false)
     }
@@ -1278,7 +1282,7 @@ function InboxPanel(): React.ReactElement {
               <RailRow
                 key={value}
                 active={category === value}
-                icon={CATEGORY_ICONS[value]}
+                icon={categoryGlyph(value, 15)}
                 label={CATEGORY_LABELS[value]}
                 {...(list === undefined ? {} : { count: count ?? 0 })}
                 onClick={() => {
@@ -1919,16 +1923,37 @@ const LIST_MODES: readonly { id: ListMode; label: string; icon: React.ReactEleme
   { id: 'compact', label: '紧凑', icon: <Layers size={14} /> },
 ]
 
-/** The glyph a card leads with; the same frame, a different picture per kind. */
-function kindGlyph(entry: EntrySummary, size = 22): React.ReactElement {
-  if (entry.kind === 'image') return <ImageIcon size={size} />
-  if (entry.kind === 'link') {
-    const media = entry.platform === 'bilibili' || entry.platform === 'xiaoyuzhou'
-    if (media) return entry.platform === 'xiaoyuzhou' ? <Music size={size} /> : <Film size={size} />
-    return <Link2 size={size} />
+/**
+ * The glyph for one category, at whatever size the caller needs.
+ *
+ * One function, two surfaces: the rail's rows and the card's glyph slot. They
+ * used to disagree — the rail was per *category* (a key for 密钥/账密) while the
+ * card was per *kind* (a text file for anything typed), so a pasted credential
+ * showed a document glyph. The category is what the eye needs here: it is the
+ * thing you scan for, and the kind is already visible in the record itself (a
+ * link shows its URL, a picture its thumbnail).
+ *
+ * @param category - which bucket the record is filed in.
+ * @param size - the glyph's edge in pixels.
+ * @returns the icon element.
+ */
+function categoryGlyph(category: Category, size: number): React.ReactElement {
+  switch (category) {
+    case 'idea':
+      return <Lightbulb size={size} />
+    case 'article':
+      return <FileText size={size} />
+    case 'media':
+      return <Film size={size} />
+    case 'image':
+      return <ImageIcon size={size} />
+    case 'document':
+      return <IdCard size={size} />
+    case 'secret':
+      return <KeyRound size={size} />
+    case 'other':
+      return <Layers size={size} />
   }
-  if (entry.kind === 'file') return <Paperclip size={size} />
-  return <FileText size={size} />
 }
 
 /**
@@ -1951,17 +1976,6 @@ function tileBackground(entry: EntrySummary): string {
     return 'linear-gradient(135deg, color-mix(in srgb, currentColor 16%, transparent), color-mix(in srgb, currentColor 6%, transparent))'
   }
   return 'color-mix(in srgb, currentColor 8%, transparent)'
-}
-
-/** Each category gets a glyph of its own, so the rail reads at a glance. */
-const CATEGORY_ICONS: Record<(typeof CATEGORIES)[number], React.ReactElement> = {
-  idea: <Lightbulb size={15} />,
-  article: <FileText size={15} />,
-  media: <Film size={15} />,
-  image: <ImageIcon size={15} />,
-  document: <IdCard size={15} />,
-  secret: <KeyRound size={15} />,
-  other: <Layers size={15} />,
 }
 
 /**
@@ -2109,13 +2123,12 @@ function EntryCard({
   const accent = 'color-mix(in srgb, currentColor 45%, transparent)'
 
   /**
-   * The glyph keeps its own square slot.
+   * The glyph keeps its own square slot, and shows the *category*.
    *
-   * It is the record's *type*, and it answers a different question than the
-   * picture does — so a record with a thumbnail shows both, side by side,
-   * instead of one replacing the other. One size in both densities: the user
-   * asked twice for it to be larger, and 38 is where it stopped reading as a
-   * smudge next to the title.
+   * It answers a different question than the picture does — so a record with a
+   * thumbnail shows both, side by side, instead of one replacing the other. One
+   * size in both densities: the user asked twice for it to be larger, and 38 is
+   * where it stopped reading as a smudge next to the title.
    */
   const glyph = (
     <span
@@ -2131,7 +2144,7 @@ function EntryCard({
         border: `1px solid ${hairline}`,
       }}
     >
-      {kindGlyph(entry, 22)}
+      {categoryGlyph(entry.category, 22)}
     </span>
   )
 
@@ -2586,8 +2599,8 @@ function EntryPane({
         maxLength={MAX_TITLE_CHARS}
         onChange={(event) => setTitle(event.target.value)}
         aria-label="名称"
-        title="列表、卡片和对话卡片显示这个名字；留空则用文件原名"
-        placeholder="名称，如：身份证正面（留空用文件原名）"
+        title="列表、卡片和对话卡片显示这个名字；留空则用文件名或备注兜底"
+        placeholder="名称，如：身份证正面（留空则用文件名兜底）"
         style={{ ...paneRowStyle, ...inputStyle, width: '100%', boxSizing: 'border-box' }}
       />
 
@@ -2605,9 +2618,9 @@ function EntryPane({
         disabled={busy}
         onChange={(event) => setNote(event.target.value)}
         rows={2}
-        aria-label="描述"
+        aria-label="备注"
         title="你写的永远优先于模型的判断"
-        placeholder="输入描述，如：身份证照 / 待看视频 / 这个 key 是测试环境的"
+        placeholder="备注，如：身份证照 / 待看视频 / 这个 key 是测试环境的（没起名字时，它会顶上当列表里的名字）"
         style={{
           ...paneRowStyle,
           ...inputStyle,

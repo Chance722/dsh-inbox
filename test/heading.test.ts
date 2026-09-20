@@ -49,7 +49,8 @@ describe('record headings', () => {
     })
 
     expect(isSecret(secret)).toBe(true)
-    expect(headingOf(secret)).toBe('密钥 / 账密（腾讯云测试环境）')
+    // No name, so the note is the last resort — and never the text.
+    expect(headingOf(secret)).toBe('腾讯云测试环境')
     expect(headingOf(secret)).not.toContain('AKIDexample')
     expect(headingTooltipOf(secret)).not.toContain('AKIDexample')
   })
@@ -64,32 +65,51 @@ describe('record headings', () => {
     const note = '生产环境的对象存储密钥，只在报销系统里用，别和测试环境那把搞混'
     const secret = entry({ category: 'secret', note })
 
-    expect(headingOf(secret)).toBe(`密钥 / 账密（${note.slice(0, NOTE_IN_HEADING_CHARS)}…）`)
+    expect(headingOf(secret)).toBe(`${note.slice(0, NOTE_IN_HEADING_CHARS)}…`)
     expect(headingOf(secret).length).toBeLessThan(headingTooltipOf(secret).length)
-    expect(headingTooltipOf(secret)).toBe(`密钥 / 账密（${note}）`)
+    expect(headingTooltipOf(secret)).toBe(note)
   })
 
   it('collapses newlines, so a heading can never become two lines', () => {
     const secret = entry({ category: 'secret', note: '第一行\n第二行' })
-    expect(headingOf(secret)).toBe('密钥 / 账密（第一行 第二行）')
+    expect(headingOf(secret)).toBe('第一行 第二行')
   })
 
   it('does not hang a description on records that may show their own text', () => {
     expect(headingOf(entry({ title: '公众号文章', note: '缓存那篇' }))).toBe('公众号文章')
   })
 
+  it('prefers the headline fetched from the page over the bare URL', () => {
+    const link = entry({
+      kind: 'link',
+      url: 'https://mp.weixin.qq.com/s/abc',
+      linkTitle: '三体读后感',
+    })
+    expect(headingOf(link)).toBe('三体读后感')
+    // Nobody's name but the user's outranks it.
+    expect(headingOf({ ...link, title: '我起的名字' })).toBe('我起的名字')
+    // A link whose page never answered still has its address.
+    expect(headingOf(entry({ kind: 'link', url: 'https://example.com/a' }))).toBe(
+      'https://example.com/a',
+    )
+  })
+
+  it('never lets a fetched headline name a credential', () => {
+    expect(
+      headingOf(entry({ category: 'secret', linkTitle: '登录 - 某站点', note: '公司邮箱' })),
+    ).toBe('公司邮箱')
+  })
+
   describe('a record with no text of its own', () => {
-    it('is named by the file it arrived as, plus the description', () => {
+    it('is named by the file it arrived as, with the note left to the tooltip', () => {
       // Exactly the case that used to read 「（无标题）」: an uploaded photo, whose
       // file name was stored all along and never used.
       expect(headingOf(entry({ kind: 'image', attachmentName: 'IMG_20260918.jpg' }))).toBe(
         'IMG_20260918.jpg',
       )
-      expect(
-        headingOf(
-          entry({ kind: 'image', attachmentName: 'IMG_20260918.jpg', note: '身份证正面' }),
-        ),
-      ).toBe('IMG_20260918.jpg（身份证正面）')
+      const photo = entry({ kind: 'image', attachmentName: 'IMG_20260918.jpg', note: '身份证正面' })
+      expect(headingOf(photo)).toBe('IMG_20260918.jpg')
+      expect(headingTooltipOf(photo)).toBe('IMG_20260918.jpg（身份证正面）')
     })
 
     it('prefers a name the user typed over the file name', () => {
@@ -117,13 +137,25 @@ describe('record headings', () => {
     it('clamps the description on the card and keeps it whole in the tooltip', () => {
       const note = '身份证正面，给银行开户用，别和反面那张搞混了，反面那张已经没用了'
       const image = entry({ kind: 'image', attachmentName: 'IMG_1.jpg', note })
-      expect(headingOf(image)).toBe(`IMG_1.jpg（${note.slice(0, NOTE_IN_HEADING_CHARS)}…）`)
+      // The row is just the name; the note rides on the hover.
+      expect(headingOf(image)).toBe('IMG_1.jpg')
       expect(headingTooltipOf(image)).toBe(`IMG_1.jpg（${note}）`)
+      // A record with no name *and* no file name still falls back to the note,
+      // clamped.
+      const nameless = entry({ kind: 'file', note })
+      expect(headingOf(nameless)).toBe(`${note.slice(0, NOTE_IN_HEADING_CHARS)}…`)
+      expect(headingTooltipOf(nameless)).toBe(note)
     })
 
   it('never lets a file name name a credential', () => {
     const secret = entry({ category: 'secret', attachmentName: 'password.txt', note: '测试环境' })
-    expect(headingOf(secret)).toBe('密钥 / 账密（测试环境）')
+    // Neither the attachment name nor the text may become a credential's row:
+    // the note is the user's own word, and the only one allowed through.
+    expect(headingOf(secret)).toBe('测试环境')
+    expect(headingOf(secret)).not.toContain('password.txt')
+    expect(headingOf(entry({ category: 'secret', attachmentName: 'password.txt' }))).toBe(
+      '密钥 / 账密',
+    )
   })
 
   it('shows the name the user gave a credential', () => {
@@ -131,14 +163,15 @@ describe('record headings', () => {
     // the credential branch returned the fixed label plus the description and
     // never looked at the name at all.
     const secret = entry({ category: 'secret', title: '公司邮箱', note: '腾讯云测试环境' })
-    expect(headingOf(secret)).toBe('密钥 / 账密（公司邮箱）')
-    expect(headingTooltipOf(secret)).toBe('密钥 / 账密（公司邮箱）')
+    // The name *is* the row now — no 「密钥 / 账密（…）」 wrapper eating the width
+    // the name needs; the key glyph beside it says what kind of thing this is.
+    expect(headingOf(secret)).toBe('公司邮箱')
+    // The note left the row, so the hover carries it.
+    expect(headingTooltipOf(secret)).toBe('公司邮箱（腾讯云测试环境）')
 
-    // The prefix stays: a row must still say what it is, and the parentheses
-    // carry the user's own words only.
-    expect(headingOf(entry({ category: 'secret', title: '公司邮箱' }))).toBe('密钥 / 账密（公司邮箱）')
-    expect(headingOf(entry({ category: 'secret', title: '  ' , note: '备注顶上来' }))).toBe(
-      '密钥 / 账密（备注顶上来）',
+    expect(headingOf(entry({ category: 'secret', title: '公司邮箱' }))).toBe('公司邮箱')
+    expect(headingOf(entry({ category: 'secret', title: '  ', note: '备注顶上来' }))).toBe(
+      '备注顶上来',
     )
   })
   })

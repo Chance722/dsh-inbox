@@ -32,6 +32,8 @@ export interface NewItem {
   categorySource?: CategorySource
   source: Source
   title?: string
+  /** A headline fetched from the link's own page; see `link-title.ts`. */
+  linkTitle?: string
   text?: string
   url?: string
   platform?: string
@@ -47,6 +49,7 @@ export interface ItemPatch {
   categorySource?: CategorySource
   watchLater?: boolean
   title?: string
+  linkTitle?: string
   note?: string
   platform?: string
   tags?: readonly string[]
@@ -133,6 +136,7 @@ export class Vault {
       tags: [...(input.tags ?? [])],
       attachmentIds: [...(input.attachmentIds ?? [])],
       ...(input.title === undefined ? {} : { title: input.title }),
+      ...(input.linkTitle === undefined ? {} : { linkTitle: input.linkTitle }),
       ...(input.text === undefined ? {} : { text: input.text }),
       ...(input.url === undefined ? {} : { url: input.url }),
       ...(input.platform === undefined ? {} : { platform: input.platform }),
@@ -191,6 +195,7 @@ export class Vault {
         if (patch.title.trim().length === 0) delete next.title
         else next.title = patch.title
       }
+      if (patch.linkTitle !== undefined) next.linkTitle = patch.linkTitle
       if (patch.note !== undefined) next.note = patch.note
       if (patch.platform !== undefined) next.platform = patch.platform
       if (patch.tags !== undefined) next.tags = [...patch.tags]

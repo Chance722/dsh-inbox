@@ -45,58 +45,49 @@ function noteLine(note: string | undefined, chars: number): string {
   return collapsed.length <= chars ? collapsed : `${collapsed.slice(0, chars)}…`
 }
 
-function parenthesised(heading: string, note: string): string {
-  return note.length === 0 ? heading : `${heading}（${note}）`
-}
-
 /**
- * What a credential's parentheses carry: the user's own words.
+ * What the record can call itself, without the user having named it.
  *
- * The name they typed wins, the description is the fallback, and with neither
- * the row is just 「密钥 / 账密」. Both fields are the user's own words — the same
- * ones `inbox_search` already shows the model — and neither is the secret: the
- * record's text is refused before this module is ever reached.
+ * A link has the headline its page carries (fetched at capture time, see
+ * `src/host/link-title.ts`) and failing that its address; a text has its own
+ * words; a picture or a file has the name it arrived with. A credential has
+ * **nothing** here on purpose: its text is the secret, and this module exists so
+ * that the secret never becomes a name.
  */
-function credentialDetail(entry: EntrySummary, noteChars: number): string {
-  return noteLine(firstFilled(entry.title), noteChars) || noteLine(entry.note, noteChars)
+function ownName(entry: EntrySummary): string | undefined {
+  if (isSecret(entry)) return undefined
+  return firstFilled(entry.linkTitle, entry.url, entry.preview, entry.attachmentName)
 }
 
 /**
- * The one-line heading, with the description clamped to `noteChars`.
+ * What the row is called, with the note clamped to `noteChars`.
  *
- * Two records reach the fallback half of this: a credential, and a record whose
- * own type carries no text at all (a picture, a file). Both are named the same
- * way — 「名字（描述）」 — because in both cases the name alone cannot tell two of
- * them apart.
+ * The order is: the name the user typed, then whatever the record can call
+ * itself, then the note — and the note is a genuine last resort rather than a
+ * decoration: a credential the user has not named, and a picture that arrived
+ * without a file name, have nothing else at all, and two rows both reading
+ * 「密钥 / 账密」 are two rows you cannot tell apart. Once a record *is* named, its
+ * note stays in the pane and out of the list.
  */
 function build(entry: EntrySummary, noteChars: number): string {
-  if (isSecret(entry)) return parenthesised('密钥 / 账密', credentialDetail(entry, noteChars))
-  // A name the record can produce itself: what the user typed, then the link,
-  // then its own text.
-  const own = firstFilled(entry.title, entry.url, entry.preview)
+  const title = firstFilled(entry.title)
+  if (title !== undefined) return title
+  const own = ownName(entry)
   if (own !== undefined) return own
-  // Nothing to name itself with. The file name it arrived as is the fallback,
-  // and with no name either, the description is the only thing left.
-  const name = firstFilled(entry.attachmentName)
-  if (name === undefined) return noteLine(entry.note, noteChars) || UNTITLED
-  return parenthesised(name, noteLine(entry.note, noteChars))
+  return noteLine(entry.note, noteChars) || (isSecret(entry) ? '密钥 / 账密' : UNTITLED)
 }
 
 /**
  * The one-line heading a card or a dock row shows.
  *
- * A credential's heading says nothing on its own, and three 「密钥 / 账密」 rows are
- * three rows you cannot tell apart, so the name the user gave it — or the
- * description, when there is no name — becomes the parenthetical:
- * 密钥 / 账密（公司邮箱）. The fixed prefix stays: a row should still say what it
- * is, and for this category the record's own text must never be its name.
- * Records that may show their text do not need the prefix — their heading
- * already is their name.
+ * The row is the **name**, and only the name: the category glyph beside it
+ * already says what kind of thing this is, so a 「密钥 / 账密（…）」 prefix only ate
+ * the width a name needs. What the name came from, in order: the user's own
+ * word, then the record's own (address, text, file name), then the note.
  *
  * The same shape covers a picture or a file, which has no text to be named by:
- * its file name takes the name slot and the description the parentheses —
- * 身份证正面.jpg（我的身份证）. A name the user typed into the detail pane outranks
- * both.
+ * its file name takes the name slot. A name the user typed into the detail pane
+ * outranks everything.
  *
  * @param entry - the record to name.
  * @returns the heading, clamped to one short line.
@@ -106,14 +97,20 @@ export function headingOf(entry: EntrySummary): string {
 }
 
 /**
- * The same heading with the description intact, for the hover tooltip.
+ * The same heading, plus the note the row no longer shows, for the hover
+ * tooltip.
  *
  * The card only ever shows one ellipsised line, so the full text has to be
- * reachable somewhere short of opening the detail pane.
+ * reachable somewhere short of opening the detail pane — and since the note
+ * left the row itself, the tooltip is where it lives now.
  *
  * @param entry - the record to name.
- * @returns the heading, with the whole description in the parentheses.
+ * @returns the heading, with the whole note in the parentheses.
  */
 export function headingTooltipOf(entry: EntrySummary): string {
-  return build(entry, Number.MAX_SAFE_INTEGER)
+  const name = build(entry, Number.MAX_SAFE_INTEGER)
+  const note = noteLine(entry.note, Number.MAX_SAFE_INTEGER)
+  // When the note *is* the name (a nameless record's last resort), repeating it
+  // in parentheses would just say the same thing twice.
+  return note.length === 0 || note === name ? name : `${name}（${note}）`
 }

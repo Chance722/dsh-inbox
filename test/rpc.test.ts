@@ -25,6 +25,7 @@ import * as storageJson from '@deepseek-ai/dsh-storage-json'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { registerInboxRpc } from '../src/host/rpc.js'
+import type { WebFetchSeam } from '../src/host/link-title.js'
 import { Vault } from '../src/host/vault/vault.js'
 import {
   INBOX_API_PREFIX,
@@ -109,6 +110,8 @@ let ctx: Context
 let vault: Vault | undefined
 let routes: Map<string, ConnectionFetchRoute>
 let store: FakeAttachmentStore
+/** The web seam the fake context exposes, or undefined for "no seam mounted". */
+let webSeam: WebFetchSeam | undefined
 
 /** Capture the routes the host registers, without a live connection service. */
 function mount(): void {
@@ -128,6 +131,13 @@ function mount(): void {
           body()
           return () => {}
         },
+        /*
+          `ctx.get('web')`: the capture route hands *this* scoped context to
+          `capture()`, which asks the web seam for a page headline. Undefined
+          means "this composition has no web seam"; one test swaps in a fake to
+          exercise the other path.
+        */
+        get: (name: string) => (name === 'web' ? webSeam : undefined),
       })
     },
   } as unknown as Context
@@ -195,6 +205,7 @@ beforeEach(async () => {
   vault = await Vault.open(ctx)
   routes = new Map()
   store = new FakeAttachmentStore(root)
+  webSeam = undefined
   mount()
 })
 
@@ -227,6 +238,37 @@ describe('capture', () => {
     )
     expect(again).toEqual({ stored: 0, merged: 1, restored: 0 })
     expect(vault?.size).toBe(1)
+  })
+
+  it('names a pasted link from the page it points at, after storing it', async () => {
+    webSeam = {
+      async fetch(request) {
+        return {
+          url: request.url,
+          statusCode: 200,
+          body: { kind: 'html', content: '<title>三体读后感</title>' },
+          truncated: false,
+        }
+      },
+    }
+
+    expect(
+      value<CaptureResult>(
+        await post(INBOX_ENDPOINT_CAPTURE, { text: 'https://mp.weixin.qq.com/s/abc' }),
+      ),
+    ).toEqual({ stored: 1, merged: 0, restored: 0 })
+
+    // The route deliberately does not wait for the page: the paste must not sit
+    // behind the network. Poll for the headline the background fetch writes.
+    const id = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {})).entries[0]?.id ?? ''
+    for (let attempt = 0; attempt < 100 && vault?.get(id)?.linkTitle === undefined; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+
+    const listed = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {})).entries[0]
+    expect(listed?.linkTitle).toBe('三体读后感')
+    // Still nobody's `title`: that field belongs to the person.
+    expect(listed?.title).toBeUndefined()
   })
 
   it('stores a pasted image through the attachment store, not the domain', async () => {

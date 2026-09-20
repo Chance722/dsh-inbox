@@ -49,6 +49,15 @@ export const itemSchema = z.object({
   updatedAt: timestamp,
   /** Link title, or a short label the user gave a text note. */
   title: z.string().optional(),
+  /**
+   * The headline fetched from the link's own page (`<title>`), never the user's
+   * word and never derived from record content.
+   *
+   * Kept apart from `title` on purpose: `title` is what the person typed, and
+   * the credentials rule ("only the user names a record", `AGENTS.md` 3) has to
+   * stay true even with an automatic writer in the picture.
+   */
+  linkTitle: z.string().optional(),
   /** The pasted text itself, for `text` and `secret` records. */
   text: z.string().optional(),
   url: z.string().optional(),
@@ -122,9 +131,12 @@ export const vaultSpec = defineDomain({
    * `status` for `watchLater` and drops the `待看` tag. Both older shapes still
    * validate — the removed `status` key is simply ignored, and `watchLater` is
    * optional — and `Vault.open` rewrites them once so the flag is real.
+   *
+   * Version 4 adds the optional `linkTitle` (the fetched page headline). It is
+   * a pure addition, so every older record still validates unchanged.
    */
-  version: 3,
-  compatibleVersions: [1, 2],
+  version: 4,
+  compatibleVersions: [1, 2, 3],
   layout: 'per-record',
   global: {
     schema: vaultGlobalSchema,

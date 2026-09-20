@@ -204,6 +204,44 @@ describe('capture against a real vault', () => {
     expect(vault.size).toBe(2)
   })
 
+  it('gives a repeat paste a second chance at a name, and only once', async () => {
+    // A link filed before headlines were fetched has no name but its URL;
+    // handing it over again is the only way to ask for one.
+    const asked: string[] = []
+    const ctx = {
+      get: (name: string) =>
+        name === 'web'
+          ? {
+              async fetch(request: { url: string }) {
+                asked.push(request.url)
+                return {
+                  url: request.url,
+                  statusCode: 200,
+                  body: { kind: 'html' as const, content: '<title>示例页</title>' },
+                  truncated: false,
+                }
+              },
+            }
+          : undefined,
+    } as unknown as Context
+
+    await captureText(vault, 'https://example.com/a', 'panel')
+    const repeat = await capture(vault, { text: 'https://example.com/a' }, 'panel', { ctx })
+
+    expect(repeat).toEqual({ stored: 0, merged: 1, restored: 0 })
+    expect(asked).toEqual(['https://example.com/a'])
+    // The fetch is deliberately not awaited by `capture()`: poll for its write.
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (vault.list({ kinds: ['link'] })[0]?.linkTitle !== undefined) break
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    expect(vault.list({ kinds: ['link'] })[0]?.linkTitle).toBe('示例页')
+
+    // Named now, so the next repeat costs nothing at all.
+    await capture(vault, { text: 'https://example.com/a' }, 'panel', { ctx })
+    expect(asked).toEqual(['https://example.com/a'])
+  })
+
   describe('re-capturing something that is in the recycle bin', () => {
     it('takes the record back out instead of leaving it invisible', async () => {
       const first = await captureText(vault, '一段灵感', 'panel', '写给自己的描述')

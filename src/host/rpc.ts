@@ -251,6 +251,7 @@ function toSummary(
       : { previewId: previewRecord.id, previewMime: previewRecord.mime }),
     ...(namedRecord?.filename === undefined ? {} : { attachmentName: namedRecord.filename }),
     ...(item.title === undefined ? {} : { title: item.title }),
+    ...(item.linkTitle === undefined ? {} : { linkTitle: item.linkTitle }),
     ...(preview === undefined || preview.length === 0 ? {} : { preview }),
     ...(item.url === undefined ? {} : { url: item.url }),
     ...(item.platform === undefined ? {} : { platform: item.platform }),

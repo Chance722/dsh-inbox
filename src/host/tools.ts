@@ -61,6 +61,9 @@ function labelOf(item: Item): string {
  */
 function headline(item: Item): string {
   if (item.title !== undefined) return item.title
+  // The headline the page itself carries beats the URL it arrived as, and it
+  // costs the model nothing to read it: the fetch happened at capture time.
+  if (item.linkTitle !== undefined) return item.linkTitle
   if (item.url !== undefined) return item.url
   if (item.note !== undefined && item.note.length > 0) return item.note
   if (item.category !== 'secret' && item.text !== undefined) {
@@ -85,10 +88,13 @@ export function formatSearch(entries: readonly Item[], matched: number): string 
 
   const lines = entries.map((item, index) => {
     const parts = [`${String(index + 1)}. ${labelOf(item)} ${headline(item)}`]
-    if (item.note !== undefined && item.note.length > 0 && item.title !== undefined) {
+    // The URL and the note are "the rest of it": worth a line once the headline
+    // has already said what this is, noise while it *is* the headline.
+    const named = item.title ?? item.linkTitle
+    if (item.note !== undefined && item.note.length > 0 && named !== undefined) {
       parts.push(`   备注：${item.note}`)
     }
-    if (item.url !== undefined && item.title !== undefined) parts.push(`   ${item.url}`)
+    if (item.url !== undefined && named !== undefined) parts.push(`   ${item.url}`)
     if (item.tags.length > 0) parts.push(`   标签：${item.tags.map((tag) => `#${tag}`).join(' ')}`)
     parts.push(`   存入：${when(item)} · id: ${item.id}`)
     return parts.join('\n')
@@ -179,6 +185,7 @@ export function summaryOf(item: Item): EntrySummary {
     tags: [...item.tags],
     attachmentCount: item.attachmentIds.length,
     ...(item.title === undefined ? {} : { title: item.title }),
+    ...(item.linkTitle === undefined ? {} : { linkTitle: item.linkTitle }),
     ...(item.url === undefined ? {} : { url: item.url }),
     ...(item.platform === undefined ? {} : { platform: item.platform }),
     ...(item.note === undefined ? {} : { note: item.note }),

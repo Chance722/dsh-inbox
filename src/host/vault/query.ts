@@ -11,7 +11,7 @@ import type { Category, Kind } from '../../shared/vocabulary.js'
 import type { Item } from './spec.js'
 
 export interface ItemQuery {
-  /** Case-insensitive substring match over title, text, url, note and tags. */
+  /** Case-insensitive substring match over title, linkTitle, text, url, note and tags. */
   text?: string
   categories?: readonly Category[]
   kinds?: readonly Kind[]
@@ -27,7 +27,7 @@ export interface ItemQuery {
 
 /** The searchable text of one item, lowercased once per call. */
 function haystack(item: Item): string {
-  return [item.title, item.text, item.url, item.note, ...item.tags]
+  return [item.title, item.linkTitle, item.text, item.url, item.note, ...item.tags]
     .filter((part): part is string => typeof part === 'string' && part.length > 0)
     .join('\n')
     .toLowerCase()

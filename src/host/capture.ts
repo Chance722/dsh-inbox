@@ -8,6 +8,7 @@ import type { Context } from '@deepseek-ai/cordis'
 
 import type { Source } from '../shared/vocabulary.js'
 import { classifyWithModel } from './classify/model.js'
+import { fetchLinkTitle, type WebFetchSeam } from './link-title.js'
 import {
   classifyImage,
   classifyLink,
@@ -294,15 +295,36 @@ export async function capture(
     if (outcome.restored) restored += 1
     // Fire and forget: classification must never delay the paste, and a failure
     // leaves the rule's verdict standing.
-    if (options.ctx !== undefined && !outcome.merged) {
+    if (options.ctx !== undefined) {
+      const ctx = options.ctx
       // A background nicety must never break the primary path: swallow both a
       // synchronous throw (a composition without the service) and a rejection.
-      try {
-        void classifyWithModel(options.ctx, vault, outcome.item, outcome.verdict).catch(
-          () => undefined,
-        )
-      } catch {
-        // Nothing to do: the rule verdict is already stored.
+      if (!outcome.merged) {
+        try {
+          void classifyWithModel(ctx, vault, outcome.item, outcome.verdict).catch(() => undefined)
+        } catch {
+          // Nothing to do: the rule verdict is already stored.
+        }
+      }
+      /*
+        And the page behind a link names it better than the URL does. Also fire
+        and forget, also free of model tokens — but it is an outbound request to
+        the host the user pasted, so it only ever runs here, for links captured
+        on this machine: the WebDAV pull path calls `captureText` directly and
+        never reaches this branch.
+
+        This one runs for *repeats* too, which a classification pass must not:
+        handing the same link over again is the only way to ask for an old
+        record's headline, and `fetchLinkTitle` itself refuses once the record
+        has a name, so the request cannot happen twice for one URL.
+      */
+      const web = ctx.get('web') as WebFetchSeam | undefined
+      if (web !== undefined && outcome.item.kind === 'link') {
+        try {
+          void fetchLinkTitle(vault, outcome.item.id, web).catch(() => undefined)
+        } catch {
+          // Same again: the URL stays the name.
+        }
       }
     }
   }

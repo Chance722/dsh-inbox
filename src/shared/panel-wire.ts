@@ -243,6 +243,13 @@ export interface EntrySummary {
   watchLater: boolean
   title?: string
   /**
+   * The headline fetched from the link's own page, when there is one.
+   *
+   * Second only to a name the user typed, and never a substitute for one: this
+   * is somebody else's words, so the pane keeps showing which is which.
+   */
+  linkTitle?: string
+  /**
    * The file name the record arrived with, when it has one.
    *
    * A picture or a file carries no text of its own, so without this its row has
