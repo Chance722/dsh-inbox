@@ -1879,6 +1879,28 @@ function WebdavSettings({
     }
   }
 
+  /**
+   * Send everything again, ignoring the cursor.
+   *
+   * The repair button. It exists because of one afternoon when every object in
+   * the bucket turned out to be 0 bytes while the push reported success: after a
+   * bug like that, "what is up there is wrong and I know it" needs an answer
+   * that is not "delete your synced state by hand".
+   */
+  const resendAll = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const pushed = await call(INBOX_ENDPOINT_PUSH, { all: true })
+      setNotice(
+        pushed.ok
+          ? `全部重传：${describePush(pushed.value as PushResult)}`
+          : `全部重传失败：${pushed.error.message}`,
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const pull = async (): Promise<void> => {
     setBusy(true)
     try {
@@ -2091,6 +2113,15 @@ function WebdavSettings({
         </button>
         <button type="button" style={buttonStyle} disabled={busy} onClick={() => void pull()}>
           {busy ? '处理中…' : '立即拉取'}
+        </button>
+        <button
+          type="button"
+          style={{ ...buttonStyle, height: CONTROL_HEIGHT, boxSizing: 'border-box' }}
+          disabled={busy}
+          title="忽略「已推过」的记录，把全部内容重新上传一遍（远端内容不对时用）"
+          onClick={() => void resendAll()}
+        >
+          全部重传
         </button>
         <button type="button" style={buttonStyle} disabled={busy} onClick={() => void selfTest()}>
           自检

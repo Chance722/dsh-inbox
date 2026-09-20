@@ -574,11 +574,13 @@ async function handlePush(
   ctx: Context,
   vault: Vault | undefined,
   attachments: AttachmentStore,
+  payload: unknown,
 ): Promise<InboxRpcResult<unknown>> {
   if (vault === undefined) {
     return failure('inbox/vault-closed', 'inbox 仓库还没打开（或打开失败），稍后再试')
   }
-  const result: PushResult = await pushRemote(ctx, vault, attachments)
+  const all = (payload as { all?: unknown } | undefined)?.all === true
+  const result: PushResult = await pushRemote(ctx, vault, attachments, { all })
   return { ok: true, value: result }
 }
 
@@ -921,8 +923,8 @@ export function registerInboxRpc(ctx: Context, vault: () => Vault | undefined): 
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_PULL}`, () =>
         serialise(() => handlePull(scoped, vault(), attachments)),
       ),
-      endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_PUSH}`, () =>
-        serialise(() => handlePush(scoped, vault(), attachments)),
+      endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_PUSH}`, (payload) =>
+        serialise(() => handlePush(scoped, vault(), attachments, payload)),
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_PROBE}`, () =>
         Promise.resolve(handleProbe(scoped)),

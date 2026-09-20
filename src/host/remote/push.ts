@@ -93,6 +93,8 @@ export async function pushRemote(
   ctx: Context,
   vault: Vault,
   attachments: AttachmentStore | undefined,
+  /** `all` ignores the cursor and sends everything again — the repair button. */
+  options: { all?: boolean } = {},
 ): Promise<PushResult> {
   if (attachments === undefined) return failed('这个组合里没有附件仓库，附件没法上传')
   const settings = readSettings(ctx)
@@ -139,7 +141,7 @@ export async function pushRemote(
   } catch (error) {
     return failed(reasonOf(error))
   }
-  return pushOnce(vault, attachments, writer, basePath)
+  return pushOnce(vault, attachments, writer, basePath, options)
 }
 
 /**
@@ -154,6 +156,7 @@ export async function pushRemote(
  * @param attachments - where attachment bytes live.
  * @param writer - one write to the remote.
  * @param basePath - the sync root inside the configured directory.
+ * @param options - `all` re-sends records the cursor thinks are already up.
  * @returns what happened.
  */
 export async function pushOnce(
@@ -161,8 +164,9 @@ export async function pushOnce(
   attachments: AttachmentStore,
   writer: Writer,
   basePath: string,
+  options: { all?: boolean } = {},
 ): Promise<PushResult> {
-  const lastPushAt = vault.global.sync.lastPushAt
+  const lastPushAt = options.all === true ? undefined : vault.global.sync.lastPushAt
   const items = vault.list({ includeDeleted: true })
   let pushed = 0
   let attachmentCount = 0

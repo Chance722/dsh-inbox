@@ -31,9 +31,25 @@ export const webdavFetch: FetchLike = async (url, init) => {
   }
 }
 
-/** The same adapter for the S3 client, which sends no body either. */
+/**
+ * The same adapter for the S3 client.
+ *
+ * The body has to be forwarded here, and it *was not* until a real bucket
+ * showed it: every PUT left with an empty payload, the gateway accepted them
+ * all, and the cloud drive filled up with 0-byte objects while the push happily
+ * reported success. A fake fetch in a unit test cannot catch that — it is this
+ * one-line omission that the *adapter* had, not the client.
+ */
 export const s3Fetch: S3FetchLike = async (url, init) => {
-  const response = await fetch(url, { method: init.method, headers: init.headers })
+  // `Uint8Array<ArrayBufferLike>` is what TypeScript infers for a byte array and
+  // is not structurally a `BodyInit`, though every runtime accepts it as one.
+  // The cast is the whole difference; sending it is not.
+  const body = init.body === undefined ? undefined : (init.body as unknown as BodyInit)
+  const response = await fetch(url, {
+    method: init.method,
+    headers: init.headers,
+    ...(body === undefined ? {} : { body }),
+  })
   return {
     ok: response.ok,
     status: response.status,

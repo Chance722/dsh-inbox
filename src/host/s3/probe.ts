@@ -26,8 +26,14 @@ export interface ProbeResult {
   detail: string
 }
 
-/** How much of a body to keep: enough for an S3 `<Code>` or a gateway message. */
-const EXCERPT = 120
+/**
+ * How much of a body to keep.
+ *
+ * Long enough for a listing to show a few `<Key>`/`<Size>` pairs, not just the
+ * `<Code>` of a refusal: "the bucket has our keys but every object is 0 bytes"
+ * was a real afternoon, and 120 characters could not have shown it.
+ */
+const EXCERPT = 400
 
 async function probe(
   config: S3Config,
