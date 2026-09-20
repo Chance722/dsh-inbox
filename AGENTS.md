@@ -92,6 +92,7 @@ docs/
 - `docs/feature/` — 特性开发文档（开发总线、阶段验收记录）
 - `docs/handoff/` — 交接文档（`{YYYY-MM-DD}-{topic}.md`，由 handoff 流程生成）
 - `docs/prototype/` — 界面原型（`*.prototype.html`，文件名带日期，本地双击预览；一次性代码，不是产品的一部分）
+- `docs/assets/` — 仓库里要展示的图片（README 的封面与截图）；截图建议窗口宽 ≥ 1200px，否则三栏会塌成一栏
 
 ### 通用工作方式（独立判断基线）
 

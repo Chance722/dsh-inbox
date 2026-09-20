@@ -1,91 +1,52 @@
 # dsh-inbox
 
+![dsh-inbox](docs/assets/cover.png)
+
+A **local inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** (`dsh`): file whatever you copy into one vault, get it back when you need it — including **by asking your assistant in conversation**.
+
 English | [中文](README.zh.md)
 
-> **Status: pre-alpha — M0–M7 done, M8 (packaging and one-command install) in progress.** File things two ways, browse and manage them in the panel, ask for them in conversation, have them arrive already classified (rules first, a capped `deepseek-flash` pass for the rest), **credentials encrypted at rest**, and **two-way sync with a cloud drive** (push, pull, merge and delete all work). Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
+## The problem it solves
 
-A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`): paste links, images, text and credentials into one local vault, get them classified, browse them from the sidebar, and pull them back through conversation.
+The things you copy during a day — a link to read later, a screenshot, a snippet of config, an account and password — end up scattered across clipboard history, bookmark folders and temporary files. When you need them you cannot find them, and you cannot remember where they went.
 
-## What works today
+**dsh-inbox puts them in one local vault**: paste to file, automatic classification, browse and search from the sidebar — and instead of digging through it yourself, just ask your assistant "what was that article about caching I saved last month?".
 
-| | |
+It works for you alone: everything lands on your machine, and the model only sees a record when you ask it to look.
+
+## Features
+
+| Feature | What it does |
 |---|---|
-| ✅ Sidebar entry | An **Inbox** row appears under *Global panels*; clicking it swaps the main area to the plugin's page |
-| ✅ Tool reaches the model | `inbox_status` reports whether the vault is open and how many records it holds |
-| ✅ Two ways to capture | `/inbox <text or link>` in the composer (attach images to carry them along), or paste/drop/pick inside the panel |
-| ✅ Browse and manage | Filter by watch-later / category / tag, search across title, text, url and note, switch the list between two densities (two columns / compact), open a record's detail with image thumbnails, edit its **name**, category, description and tags, flag it watch-later |
-| ✅ Recycle bin | Delete is a soft delete; restore from the bin, or empty it to remove the records for good — **emptying also deletes the matching objects on the remote** (the record, its JSON/text, and any attachment only it referenced). Filing the same thing again also brings it back out |
-| ✅ Everything has a name | A link is named by the **headline its page carries** (fetched automatically, **no model tokens spent**), a photo or a file by the **file name it arrived with**. Rename any record in the detail pane; emptying the field hands the name back to those fallbacks. The row shows the name itself — what kind of thing it is, the category glyph says (a key, for a credential). When a fetch is refused it says why (WeChat serves verification pages to anonymous requests), rather than staying silent |
-| ✅ A note, not a subtitle | The note box no longer squeezes into the list row: hover the name to see it. It only becomes the name when a record has no name at all — an unnamed credential, say |
-| ✅ Storage and merging | Records persist through dsh's own storage stack; a repeat paste merges into the record you already have |
-| ✅ Ask in conversation | `inbox_search` finds records by words, category, tag, watch-later flag or kind; `inbox_get` opens one by id (text up to 1000 characters, links, notes, tags, attachment facts) |
-| 🔒 What never happens | A credential record never returns its text, and image bytes never enter the **conversation** — images come back as markers the UI renders locally. (Classification may send a picture to the model; that is a deliberate, capped choice — see below.) |
-| ✅ Own conversation card | Tool results render as dsh-inbox cards: links become clickable, and image markers become thumbnails drawn on this machine |
-| ✅ Classification by rule | A video page becomes 视频/音频, a public-account article 文章, a credential-shaped paste 密钥/账密 (and is then never echoed), and a card-shaped image gets a 疑似证件 tag — all decided locally, no bytes or text leaving the machine |
-| ✅ Your word wins | Set the category yourself and it is marked as yours; nothing overwrites it |
-| ✅ Says who judged it | Open a record and its category carries a coloured badge: **规则判定** (grey — the local rules), **模型判定** (violet — the capped model fallback), **手动判定** (blue — your own pick, the one nothing overwrites). Hovering explains it in one line |
-| ✅ Model fallback, capped | Text or a recognised-host link no rule could judge gets one `deepseek-flash` call, redacted first. Capped at 200 calls / 100k tokens per day, recorded in the vault, and a failure leaves the rule's verdict standing. Images are never sent. |
-| ✅ Sync, one way | Point it at a remote — a **WebDAV folder** or an **S3 bucket** — and any device can drop files in; the vault pulls them at startup or on demand, classifies them, and merges repeats. Configuration lives in dsh's settings, the password and secret in dsh's credential store. |
-| ✅ Client identity | Some gateways (中科院数据胶囊 among them) bind **each access key or account** to an "application" and **tell clients apart by `User-Agent`** — anything else is refused with the same status code a wrong password gets. The identity is kept **per protocol** (the two doors can be bound to different applications); empty means the plugin's own name, `dsh-inbox`. |
+| **Two ways in** | `/inbox <text or link>` in the composer (attach images to carry them along), or paste / drop / pick a file in the panel |
+| **Automatic classification** | Links are filed by platform and media type (a Bilibili video, a WeChat article…), text by credential shape, images get a 疑似证件 tag when they have card proportions; what the rules cannot decide goes to the model, with a daily cap |
+| **Panel** | Filter by watch-later / category / tag, search across title, text, link and note, switch between two list densities; the detail pane edits name, category, note and tags, flags watch-later, deletes and restores |
+| **Everything has a name** | A link is named by the headline of the page it points at (no model tokens spent), a photo or file by the name it arrived with, and the name you type always wins. The row shows the name; the glyph on the left says what kind of thing it is (a key for a credential) |
+| **Who judged the category** | A coloured badge next to the category: 规则判定 (grey, the local rules) / 模型判定 (violet, the capped model pass) / 手动判定 (blue, your own choice — nothing overwrites it later) |
+| **Ask in conversation** | The assistant searches by words, category, tag, watch-later flag or kind (ten at a time plus a count of the rest), and opens one by id (text up to 1000 characters, link, note, tags, attachment facts) |
+| **Credentials are safe** | A credential's body is **encrypted at rest** with a key derived from your master password; neither the password nor the key is ever written down. The list shows only the name you gave it; plain text never reaches a conversation or a model |
+| **Two-way sync** | Point it at a WebDAV folder or an S3 bucket: changes are pushed a few seconds after you make them, 刷新 runs a full sync (push, then pull, settled by timestamp), and emptying the recycle bin deletes the cloud copies too |
+| **Conversation cards** | Tool results render as dsh-inbox cards — links become clickable, image markers become thumbnails drawn on your machine |
+| **Gateway quirks** | Some object-storage gateways bind each AccessKey to an "application" and identify clients by a header (refusing you with the same status a wrong password gets) — the plugin keeps **one client identity per protocol** for exactly that |
 
-### Where your data lives
+## Screenshots
 
-The vault is a domain (`dsh_inbox`) on dsh's JSON storage backend, one document per record:
+<!--
+  Screenshot slots: drop the files into docs/assets/ (a window at least 1200px wide, so
+  the three columns do not collapse), then uncomment the two lines below. Real captures
+  beat mock-ups; the cover image at the top is already a real asset.
 
-```
-~/.dsh/storages/dsh_inbox/
-```
+![Panel: filters, list, detail](docs/assets/panel.png)
+![Settings: capture settings and credential encryption](docs/assets/settings.png)
+-->
 
-It is created on the first write. Nothing in it is ever sent anywhere by this plugin — see the privacy rules below.
-
-## What it will do
-
-- **Capture** — paste or drag into an inbox panel, or prefix a chat message to file it instead of sending it.
-- **Classify** — rules first (platform and media type from the URL, secrets by pattern, images by local heuristics), with a model as fallback. Your own description always wins.
-- **Browse** — a sidebar switch that swaps the session list for your vault: categories, tags, watch-later flags, soft delete.
-- **Retrieve** — ask in conversation and get the original content back (text inline, images as thumbnails, links as title cards).
-- **Sync** — both directions as of 2026-09-20, and **the push is automatic**: a few seconds after you file or change something it goes up (debounced — five pastes in a row are one push). The panel's **刷新 button is the full sync**: push this machine's changes, pull everyone else's, re-read the list. Each record lands twice on the remote: `items/<id>.json` for the program, and `<id>.txt` **for you** — open it in the cloud drive and it is the record. Attachment bytes land as `attachments/<id>.<extension>` so images, videos and PDFs open as themselves. Pushes are incremental and attachment bytes are content-addressed, so the same bytes go up once. **Only credential bodies travel encrypted** (their `.txt` says so and nothing more); see the privacy rules below.
-
-## Privacy rules this project holds itself to
-
-- **Credentials are encrypted at rest** (since 2026-09-20): the body is stored as ciphertext in `items\*.json` (AES-256-GCM, key derived from your master password with scrypt). **Neither the password nor the key is ever written to disk** — the vault locks again on every restart and you unlock it under 设置 → 账密加密. A forgotten password means unrecoverable ciphertext; that is the design, not a bug. With no master password set, a credential is **refused rather than stored in the clear**.
-- **What the encryption covers**: the **body** of credential records only. Notes (your own words), categories, tags, timestamps and attachment **bytes** stay as they are — a key inside a pasted file is still a key inside a file. Do not read "credentials are encrypted" as "the whole vault is encrypted".
-- **Credentials**: masked in the list, **never** sent to a model, **never** printed in conversation.
-- **Pictures**: classification does send an image to the model (the choice the user made on 2026-09-19); the conversation only ever gets an `[attachment:id]` marker, never the bytes.
-- The vault is never injected into model context automatically — the model only sees it when it calls a tool.
-
-## Where things live
-
-All of it on this machine (`%DSH_HOME%`, i.e. `C:\Users\<you>\.dsh` on Windows):
-
-| What | Where |
-|---|---|
-| Records: text, links, category, note, tags, watch-later… | `storages\dsh_inbox\items\*.json`, one file each |
-| Attachment index (mime/size/original file name) | `storages\dsh_inbox\attachments\*.json` |
-| The **bytes** of images / videos / files | `attachments\` — dsh's own content-addressed store, never auto-deleted |
-| Remote password / S3 AccessKey Secret | dsh's credential store, `.credentials.yaml` |
-| Remote settings (URL, bucket, client identity…) | dsh's own settings |
-
-### What the remote (cloud drive) looks like
-
-With `/inbox` as the configured directory:
-
-| Remote path | What it is |
-|---|---|
-| `inbox/<whatever you drop>` | The **drop folder**: any device drops files here and this one ingests them on pull |
-| `inbox/sync/items/<record id>.json` | One record, **machine-readable** — the source of truth for sync |
-| `inbox/sync/items/<record id>.txt` | The same record, **readable**: open it in the cloud drive and it is the record (text, note, which attachments it points at) |
-| `inbox/sync/attachments/<attachment id>.<ext>` | Attachment **bytes** (images, video, PDFs open as themselves) |
-| `inbox/sync/attachments/<attachment id>.meta.json` | The attachment's metadata (original name, dimensions, size, digest) |
-| A 0-byte key ending in `/` | A **folder marker the cloud drive made itself**, not us |
-
-For the details — what each name means, why a record lands twice, the encryption boundary, and how to debug a sync — see `docs/help/remote-sync-layout.md` and `docs/help/sync.md`.
+It all lives inside dsh: the left rail gains an **Inbox** entry that opens a full-page vault, and the panel's top right has 设置 (settings) and 使用手册 (a short manual).
 
 ## Install
 
-Prerequisites: Node ≥ 22, and a working `dsh` (`@deepseek-ai/dsh`).
+Requires Node ≥ 22 and a working `dsh` (`@deepseek-ai/dsh`).
 
-**One command installs it** (package, agent preset and default, all of it):
+One command installs it:
 
 ```powershell
 npx @duoyu/dsh-inbox init
@@ -94,7 +55,7 @@ npx @duoyu/dsh-inbox init
 It does three things, and running it twice is safe:
 
 1. installs the plugin into a profile (`inbox` by default; if that profile does not exist it tells you how to create one)
-2. copies dsh's shipped `standard` preset into `~/.dsh/.agent-presets/inbox/` and appends this plugin to its composition — **this is the step that decides whether the assistant can see the inbox tools**
+2. copies dsh's shipped `standard` preset into `~/.dsh/.agent-presets/inbox/` and adds this plugin — **this is the step that decides whether the assistant can see the inbox tools**
 3. points the user-level default preset at it (backing up `~/.dsh/settings.yaml` first)
 
 Then restart dsh and open a new session:
@@ -103,7 +64,7 @@ Then restart dsh and open a new session:
 dsh --profile inbox --no-open --port 3102
 ```
 
-Open the printed URL (it carries a token). The Inbox panel is in the left rail; in a new session, ask "what links in my inbox haven't I read yet?" and the assistant will look it up. **Your daily `dsh web` profile is not touched** — the plugin lives in `inbox`; only the default preset changes (standard + this plugin; see Uninstall to put it back).
+Open the printed URL (it carries a token). The Inbox panel is in the left rail; in a new session, ask "what links in my inbox haven't I read yet?" and the assistant will look it up. **Your daily `dsh web` profile is not touched.**
 
 Useful flags:
 
@@ -114,9 +75,9 @@ npx @duoyu/dsh-inbox init --no-default         # install only, leave the default
 npx @duoyu/dsh-inbox init --help               # every flag
 ```
 
-Which profile you install into only decides **where the panel runs**. The agent preset is shared by every profile (`~/.dsh/.agent-presets/inbox/`), so installing into a second profile just fills in the missing row instead of creating a second preset. Run it once per profile if you want the panel in more than one.
+Which profile you install into only decides **where the panel runs**. The agent preset is shared by every profile (`~/.dsh/.agent-presets/inbox/`), so installing into a second profile just fills in the missing row.
 
-**From a local checkout** (development: rebuild with `pnpm build` after editing):
+### From a local checkout
 
 ```powershell
 git clone <this repo> dsh-inbox ; cd dsh-inbox
@@ -132,78 +93,59 @@ dsh plugin --profile inbox remove @duoyu/dsh-inbox
 
 # 2. delete what init created
 rm -r ~/.dsh/.agent-presets/inbox      # the preset copy
-# default preset: delete agent-presets.default in ~/.dsh/settings.yaml (falls back to
-# the deployment default) or set it to standard; every init left a settings.yaml.bak-*
-# backup you can restore from instead
+# default preset: delete agent-presets.default in ~/.dsh/settings.yaml (falls back to the
+# deployment default) or set it to standard; every init left a settings.yaml.bak-* backup
 
 # 3. and the isolated profile, if you want it gone
 rm -r ~/.dsh/profiles/inbox
 ```
 
-**Uninstalling does not delete your vault.** If you also want the records gone:
+**Uninstalling does not delete your vault.** To remove the records too: `rm -r ~/.dsh/storages/dsh_inbox`.
 
-```powershell
-rm -r ~/.dsh/storages/dsh_inbox
-```
+## Where things live
 
-### Development
+All of it on your machine (`%DSH_HOME%`, i.e. `C:\Users\<you>\.dsh` on Windows):
+
+| What | Where |
+|---|---|
+| Records: text, links, category, note, tags, watch-later… | `storages\dsh_inbox\items\*.json`, one file each |
+| Attachment index (mime / size / original name) | `storages\dsh_inbox\attachments\*.json` |
+| The **bytes** of images, videos and files | `attachments\` — dsh's own content-addressed store, never auto-deleted |
+| Remote password / S3 AccessKey Secret | dsh's credential store, `.credentials.yaml` |
+| Remote settings (URL, bucket, client identity…) | dsh's own settings |
+
+### What the remote looks like
+
+With a remote configured and `/inbox` as the directory:
+
+| Remote path | What it is |
+|---|---|
+| `inbox/<whatever you drop>` | The **drop folder**: any device drops files here and this one ingests them |
+| `inbox/sync/items/<record id>.json` | One record, **machine-readable** — the source of truth for sync |
+| `inbox/sync/items/<record id>.txt` | The same record, **readable** (text, note, which attachments it points at) |
+| `inbox/sync/attachments/<attachment id>.<ext>` | Attachment **bytes** (images, video, PDFs open as themselves) |
+| `inbox/sync/attachments/<attachment id>.meta.json` | The attachment's metadata (original name, dimensions, size, digest) |
+| A 0-byte key ending in `/` | A folder marker the cloud drive made itself, not us |
+
+## Privacy and security
+
+- **Credentials are encrypted at rest**: the body is stored as ciphertext (AES-256-GCM, key derived from your master password). **Neither the password nor the key is ever written down** — the vault locks again on every restart and you unlock it under 设置 → 账密加密; a forgotten password means unrecoverable ciphertext. With no master password set, a credential is **refused rather than stored in the clear**.
+- **What that covers**: only the **body** of credential records. Notes, categories, tags, timestamps and attachment **bytes** are not encrypted — a key inside a pasted file is still a key inside a file.
+- **Masked where it matters**: a credential is listed by the name you gave it, and its plain text never reaches a conversation or a model.
+- **Pictures**: classification does send an image to the model (a phone photo of an ID card has the same proportions as any other photo); the conversation only ever gets an `[attachment:id]` marker.
+- **The model cannot see your vault** unless you ask it to look, and classification requests are redacted first.
+- **Your remote needs access control**: only credential bodies are ciphertext up there — text, links, notes and attachment bytes are in the clear, and the master password and key never sync.
+
+## Development
 
 ```powershell
 pnpm install
-pnpm build        # lib/index.js (host) + lib/client.js (panel) + lib/cli.js (init)
+pnpm build        # lib/index.js (host) + lib/client.js (panel) + lib/cli.js (init) + lib/types
 pnpm typecheck
 pnpm test         # vitest
 ```
 
-Client-side changes need `pnpm build` and a page reload (dsh's client-hmr reloads it for you); host-side changes need a restart. Build and acceptance details live in [docs/help/dev-setup.md](docs/help/dev-setup.md).
-
-Nothing is installed into `dsh` itself and no global state is touched, so removing the profile directory is a complete uninstall of the plugin.
-
-## Development
-
-### Remote inbox (the phone's way in)
-
-Open the panel, press **⚙ 设置**, and pick a protocol:
-
-- **WebDAV** — base URL (e.g. `https://data.cstcloud.cn/dav`), folder (default
-  `/inbox`), username and password.
-- **S3** — endpoint (e.g. `s3.cstcloud.cn`; the scheme defaults to `https`, and
-  an explicit `http://` is kept for a LAN endpoint), bucket, region, signature
-  version (v4), AccessKey ID and AccessKey Secret.
-- **Client identity** (stored per protocol) — empty means `dsh-inbox`. On
-  数据胶囊 this **must** be the application the credential is bound to;
-  without it the S3 door answers 401 and the WebDAV door answers
-  `403 Client type mismatch.`, both of which read like a wrong password. The
-  match is "contains, case-insensitive", so `Obsidian` or `Zotero/7.0.11` both
-  work. The two doors may be bound to different applications (say an S3 key
-  bound to `Obsidian` and a WebDAV account bound to `Zotero`), which is why the
-  identity travels with the protocol instead of being shared. The same key also
-  works over WebDAV: username = AccessKey ID, password = AccessKey Secret —
-  **if you would rather keep one binding, that is the combination to use**.
-
-Save, then press **立即拉取**. Passwords and secrets go to dsh's credential
-store, never into configuration.
-
-Anything another device drops into that folder is pulled, classified and filed —
-text-ish files become text or links, everything else becomes an attachment.
-Pulling happens once per start as well, in the background, and a server that is
-down never delays or fails the boot.
-
-When a pull fails, press **自检**: it asks the gateway every signature shape at
-once and prints the server's own words. The reasoning and the measured matrix
-are in [docs/help/remote-gateway-compat.md](docs/help/remote-gateway-compat.md).
-
-| Purpose | Command |
-|---|---|
-| Install deps | `pnpm install` |
-| Build | `pnpm build` (esbuild → `lib/index.js` + `lib/client.js`) |
-| Typecheck | `pnpm typecheck` |
-| Test | `pnpm test` (vitest) |
-| Run the dev profile | `dsh --profile inbox --no-open --port 3102` |
-
-The browser bundle is what the app actually loads, so **rebuild before reloading the page**. Building needs to spawn a subprocess (esbuild), which some sandboxes block.
-
-Project rules live in [AGENTS.md](AGENTS.md); knowledge docs are indexed in [docs/help/index.md](docs/help/index.md).
+Client-side changes need `pnpm build` and a page reload (dsh's client-hmr reloads it for you); host-side changes need a restart. Details in [docs/help/dev-setup.md](docs/help/dev-setup.md); milestones and acceptance records in the [development bus](docs/feature/dev-bus.md).
 
 ## License
 
