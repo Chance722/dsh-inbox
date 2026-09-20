@@ -1760,13 +1760,29 @@ function describePull(result: PullResult): string {
             attachments === 0 ? '' : t('sync.pullAttachments', { count: attachments }),
         })
   if (result.pulled === 0 && result.skipped === 0 && result.failed === 0) return syncPart
+  /*
+    Say why the skipped ones were skipped, and who failed.
+
+    "跳过 77 / 失败 1" is not something a reader can act on: the host hands over
+    the first three `name: reason` pairs in `reason`, and the skip split says
+    whether the rest were our own upload queue or older than the pull cursor.
+  */
+  const skippedWhy =
+    result.skippedSync === undefined
+      ? ''
+      : t('sync.pullSkipWhy', { sync: result.skippedSync, older: result.skippedOlder ?? 0 })
+  const failedWhy =
+    result.failed > 0
+      ? t('sync.pullFailures', {
+          count: result.failed,
+          reason: result.reason ?? t('sync.pushUnknown'),
+        })
+      : ''
   return t('sync.pullDone', {
     listed: result.listed,
     pulled: result.pulled,
     skipped: result.skipped,
-    tail: `${syncPart}${
-      result.failed > 0 ? t('sync.pullFailedCount', { count: result.failed }) : ''
-    }`,
+    tail: `${skippedWhy}${syncPart}${failedWhy}`,
   })
 }
 

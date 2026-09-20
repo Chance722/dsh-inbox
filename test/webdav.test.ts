@@ -228,7 +228,15 @@ describe('pulling', () => {
       fetch: fake.fetch,
       attachments: store as unknown as AttachmentStore,
     })
-    expect(second).toMatchObject({ status: 'ok', pulled: 0, skipped: 2 })
+    // …and it says *why* they were skipped: this is the cursor talking, not the
+    // upload queue. Without the split, "跳过 77" says nothing actionable.
+    expect(second).toMatchObject({
+      status: 'ok',
+      pulled: 0,
+      skipped: 2,
+      skippedSync: 0,
+      skippedOlder: 2,
+    })
     expect(vault.size).toBe(2)
   })
 
@@ -248,7 +256,7 @@ describe('pulling', () => {
       attachments: store as unknown as AttachmentStore,
     })
 
-    expect(result).toMatchObject({ pulled: 1, skipped: 1 })
+    expect(result).toMatchObject({ pulled: 1, skipped: 1, skippedSync: 1, skippedOlder: 0 })
     expect(vault.list().map((item) => item.kind)).toEqual(['link'])
   })
 

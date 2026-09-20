@@ -156,6 +156,15 @@ export interface PullResult {
   failed: number
   /** Files the server listed but we skipped as already-seen. */
   skipped: number
+  /**
+   * How many of {@link skipped} were the vault's own upload queue (`sync/…`).
+   *
+   * Optional because the older shape of this result (and every test that builds
+   * one by hand) predates the split.
+   */
+  skippedSync?: number
+  /** How many of {@link skipped} were older than the last pull's cursor. */
+  skippedOlder?: number
   /** How many entries the remote listed at all: distinguishes "empty folder"
    * from "everything already ingested". */
   listed: number

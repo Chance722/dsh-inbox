@@ -116,6 +116,17 @@ export async function ingestFrom(
   let failed = 0
   let skipped = 0
   /**
+   * Why the skipped ones were skipped.
+   *
+   * "跳过 77" on its own is unanswerable — "our own upload queue" and "older
+   * than the last pull" are different facts, and only the second one is a
+   * surprise. Measured 2026-09-20: a push from another machine came back as
+   * "列出 78 / 跳过 77 / 失败 1" and the number alone said nothing about which
+   * it was.
+   */
+  let skippedSync = 0
+  let skippedOlder = 0
+  /**
    * The newest entry that actually worked.
    *
    * The cursor used to jump to "now" whatever happened, which meant a file that
@@ -139,10 +150,12 @@ export async function ingestFrom(
     */
     if (isSyncObject(entry.path)) {
       skipped += 1
+      skippedSync += 1
       continue
     }
     if (!isNewer(entry, lastPullAt)) {
       skipped += 1
+      skippedOlder += 1
       continue
     }
     const name = nameOf(entry.path)
@@ -211,6 +224,8 @@ export async function ingestFrom(
     pulled,
     failed,
     skipped,
+    skippedSync,
+    skippedOlder,
     listed,
     lastPullAt: cursor,
     ...(failures.length === 0 ? {} : { reason: failures.slice(0, 3).join('；') }),
