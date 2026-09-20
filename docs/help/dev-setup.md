@@ -1,47 +1,66 @@
 # 本地开发与验收流程
 
-`@duoyu/dsh-inbox` 是 dsh 插件，**必须装进一个 dsh profile 才能跑**。本机 dsh 安装在 `C:\Users\hands\.dsh\profiles\node_modules\@deepseek-ai\dsh`，用 Node 22（`C:\Users\hands\AppData\Local\nvm\v22.22.3\node.exe`）运行。
+`@duoyu/dsh-inbox` 是 dsh 插件，**必须装进一个 dsh profile 才能跑**。
+
+## 当前这台机器（2026-09-20 实测，取代旧的 `C:\Users\hands\...` 记录）
+
+| 项 | 值 |
+|---|---|
+| 仓库 | `D:\Workspace\dsh-inbox` |
+| `DSH_HOME` | `C:\Users\chengjialong\.dsh`（profiles / storages / sessions 都在这里） |
+| Node | `v22.22.2`，即 `C:\nvm4w\nodejs\node.exe`（机器级 `NVM_SYMLINK=C:\nvm4w\nodejs`） |
+| dsh CLI | `0.1.5-rc.2`，npm 全局装在 `C:\nvm4w\nodejs\node_modules\@deepseek-ai\dsh`；`dsh` / `dsh.cmd` / `dsh.ps1` 落在 `C:\nvm4w\nodejs` ⇒ **已经在 PATH 上**，直接敲 `dsh` |
+| PATH 没配好时 | `node C:\nvm4w\nodejs\node_modules\@deepseek-ai\dsh\lib\bin.js <参数>` |
 
 ## 命令
 
 ```powershell
-$node = 'C:\Users\hands\AppData\Local\nvm\v22.22.3\node.exe'
-$dsh  = 'C:\Users\hands\.dsh\profiles\node_modules\@deepseek-ai\dsh\lib\bin.js'
-
-# 构建 + 校验（在仓库根）
+cd D:\Workspace\dsh-inbox
 pnpm build          # esbuild → lib/index.js + lib/client.js
 pnpm typecheck      # tsc --noEmit
 pnpm test           # vitest
 ```
 
+> 旧记录里 `C:\Users\hands\.dsh\...`、`C:\Duoyu\dsh-inbox` 是上一台开发机的路径，与当前机器无关。
+
 ## 隔离开发 profile
 
 ```powershell
 # 首次：从 web 模板派生一个自己的 profile（不动原来的 web profile）
-& $node $dsh --profile inbox --from-default-profile web --dump-config
+dsh --profile inbox --from-default-profile web --dump-config
 
 # 挂载本仓库（link 安装，改完重新 build 即可生效）
-& $node $dsh plugin --profile inbox add 'C:\Duoyu\dsh-inbox'
+dsh plugin --profile inbox add D:\Workspace\dsh-inbox
 
 # 起服务（换端口避免和日常使用的 3080 冲突）
-& $node $dsh --profile inbox --no-open --port 3102
+dsh --profile inbox --no-open --port 3102
 ```
 
 浏览器打开打印出来的带 token 的 URL，左栏应出现「全局面板 → Inbox」，点击即切到插件页面。
+
+**为什么第一步不能省**：`dsh plugin --profile <name>` 在 profile 还不存在时会**自动初始化**它，用的却是 `DEFAULT_PROFILE_BUNDLES = ["@deepseek-ai/dsh-base"]`——只有 base，**没有 web 应用**，起来就不是浏览器 UI。所以"先派生 web 模板、再 add 插件"这个顺序是必需的（`--from-default-profile` 遇到已存在的 profile 会直接报错，不会覆盖）。
+
+**插件是怎么挂上去的**：一个 profile 就是 `%DSH_HOME%\profiles\<name>\` 下的一个小包——`package.json` 的 `dsh.profile.bundles` 决定这个 profile 装哪些 bundle，`cordis.patch.yml` 是用户层。`plugin add` 在那个目录里把参数转发给 pnpm，把本仓库作为 **link 依赖**装进去，再把 `@duoyu/dsh-inbox` 追加进 `dsh.profile.bundles`。插件自己声明了两个半边：`dsh.bundle.patch`（宿主侧 Cordis patch，工具/存储/HTTP 路由都在这边）和 `dsh.client`（浏览器侧，`platform: web`，产物 `lib/client.js`，侧栏那个 Inbox 图标就是它长出来的）。卸载：`dsh plugin --profile inbox remove @duoyu/dsh-inbox`。
+
+## 起服务前后常踩的三件事
+
+- **要先有工作区**：web UI 得有工作区才能建会话，侧栏才会出现；一个工作区都没有时，「添加工作区」弹的是 Windows 原生目录框（自动化驱动不了，得手动点一次）。
+- **端口可能被占**：`EADDRINUSE` 说明上一个实例还在跑，而它的 token 只打在启动时的 stdout、不落盘（不带 token 访问是 401）。查占用：`Get-NetTCPConnection -LocalPort 3102 -State Listen | Select-Object OwningProcess`，然后 `Stop-Process -Id <pid>`，或者干脆换个端口。
+- **停服务**：就在那个终端里 `Ctrl+C`。
 
 ## 验证模型能调到工具（headless 路线）
 
 web profile 的工具行由 agent preset 接管，最省事的验证是另开一个 headless 派生 profile——它没有 agent-presets，工具行直接对模型可见：
 
 ```powershell
-& $node $dsh --profile inbox-m0 --from-default-profile headless --dump-config
-& $node $dsh plugin --profile inbox-m0 add 'C:\Duoyu\dsh-inbox'
-& $node $dsh --profile inbox-m0 "Call the inbox_status tool and paste its raw result."
+dsh --profile inbox-m0 --from-default-profile headless --dump-config
+dsh plugin --profile inbox-m0 add D:\Workspace\dsh-inbox
+dsh --profile inbox-m0 "Call the inbox_status tool and paste its raw result."
 ```
 
 ## 在 web 里验证需要 agent preset
 
-用户级 preset 根：`C:\Users\hands\.dsh\.agent-presets\<preset-id>\`，两个文件：
+用户级 preset 根：`C:\Users\chengjialong\.dsh\.agent-presets\<preset-id>\`（**当前这台机器上这个目录还不存在**，要自己建），两个文件：
 
 - `preset.yml` —— `name` / `description` / `order`
 - `agent.cordis.yml` —— 组合；把 `profiles\node_modules\@deepseek-ai\dsh-agent-presets\presets\standard\` 整个复制过来，再追加自己的行：
@@ -53,7 +72,7 @@ web profile 的工具行由 agent preset 接管，最省事的验证是另开一
 
 加完 preset 要**重启 dsh**（preset 在启动时扫描）。会话只有为空时才能切 preset。
 
-## 环境上的两个坑
+## 环境上的坑
 
-- **构建需要提权**：esbuild 会 spawn 子进程，在 Codex 沙箱里直接 `EPERM`，必须带 `require_escalated` 跑构建。
+- **构建**：早先的记录写着"esbuild spawn 子进程，沙箱里必 `EPERM`，要提权"。2026-09-20 在这台机器上**沙箱内直接 `pnpm build` 就过了**（`pnpm install` 也过，pnpm 把 store 落在仓库内 `.pnpm-store/`，未跟踪、未 gitignore）。所以先按普通方式跑，真报 `EPERM` 再提权。
 - **改完客户端代码要重新 build**：`dsh plugin add` 用的是 link 依赖，但浏览器加载的是 `lib/client.js`，源码改了不构建等于没改。构建后重载页面即可（HMR 也会跟进，但重启一次最干净）。
