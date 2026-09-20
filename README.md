@@ -48,7 +48,9 @@ It is created on the first write. Nothing in it is ever sent anywhere by this pl
 
 ## Privacy rules this project holds itself to
 
-- **Credentials**: masked in the list, **never** sent to a model, **never** printed in conversation. ⚠️ **Encryption at rest is not implemented yet** — the text of a credential sits in **plain text** in `items\*.json` (see "Where things live"). What is protected today is the interface, not a stolen disk.
+- **Credentials are encrypted at rest** (since 2026-09-20): the body is stored as ciphertext in `items\*.json` (AES-256-GCM, key derived from your master password with scrypt). **Neither the password nor the key is ever written to disk** — the vault locks again on every restart and you unlock it under 入库设置 → 账密加密. A forgotten password means unrecoverable ciphertext; that is the design, not a bug. With no master password set, a credential is **refused rather than stored in the clear**.
+- **What the encryption covers**: the **body** of credential records only. Notes (your own words), categories, tags, timestamps and attachment **bytes** stay as they are — a key inside a pasted file is still a key inside a file. Do not read "credentials are encrypted" as "the whole vault is encrypted".
+- **Credentials**: masked in the list, **never** sent to a model, **never** printed in conversation.
 - **Pictures**: classification does send an image to the model (the choice the user made on 2026-09-19); the conversation only ever gets an `[attachment:id]` marker, never the bytes.
 - The vault is never injected into model context automatically — the model only sees it when it calls a tool.
 
