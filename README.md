@@ -44,13 +44,25 @@ It is created on the first write. Nothing in it is ever sent anywhere by this pl
 - **Classify** — rules first (platform and media type from the URL, secrets by pattern, images by local heuristics), with a model as fallback. Your own description always wins.
 - **Browse** — a sidebar switch that swaps the session list for your vault: categories, tags, watch-later flags, soft delete.
 - **Retrieve** — ask in conversation and get the original content back (text inline, images as thumbnails, links as title cards).
-- **Sync (one-way)** — drop files into a WebDAV `inbox/` folder from any device; the vault pulls and classifies them at startup. Everything leaving the machine is encrypted.
+- **Sync (one-way, pull)** — drop files into a remote folder (WebDAV directory / S3 bucket) from any device; the vault pulls and classifies them at startup. Pulling is the only direction: **nothing is ever uploaded**, there is no push yet.
 
 ## Privacy rules this project holds itself to
 
-- Credentials are encrypted at rest, masked in the list, and **never** sent to a model or printed in conversation.
-- ID documents are classified locally by default; nothing is uploaded just to guess.
+- **Credentials**: masked in the list, **never** sent to a model, **never** printed in conversation. ⚠️ **Encryption at rest is not implemented yet** — the text of a credential sits in **plain text** in `items\*.json` (see "Where things live"). What is protected today is the interface, not a stolen disk.
+- **Pictures**: classification does send an image to the model (the choice the user made on 2026-09-19); the conversation only ever gets an `[attachment:id]` marker, never the bytes.
 - The vault is never injected into model context automatically — the model only sees it when it calls a tool.
+
+## Where things live
+
+All of it on this machine (`%DSH_HOME%`, i.e. `C:\Users\<you>\.dsh` on Windows):
+
+| What | Where |
+|---|---|
+| Records: text, links, category, note, tags, watch-later… | `storages\dsh_inbox\items\*.json`, one file each |
+| Attachment index (mime/size/original file name) | `storages\dsh_inbox\attachments\*.json` |
+| The **bytes** of images / videos / files | `attachments\` — dsh's own content-addressed store, never auto-deleted |
+| Remote password / S3 AccessKey Secret | dsh's credential store, `.credentials.yaml` |
+| Remote settings (URL, bucket, client identity…) | dsh's own settings |
 
 ## Install
 
