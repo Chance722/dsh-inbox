@@ -974,3 +974,16 @@ Mozilla/5.0 (compatible; dsh-inbox/0.1; +https://github.com/Chance722/dsh-inbox)
 **同时按用户意见改了手册文案**：删掉「云端长什么样」与「想全量重传」两行；第 6 节不再点名 Codex/skill、不提 M8 与 `init`，改成"在对话里直接问"+"说明这个会话没带上收件箱插件，新开一个会话再问一次"；删除那条不再用「墓碑」这种词（改成"别的设备也会知道它被删了，不会又被拉回来"）。`manual.test.ts` 相应升级：不得出现 Codex/skill/M8/init，必须用大白话说清 preset 那件事。
 
 **验证**：`pnpm typecheck` 干净、**23 文件 244 条**测试全绿（+3）、`pnpm build`（三份产物）、服务 HTTP 200。
+
+#### M8 第二步 — 发布前的体检：包形状、证书、以及一次隐私清理（同日）
+
+用户问"仓库要转 public 了，README 有没有暴露个人信息、够不够专业、封面图怎么做"。查出来的东西比预期严重：
+
+- **原型文件里有他真实的 AccessKey ID**（`docs/prototype/*.html`，两处）——已换成假的 `AKIDEXAMPLEEXAMPLE`（那个文件本来就是假数据页，理应用假 ID）。
+- **桶名、账号名、个人文件名**散在 dev-bus / index / 原型 / `remote-gateway-compat.md` 里（`duoyu-inbox` / `chance722` / `IMG_9270.jpg`）→ 分别替换成 `<我的桶>` / `<账号>` / `IMG_0001.jpg`；`dev-setup.md` 里的 `C:\Users\chengjialong\.dsh` → `%DSH_HOME%`（对别的开发者也更顺手）。
+- 剩下唯一真实标识是 **`Chance722`**——仓库 URL 本来就公开的 GitHub handle，留着。
+- **顺带两处该修的**：README 中英的状态行还写着"M0–M6 完成、M7 进行中"（已改成"M0–M7 完成、M8 进行中"，并把加密与双向同步列为可用）；**仓库没有 LICENSE 文件**（package.json 声明 MIT）→ 补上 `LICENSE`（署名用 GitHub handle）。
+- **包形状**：`package.json` 补 `repository`/`homepage`/`bugs`/`keywords`/`publishConfig.access`；`types` 之前指向一个**根本不会生成的文件**（`lib/types/index.d.ts`）→ 新增 `tsconfig.build.json`（只编 `src`、`rootDir: src`）在 build 时产出声明，路径改成 `lib/types/host/index.d.ts`。`pnpm pack` 实测包内容：`cordis.patch.yml` + 三个 `lib/*.js` + `lib/types/**/*.d.ts` + LICENSE + 中英 README，**没有源码、没有 docs、没有草稿**。
+- 版本策略与发布命令写进了回复（0.x 起步、`--access public` 已进 `publishConfig`）。
+
+**未处理、需用户决定**：提交历史里的作者邮箱是真实工作邮箱（会随仓库公开）——要么保留，要么 `git filter-repo` 重写历史，要么另起一个干净仓库推。
