@@ -10,6 +10,8 @@
  * README that half its readers will skim past — so this does it.
  *
  * What it does, in order, and it is safe to run twice:
+ *   0. with `--create-profile`, create a missing profile first (off by default:
+ *      a typo in a profile name should say so, not conjure a profile)
  *   1. `dsh plugin --profile <profile> add <package>` (pnpm is idempotent)
  *   2. copy the shipped `standard` preset into `<DSH_HOME>/.agent-presets/<id>`
  *      and append this plugin's row to its composition
@@ -25,6 +27,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createRequire } from 'node:module'
 import { spawnSync } from 'node:child_process'
+import { pathToFileURL } from 'node:url'
 
 /** What the plugin calls itself, and the row an agent preset needs. */
 const PACKAGE_NAME = '@duoyu/dsh-inbox'
@@ -34,11 +37,13 @@ const PRESET_ROW = `
   name: '${PACKAGE_NAME}'
 `
 
-interface Options {
+export interface Options {
   profile: string
   preset: string
   source: string
   defaultPreset: boolean
+  /** Create the profile when it is missing, instead of refusing. */
+  createProfile: boolean
 }
 
 function usage(): string {
@@ -49,6 +54,7 @@ function usage(): string {
 
 选项：
   --profile <名字>   dsh profile，默认 inbox（不存在则报错并告诉你怎么建）
+  --create-profile   profile 不存在时用 dsh 自带的 web 模板建一个（默认不开）
   --preset <id>      agent preset 的 id，默认 inbox
   --package <来源>   插件来源，默认 ${PACKAGE_NAME}（本地开发传仓库路径）
   --no-default       不把默认 preset 指过去（只装，不改 dsh 的默认选择）
@@ -59,12 +65,13 @@ function usage(): string {
 重复运行是安全的：已经做过的不会重复做。`
 }
 
-function parse(argv: readonly string[]): Options | undefined {
+export function parse(argv: readonly string[]): Options | undefined {
   const options: Options = {
     profile: 'inbox',
     preset: '',
     source: PACKAGE_NAME,
     defaultPreset: true,
+    createProfile: false,
   }
   // `init` is the only command there is; accept it explicitly (that is what the
   // README shows) and also accept no argument at all.
@@ -84,6 +91,7 @@ function parse(argv: readonly string[]): Options | undefined {
     else if (flag === '--preset') options.preset = value()
     else if (flag === '--package') options.source = value()
     else if (flag === '--no-default') options.defaultPreset = false
+    else if (flag === '--create-profile') options.createProfile = true
     else throw new Error(`看不懂的选项：${String(flag)}`)
   }
   /*
@@ -197,11 +205,41 @@ function main(argv: readonly string[]): number {
   const home = dshHome()
   const profileDir = join(home, 'profiles', options.profile)
   if (!existsSync(join(profileDir, 'package.json'))) {
-    process.stderr.write(
-      `找不到 profile 「${options.profile}」（${profileDir}）。\n` +
-        `先建一个：dsh --profile ${options.profile} --from-default-profile web --dump-config\n`,
+    /*
+      A missing profile is the one thing that turns "one command" into two, and
+      it is the normal state on a fresh machine. Creating it is dsh's own
+      command, not a directory we invent, and it is behind a flag on purpose: a
+      typo like `--profile web2` should be answered with "no such profile", not
+      with a new profile nobody asked for.
+    */
+    const hint =
+      `先建一个：dsh --profile ${options.profile} --from-default-profile web --dump-config\n` +
+      `（或者重跑时加上 --create-profile，让这一步自己发生）\n`
+    if (!options.createProfile) {
+      process.stderr.write(`找不到 profile 「${options.profile}」（${profileDir}）。\n${hint}`)
+      return 1
+    }
+    process.stdout.write(`⓪ profile 「${options.profile}」不存在，用 dsh 的 web 模板建一个…\n`)
+    /*
+      Capture rather than inherit: `dsh --dump-config` prints the whole composed
+      tree, which buries the three lines that matter. It is only interesting
+      when the profile could not be created, so that is when it gets printed.
+    */
+    const created = spawnSync(
+      'dsh',
+      ['--profile', options.profile, '--from-default-profile', 'web', '--dump-config'],
+      { encoding: 'utf8', shell: process.platform === 'win32' },
     )
-    return 1
+    if (created.error !== undefined || created.status !== 0 || !existsSync(join(profileDir, 'package.json'))) {
+      for (const stream of [created.stdout, created.stderr]) {
+        if (typeof stream === 'string' && stream.trim().length > 0) process.stderr.write(`${stream.trimEnd()}\n`)
+      }
+      process.stderr.write(
+        `建 profile 失败${created.error === undefined ? '' : `（${created.error.message}）`}。\n${hint}`,
+      )
+      return 1
+    }
+    process.stdout.write(`   建好了 ${profileDir}\n`)
   }
 
   process.stdout.write(`① 把 ${options.source} 装进 profile ${options.profile}…\n`)
@@ -267,4 +305,12 @@ function main(argv: readonly string[]): number {
   return 0
 }
 
-process.exitCode = main(process.argv.slice(2))
+/*
+  Run only when invoked as a program.
+
+  Without this guard, importing the module to test `parse` would also run the
+  installer — a test that edits `~/.dsh` is worse than no test at all.
+*/
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.exitCode = main(process.argv.slice(2))
+}
