@@ -34,6 +34,8 @@ export interface NewItem {
   title?: string
   /** A headline fetched from the link's own page; see `link-title.ts`. */
   linkTitle?: string
+  /** A short code explaining a missed headline fetch (see `link-title.ts`). */
+  linkTitleError?: string
   text?: string
   url?: string
   platform?: string
@@ -50,6 +52,8 @@ export interface ItemPatch {
   watchLater?: boolean
   title?: string
   linkTitle?: string
+  /** A short code explaining a missed headline fetch; empty string clears it. */
+  linkTitleError?: string
   note?: string
   platform?: string
   tags?: readonly string[]
@@ -137,6 +141,7 @@ export class Vault {
       attachmentIds: [...(input.attachmentIds ?? [])],
       ...(input.title === undefined ? {} : { title: input.title }),
       ...(input.linkTitle === undefined ? {} : { linkTitle: input.linkTitle }),
+      ...(input.linkTitleError === undefined ? {} : { linkTitleError: input.linkTitleError }),
       ...(input.text === undefined ? {} : { text: input.text }),
       ...(input.url === undefined ? {} : { url: input.url }),
       ...(input.platform === undefined ? {} : { platform: input.platform }),
@@ -196,6 +201,10 @@ export class Vault {
         else next.title = patch.title
       }
       if (patch.linkTitle !== undefined) next.linkTitle = patch.linkTitle
+      if (patch.linkTitleError !== undefined) {
+        if (patch.linkTitleError.length === 0) delete next.linkTitleError
+        else next.linkTitleError = patch.linkTitleError
+      }
       if (patch.note !== undefined) next.note = patch.note
       if (patch.platform !== undefined) next.platform = patch.platform
       if (patch.tags !== undefined) next.tags = [...patch.tags]

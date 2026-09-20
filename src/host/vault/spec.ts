@@ -58,6 +58,14 @@ export const itemSchema = z.object({
    * stay true even with an automatic writer in the picture.
    */
   linkTitle: z.string().optional(),
+  /**
+   * Why the last headline fetch did not produce a `linkTitle`.
+   *
+   * A short code, not a sentence: the panel turns it into a hint ("那个站点要求
+   * 验证"), and the point of storing it at all is that a *silent* miss is
+   * indistinguishable from a broken feature. Cleared when a headline does arrive.
+   */
+  linkTitleError: z.string().optional(),
   /** The pasted text itself, for `text` and `secret` records. */
   text: z.string().optional(),
   url: z.string().optional(),
@@ -134,9 +142,12 @@ export const vaultSpec = defineDomain({
    *
    * Version 4 adds the optional `linkTitle` (the fetched page headline). It is
    * a pure addition, so every older record still validates unchanged.
+   * Version 4 adds the optional `linkTitle` (the fetched page headline), version
+   * 5 the optional `linkTitleError` that explains a miss. Both are pure
+   * additions, so every older record still validates unchanged.
    */
-  version: 4,
-  compatibleVersions: [1, 2, 3],
+  version: 5,
+  compatibleVersions: [1, 2, 3, 4],
   layout: 'per-record',
   global: {
     schema: vaultGlobalSchema,

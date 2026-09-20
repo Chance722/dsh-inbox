@@ -321,7 +321,16 @@ export async function capture(
       const web = ctx.get('web') as WebFetchSeam | undefined
       if (web !== undefined && outcome.item.kind === 'link') {
         try {
-          void fetchLinkTitle(vault, outcome.item.id, web).catch(() => undefined)
+          // `?.` and the try are both load-bearing: diagnostics must never be
+          // the thing that stops a record from getting a name.
+          const logLine = (message: string): void => {
+            try {
+              ctx.logger?.info('inbox: %s', message)
+            } catch {
+              // A composition without a logger still gets its headlines.
+            }
+          }
+          void fetchLinkTitle(vault, outcome.item.id, web, logLine).catch(() => undefined)
         } catch {
           // Same again: the URL stays the name.
         }

@@ -63,6 +63,17 @@ function decodeEntities(text: string): string {
   })
 }
 
+/** The `content` of the first `<meta>` whose `property`/`name` is one of these. */
+function metaContent(html: string, keys: readonly string[]): string | undefined {
+  for (const key of keys) {
+    const tag = new RegExp(`<meta[^>]+(?:property|name)=["']${key}["'][^>]*>`, 'i').exec(html)?.[0]
+    if (tag === undefined) continue
+    const content = /content=["']([^"']*)["']/i.exec(tag)?.[1]
+    if (content !== undefined && content.trim().length > 0) return content
+  }
+  return undefined
+}
+
 /**
  * Pull the `<title>` out of an HTML document.
  *
@@ -74,13 +85,23 @@ function decodeEntities(text: string): string {
  * @returns the collapsed, decoded headline, or undefined when there is none.
  */
 export function titleFromHtml(html: string): string | undefined {
-  const match = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)
-  if (match === null) return undefined
-  const flat = decodeEntities(match[1] ?? '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  if (flat.length === 0) return undefined
-  return flat.length > MAX_LINK_TITLE_CHARS ? flat.slice(0, MAX_LINK_TITLE_CHARS) : flat
+  /*
+    `<title>` first, then the social-graph ones. A page whose `<title>` is empty
+    is not a rare accident — a site that renders its headline in JavaScript
+    often still ships `og:title`, and that is the headline its own share card
+    uses, so it is the same claim the site makes about itself.
+  */
+  const candidates = [
+    /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1],
+    metaContent(html, ['og:title', 'twitter:title']),
+  ]
+  for (const candidate of candidates) {
+    if (candidate === undefined) continue
+    const flat = decodeEntities(candidate).replace(/\s+/g, ' ').trim()
+    if (flat.length === 0) continue
+    return flat.length > MAX_LINK_TITLE_CHARS ? flat.slice(0, MAX_LINK_TITLE_CHARS) : flat
+  }
+  return undefined
 }
 
 /**
@@ -93,37 +114,91 @@ export function titleFromHtml(html: string): string | undefined {
  * @param vault - the open vault.
  * @param id - the record that was just filed.
  * @param web - `ctx.web`, the harness's own web seam.
+ * @param log - where a miss is explained. Silent failure is undebuggable: the
+ *   user sees a URL where a headline should be and has nowhere to look. Only the
+ *   **host** is logged, never the whole URL — a link can carry a token in its
+ *   query string, and a log file is not the place for one.
  * @returns the stored headline, or undefined when nothing was stored.
  */
 export async function fetchLinkTitle(
   vault: Vault,
   id: string,
   web: WebFetchSeam,
+  log: (message: string) => void = () => {},
 ): Promise<string | undefined> {
   const filed = vault.get(id)
   if (filed === undefined || filed.kind !== 'link' || filed.url === undefined) return undefined
   if (filed.title !== undefined || filed.linkTitle !== undefined) return undefined
 
+  const host = (() => {
+    try {
+      return new URL(filed.url).host
+    } catch {
+      return '（无法解析的地址）'
+    }
+  })()
+
   let result: WebFetchResult
   try {
     result = await web.fetch({ url: filed.url }, AbortSignal.timeout(FETCH_TIMEOUT_MS))
-  } catch {
+  } catch (error) {
     // Unreachable, refused, timed out, or blocked by the seam's address policy:
     // the URL was a fine name before this existed and still is.
+    const reason = error instanceof Error ? error.message : String(error)
+    await miss(vault, id, `network:${reason}`)
+    log(`${host}：请求失败（${reason}）`)
     return undefined
   }
-  if (result.statusCode >= 400 || result.body.kind !== 'html') return undefined
+  if (result.statusCode >= 400) {
+    await miss(vault, id, `http:${String(result.statusCode)}`)
+    log(`${host}：HTTP ${String(result.statusCode)}`)
+    return undefined
+  }
+  if (result.body.kind !== 'html') {
+    await miss(vault, id, `not-html:${result.body.kind}`)
+    log(`${host}：不是 HTML（${result.body.kind}）`)
+    return undefined
+  }
 
   const title = titleFromHtml(result.body.content)
-  if (title === undefined) return undefined
+  if (title === undefined) {
+    /*
+      The answer to "为什么这条链接没名字" is usually here: a site that serves an
+      anti-bot page (WeChat does exactly this: HTTP 200, `<title></title>`,
+      「环境异常，完成验证后即可继续访问」) gives us nothing to read, and no
+      amount of retrying changes that. Say so on the record.
+    */
+    await miss(vault, id, 'no-title')
+    log(`${host}：页面里没有 <title>（${String(result.body.content.length)} 字符）`)
+    return undefined
+  }
 
   // The network took a moment, and the vault may have moved on since the read
   // above: check again, so a rename (or a delete) made while we were waiting
   // wins over a headline nobody asked for.
   const current = vault.get(id)
   if (current === undefined || current.title !== undefined || current.linkTitle !== undefined) {
+    log(`${host}：抓到了标题，但记录已经有名字了`)
     return undefined
   }
-  await vault.patch(id, { linkTitle: title })
+  // An empty code clears an earlier miss: this record now has a headline.
+  await vault.patch(id, { linkTitle: title, linkTitleError: '' })
+  log(`${host}：标题「${title}」`)
   return title
+}
+
+/**
+ * Record why nothing was stored, so the pane can say it instead of looking
+ * broken.
+ *
+ * Nothing is written when the record has been named or deleted in the meantime:
+ * the note is about a fetch, and it is not worth a write of its own. Note the
+ * callers' order — the write comes first, the log line after: a log line must
+ * never be the reason a record goes unexplained (a test caught exactly that).
+ */
+async function miss(vault: Vault, id: string, reason: string): Promise<void> {
+  const current = vault.get(id)
+  if (current !== undefined && current.title === undefined && current.linkTitle === undefined) {
+    await vault.patch(id, { linkTitleError: reason })
+  }
 }

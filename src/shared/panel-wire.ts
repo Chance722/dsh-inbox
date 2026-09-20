@@ -250,6 +250,12 @@ export interface EntrySummary {
    */
   linkTitle?: string
   /**
+   * Why no headline arrived, as a short code (`network:…`, `http:404`,
+   * `not-html:…`, `no-title`). The pane translates it — a link that quietly
+   * keeps its URL looks like a broken feature rather than a site that refused.
+   */
+  linkTitleError?: string
+  /**
    * The file name the record arrived with, when it has one.
    *
    * A picture or a file carries no text of its own, so without this its row has

@@ -271,6 +271,30 @@ describe('capture', () => {
     expect(listed?.title).toBeUndefined()
   })
 
+  it('reports a missed headline on the record, so the pane can explain it', async () => {
+    // WeChat's shape: HTTP 200, an empty <title>, an anti-bot page.
+    webSeam = {
+      async fetch(request) {
+        return {
+          url: request.url,
+          statusCode: 200,
+          body: { kind: 'html', content: '<html><head><title></title></head></html>' },
+          truncated: false,
+        }
+      },
+    }
+
+    await post(INBOX_ENDPOINT_CAPTURE, { text: 'https://mp.weixin.qq.com/s/vTv0Vu4RgrMkmLbXGvnSug' })
+    const id = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {})).entries[0]?.id ?? ''
+    for (let attempt = 0; attempt < 100 && vault?.get(id)?.linkTitleError === undefined; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+
+    const entry = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {})).entries[0]
+    expect(entry?.linkTitleError).toBe('no-title')
+    expect(entry?.linkTitle).toBeUndefined()
+  })
+
   it('stores a pasted image through the attachment store, not the domain', async () => {
     const captured = value<CaptureResult>(
       await post(INBOX_ENDPOINT_CAPTURE, {

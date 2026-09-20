@@ -46,6 +46,21 @@ describe('titleFromHtml', () => {
     expect(titleFromHtml('<title>   </title>')).toBeUndefined()
   })
 
+  it('falls back to the social card when the title element is empty', () => {
+    // What a JavaScript-rendered news page looks like to a plain GET: an empty
+    // <title>, with the real headline in the share metadata.
+    const page = '<html><head><title></title><meta property="og:title" content="真正的标题"></head>'
+    expect(titleFromHtml(page)).toBe('真正的标题')
+    expect(
+      titleFromHtml('<title></title><meta name="twitter:title" content="来自 twitter 的标题">'),
+    ).toBe('来自 twitter 的标题')
+    // Still nothing, and still no exception, when the site is an anti-bot page:
+    // WeChat answers anonymous requests with exactly this shape.
+    expect(
+      titleFromHtml('<html><head><title></title></head><body>环境异常，完成验证后即可继续访问。</body></html>'),
+    ).toBeUndefined()
+  })
+
   it('caps a runaway headline', () => {
     const long = 'x'.repeat(MAX_LINK_TITLE_CHARS + 50)
     expect(titleFromHtml(`<title>${long}</title>`)).toHaveLength(MAX_LINK_TITLE_CHARS)
@@ -158,5 +173,53 @@ describe('fetchLinkTitle against a real vault', () => {
 
     expect(await fetchLinkTitle(vault, text.item.id, web)).toBeUndefined()
     expect(web.asked).toEqual([])
+  })
+
+  describe('a miss is recorded, not swallowed', () => {
+    it('says the page had no title, which is what an anti-bot page looks like', async () => {
+      // The reported case: WeChat answers an anonymous GET with HTTP 200, an
+      // empty <title> and 「环境异常，完成验证后即可继续访问」.
+      const filed = await captureText(vault, 'https://mp.weixin.qq.com/s/abc', 'panel')
+      const notes: string[] = []
+
+      expect(
+        await fetchLinkTitle(
+          vault,
+          filed.item.id,
+          seam({ content: '<html><head><title></title></head><body>环境异常</body></html>' }),
+          (message) => notes.push(message),
+        ),
+      ).toBeUndefined()
+
+      expect(vault.get(filed.item.id)?.linkTitleError).toBe('no-title')
+      expect(vault.get(filed.item.id)?.linkTitle).toBeUndefined()
+      expect(notes.join()).toContain('没有 <title>')
+      // Only the host is logged: a URL can carry a token in its query string.
+      expect(notes.join()).toContain('mp.weixin.qq.com')
+      expect(notes.join()).not.toContain('/s/abc')
+    })
+
+    it('records an HTTP status, a non-HTML body or a failed request', async () => {
+      const filed = await captureText(vault, 'https://example.com/dead', 'panel')
+
+      await fetchLinkTitle(vault, filed.item.id, seam({ statusCode: 404 }))
+      expect(vault.get(filed.item.id)?.linkTitleError).toBe('http:404')
+
+      await fetchLinkTitle(vault, filed.item.id, seam({ kind: 'text', content: 'plain' }))
+      expect(vault.get(filed.item.id)?.linkTitleError).toBe('not-html:text')
+
+      await fetchLinkTitle(vault, filed.item.id, seam(new Error('ECONNREFUSED')))
+      expect(vault.get(filed.item.id)?.linkTitleError).toBe('network:ECONNREFUSED')
+    })
+
+    it('clears the note once a headline does arrive', async () => {
+      const filed = await captureText(vault, 'https://example.com/late', 'panel')
+      await fetchLinkTitle(vault, filed.item.id, seam({ content: '<title></title>' }))
+      expect(vault.get(filed.item.id)?.linkTitleError).toBe('no-title')
+
+      await fetchLinkTitle(vault, filed.item.id, seam({ content: '<title>后来抓到了</title>' }))
+      expect(vault.get(filed.item.id)?.linkTitle).toBe('后来抓到了')
+      expect(vault.get(filed.item.id)?.linkTitleError).toBeUndefined()
+    })
   })
 })

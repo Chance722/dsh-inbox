@@ -270,6 +270,24 @@ const MODEL_COLOR = '#a78bfa'
 const CONTROL_HEIGHT = 'calc(1.6em + 12px)'
 
 /**
+ * One line explaining why a link never got a headline.
+ *
+ * The codes are written by `src/host/link-title.ts`; an unrecognised one still
+ * says something honest, because "原因不明" beats the silence that made the user
+ * think the feature was broken.
+ *
+ * @param code - the short code stored on the record.
+ * @returns a sentence to show under the name field.
+ */
+function titleFailureText(code: string): string {
+  if (code === 'no-title') return '那个页面里没有标题（有些站点对匿名访问只回验证页）'
+  if (code.startsWith('http:')) return `对方返回 HTTP ${code.slice('http:'.length)}`
+  if (code.startsWith('not-html:')) return '那个地址不是网页'
+  if (code.startsWith('network:')) return '请求没成功（网络不通或对方拒绝）'
+  return '原因不明'
+}
+
+/**
  * One row of the detail pane.
  *
  * `flex: none` on every row, and it is not decoration: the pane is a scrolling
@@ -512,6 +530,13 @@ function InboxPanel(): React.ReactElement {
         return
       }
       const next = result.value as ListResult
+      // A wrong-shaped answer must not reach the render: `entries` is read with
+      // `.map`, and one undefined there takes the whole panel down to a blank
+      // screen (the old list is a much better outcome than no list).
+      if (!Array.isArray(next.entries)) {
+        setNotice('读取列表失败：宿主返回的内容看不懂')
+        return
+      }
       setList(next)
       if (!keepSelection || !next.entries.some((entry) => entry.id === selectedId)) {
         setSelectedId(undefined)
@@ -523,6 +548,12 @@ function InboxPanel(): React.ReactElement {
 
   React.useEffect(() => {
     void refresh()
+  }, [refresh])
+
+  // Keep that ref pointing at the current one; the effect above runs on the same
+  // render, so this is always up to date by the time a timer fires.
+  React.useEffect(() => {
+    refreshRef.current = refresh
   }, [refresh])
 
   /** Any filter change sends you back to the first page. */
@@ -547,6 +578,16 @@ function InboxPanel(): React.ReactElement {
     const timer = window.setTimeout(() => setNotice(undefined), 4000)
     return () => window.clearTimeout(timer)
   }, [notice])
+
+  /**
+   * Always the *latest* `refresh`.
+   *
+   * The delayed re-read below is scheduled now and runs 2.5s later, by which
+   * time the panel may be looking at a different shelf — and a stale closure
+   * would quietly re-read the old one and overwrite the list with it. That is
+   * exactly how a list goes blank after a capture made from the recycle bin.
+   */
+  const refreshRef = React.useRef<() => Promise<void>>(async () => {})
 
   /**
    * The layout the panel remembers for next time.
@@ -760,14 +801,30 @@ function InboxPanel(): React.ReactElement {
         if (entry.previewUrl !== undefined) URL.revokeObjectURL(entry.previewUrl)
       }
       setStaged([])
-      await refresh(false)
+      /*
+        Leaving the recycle bin is part of "I just filed something".
+
+        The bin is a shelf you are done with, and a capture always lands live:
+        pasting while standing in the bin refreshed the *bin* — which the user
+        had just emptied — so the panel looked like it had swallowed the paste
+        (the toast said 「已存入 1 条」 while the list said the bin was empty).
+        Stepping back to 全部 also puts the new record where the eye expects it.
+      */
+      const wasInBin = scope === 'bin'
+      if (wasInBin) {
+        setScope('live')
+        setWatchOnly(false)
+      } else {
+        await refresh(false)
+      }
       /*
         Two things arrive *after* the paste is stored, by design: the category
         the model decided, and the headline fetched from the link's page. Both
         are fire-and-forget on the host, so one delayed re-read is what makes
-        them visible without the user hunting for the 刷新 button.
+        them visible without the user hunting for the 刷新 button. It goes
+        through the ref, so it re-reads whatever shelf the panel is on *then*.
       */
-      window.setTimeout(() => void refresh(false), 2500)
+      window.setTimeout(() => void refreshRef.current(), 2500)
     } finally {
       setBusy(false)
     }
@@ -2603,6 +2660,22 @@ function EntryPane({
         placeholder="名称，如：身份证正面（留空则用文件名兜底）"
         style={{ ...paneRowStyle, ...inputStyle, width: '100%', boxSizing: 'border-box' }}
       />
+
+      {/*
+        A link whose headline never arrived says so. Without this line the record
+        just sits there looking unnamed, which reads as a broken feature rather
+        than as "that site would not talk to us" — WeChat answers anonymous
+        requests with an anti-bot page that has an empty <title>.
+      */}
+      {detail.title === undefined &&
+        detail.linkTitle === undefined &&
+        detail.linkTitleError !== undefined &&
+        detail.kind === 'link' && (
+          <p style={{ ...paneRowStyle, margin: 0, fontSize: 12, opacity: 0.6 }}>
+            没抓到页面标题：{titleFailureText(detail.linkTitleError)}
+            。可以自己起个名字。
+          </p>
+        )}
 
       <SelectBox
         block
