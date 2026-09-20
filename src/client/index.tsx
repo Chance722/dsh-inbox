@@ -2583,7 +2583,7 @@ function EntryPane({
       )}
 
       {/*
-        No labels in the form: in a 380px column a 「类目 / 描述 / 标签」 gutter
+        No labels in the form: in a 380px column a 「名称 / 类目 / 备注 / 标签」 gutter
         stole a third of every field's width and repeated what the field already
         says. The placeholder carries the hint, and every control fills the pane.
       */}
