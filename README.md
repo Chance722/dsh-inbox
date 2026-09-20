@@ -52,15 +52,11 @@ No command needed, just talk:
 >
 > list the links in my inbox I haven't read yet
 
-The assistant searches the vault and the answer comes back as a card: links are clickable, images are rendered as thumbnails **on your machine** (image bytes never enter the model's context — the model only sees that a picture is there; click a thumbnail to see it full size).
-
 Two questions in the same conversation, on a real machine:
 
 ![Searching by topic: the one match first, then all seven records — the two credentials show only the names their owner gave them, never the plain text](docs/assets/chat1.png)
 
 ![Asking for what is flagged watch-later: that one record comes back with its link and the time it was filed](docs/assets/chat2.png)
-
-The 「6 次工具调用 / 1 次工具调用」 row above each answer is where the cards themselves live — **expand it**: every record carries 打开 ↗, and pressing it opens the 仓库 tab on that record. The ids the assistant retypes in prose are just text.
 
 ## Install
 
