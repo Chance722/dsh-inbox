@@ -12,11 +12,27 @@
 import React from 'react'
 
 import { INBOX_API_PREFIX, INBOX_ENDPOINT_ATTACHMENT, type InboxRpcResult } from '../shared/panel-wire.js'
+import { openVaultDock } from './dock.js'
 
 /** `[attachment:<uuid>]`, the marker `src/host/tools.ts` emits. */
 const MARKER = /\[attachment:([A-Za-z0-9_-]+)\]/g
 
 const URL_PATTERN = /(https?:\/\/[^\s<>()]+)/g
+
+/**
+ * `id: <uuid>` — how the tool results name a record.
+ *
+ * Exported because it is the whole of the "click a record and go look at it"
+ * feature on this side: the button is only as reliable as finding the id in the
+ * text the model was shown.
+ */
+export const RECORD_ID = /id: ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/g
+
+/** Every record id in one tool result, in the order they appear. */
+export function recordIdsIn(text: string): string[] {
+  RECORD_ID.lastIndex = 0
+  return [...text.matchAll(RECORD_ID)].map((match) => match[1] ?? '')
+}
 
 /** The slice of the tool-call block a card needs. */
 interface CardBlock {
@@ -44,24 +60,90 @@ function resultText(block: CardBlock): string | undefined {
   return parts.length === 0 ? undefined : parts.join('\n')
 }
 
+/**
+ * One result line's trailing id, as something to click.
+ *
+ * Opening the record in the right dock is the whole point: the conversation
+ * shows what the model said, and the dock is where the same record can actually
+ * be looked at — its text, its link, its picture.
+ */
+function RecordLink({ id }: { id: string }): React.ReactElement | null {
+  // The dock can only be opened from a session surface, which is exactly where a
+  // card lives; when nothing registered one, there is nothing to offer.
+  if (openVaultDock === undefined) return null
+  return (
+    <button
+      type="button"
+      title="在右侧「仓库」里打开这条"
+      onClick={() => openVaultDock?.(id)}
+      style={{
+        font: 'inherit',
+        marginLeft: 6,
+        padding: '0 8px',
+        borderRadius: 999,
+        border: '1px solid color-mix(in srgb, currentColor 25%, transparent)',
+        background: 'color-mix(in srgb, currentColor 8%, transparent)',
+        color: 'inherit',
+        cursor: 'pointer',
+      }}
+    >
+      打开 ↗
+    </button>
+  )
+}
+
 /** Turn bare URLs into anchors; everything else stays text. */
 function withLinks(text: string, keyPrefix: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
-  URL_PATTERN.lastIndex = 0
-  while ((match = URL_PATTERN.exec(text)) !== null) {
-    if (match.index > last) nodes.push(text.slice(last, match.index))
-    const url = match[0]
-    nodes.push(
-      <a key={`${keyPrefix}-${String(match.index)}`} href={url} target="_blank" rel="noreferrer">
-        {url}
-      </a>,
-    )
-    last = match.index + url.length
+  /*
+    Two patterns, one pass each: the link first (it is the noisy one), then the
+    record id — a line like `存入：… · id: 5b1f…` gets both a clickable address
+    and a way into the vault. Splitting on ids after links means the id text is
+    already plain, so no nesting rules to think about.
+  */
+  for (const chunk of splitOnRecordIds(text, keyPrefix)) {
+    if (typeof chunk !== 'string') {
+      nodes.push(chunk)
+      continue
+    }
+    URL_PATTERN.lastIndex = 0
+    last = 0
+    while ((match = URL_PATTERN.exec(chunk)) !== null) {
+      if (match.index > last) nodes.push(chunk.slice(last, match.index))
+      const url = match[0]
+      nodes.push(
+        <a key={`${keyPrefix}-${String(match.index)}`} href={url} target="_blank" rel="noreferrer">
+          {url}
+        </a>,
+      )
+      last = match.index + url.length
+    }
+    if (last < chunk.length) nodes.push(chunk.slice(last))
   }
-  if (last < text.length) nodes.push(text.slice(last))
   return nodes
+}
+
+/** Text and record buttons, in the order they appear. */
+function splitOnRecordIds(text: string, keyPrefix: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = []
+  let last = 0
+  RECORD_ID.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = RECORD_ID.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index))
+    const id = match[1]
+    parts.push(
+      <span key={`${keyPrefix}-r${String(match.index)}`} style={{ opacity: 0.55, fontSize: 12 }}>
+        id: {id}
+      </span>,
+      <RecordLink key={`${keyPrefix}-open${String(match.index)}`} id={id ?? ''} />,
+    )
+    last = match.index + match[0].length
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return parts
 }
 
 /** One thumbnail, loaded from the panel's own attachment route. */

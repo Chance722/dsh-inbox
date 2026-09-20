@@ -24,7 +24,11 @@ import {
 import { headingOf } from './heading.js'
 import {
   INBOX_API_PREFIX,
+  INBOX_ENDPOINT_ATTACHMENT,
+  INBOX_ENDPOINT_DETAIL,
   INBOX_ENDPOINT_LIST,
+  type DetailResult,
+  type EntryDetail,
   type EntrySummary,
   type InboxRpcResult,
   type ListResult,
@@ -40,15 +44,18 @@ export const DOCK_TAB_ID = PACKAGE_NAME
 const DOCK_LIMIT = 12
 
 /**
- * A caller that can reveal the tab, set once registration succeeds.
+ * A caller that can reveal the tab — optionally focused on one record.
  *
  * It cannot be used from the inbox panel: the dock belongs to the *session*
  * surface, and showing the panel unmounts that surface — calling `openTab` from
  * there fails with `sidebarRight: no session surface is mounted` (measured).
- * Whoever opens it has to be standing in a conversation, which is why the tab
- * ships a guide entry instead of a button here.
+ * Whoever opens it has to be standing in a conversation — which is exactly where
+ * a conversation card is, so `card.tsx` is the caller that matters: click a
+ * record the assistant mentioned and the dock opens on it.
+ *
+ * @param id - the record to focus; omitted opens the tab on its usual list.
  */
-export let openVaultDock: (() => void) | undefined
+export let openVaultDock: ((id?: string) => void) | undefined
 
 interface SlotsLike {
   inject(name: string, register: () => unknown): void
@@ -69,6 +76,23 @@ interface TabsLike {
 
 interface ControllerLike {
   openTab?(kind: string, options?: Record<string, unknown>): void
+}
+
+/** What a tab body may find in its navigation params; see the official contract. */
+interface TabInfoLike {
+  tab?: {
+    navigation?: {
+      params?: { id?: unknown } | undefined
+      revision?: number
+    }
+  }
+}
+
+/** Props the slot framework injects into this tab's body. */
+interface DockProps {
+  hooks?: {
+    tabInfo?: () => TabInfoLike
+  }
 }
 
 /**
@@ -100,8 +124,15 @@ export function registerInboxDock(ctx: Context): void {
         slots.register({ name: 'sidebar.right.pane.tab', key: DOCK_TAB_ID }, InboxDock),
       )
       const controller = scoped.get('sidebarRight') as ControllerLike | undefined
-      openVaultDock = () => {
-        controller?.openTab?.(DOCK_KIND)
+      openVaultDock = (id?: string) => {
+        // `params` is the documented way to hand a tab a navigation argument
+        // (the type is declared through a module augmentation we deliberately do
+        // not import — the client half may not depend on dsh packages, so the
+        // shape is written out here instead).
+        controller?.openTab?.(
+          DOCK_KIND,
+          id === undefined ? undefined : { params: { id }, revealIfOpened: true },
+        )
       }
     } catch {
       // A composition that already owns this kind keeps it; the panel still works.
@@ -114,7 +145,24 @@ export function registerInboxDock(ctx: Context): void {
  *
  * @returns the pane.
  */
-function InboxDock(): React.ReactElement {
+function InboxDock(props?: DockProps): React.ReactElement {
+  /*
+    The tab's own address, read through the hook the slot framework injects.
+
+    `?? {}` keeps the component working when a composition mounts the body
+    without the hook (a test, or a future seat with a different share): the dock
+    then simply behaves as it always did, a list of the newest records.
+  */
+  const info = props?.hooks?.tabInfo?.()
+  const wanted = info?.tab?.navigation?.params?.id
+  const focused = typeof wanted === 'string' && wanted.length > 0 ? wanted : undefined
+  const revision = info?.tab?.navigation?.revision ?? 0
+
+  return focused === undefined ? <DockList /> : <DockRecord id={focused} revision={revision} />
+}
+
+/** The list: what the dock shows when nobody asked for a particular record. */
+function DockList(): React.ReactElement {
   const [entries, setEntries] = React.useState<EntrySummary[]>()
   const [failed, setFailed] = React.useState(false)
 
@@ -175,6 +223,144 @@ function InboxDock(): React.ReactElement {
       <p style={{ opacity: 0.6, marginTop: 10 }}>
         这里是随手看。改类目、删记录、入库设置在左侧「Inbox」面板里。
       </p>
+    </div>
+  )
+}
+
+/**
+ * One record, opened from a conversation card.
+ *
+ * The point of the whole feature: the assistant mentioned a record, and this is
+ * where you actually look at it — its text, its link, and the picture that never
+ * entered the conversation.
+ *
+ * @param props - which record, and a revision that re-reads on every re-open.
+ * @returns the pane.
+ */
+function DockRecord({ id, revision }: { id: string; revision: number }): React.ReactElement {
+  const [entry, setEntry] = React.useState<EntryDetail>()
+  const [failed, setFailed] = React.useState(false)
+
+  React.useEffect(() => {
+    let live = true
+    setEntry(undefined)
+    setFailed(false)
+    void (async () => {
+      try {
+        const response = await fetch(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_DETAIL}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ id }),
+        })
+        const answer = (await response.json()) as InboxRpcResult<DetailResult>
+        if (!live) return
+        if (answer.ok) setEntry(answer.value.entry)
+        else setFailed(true)
+      } catch {
+        if (live) setFailed(true)
+      }
+    })()
+    return () => {
+      live = false
+    }
+    // `revision` in the list re-reads when the same record is clicked again —
+    // the user may have changed it in the panel meanwhile.
+  }, [id, revision])
+
+  const clause: React.CSSProperties = { margin: '6px 0 0', overflowWrap: 'anywhere' }
+
+  return (
+    <div style={{ padding: '10px 12px', fontSize: 13 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <strong style={{ minWidth: 0, overflowWrap: 'anywhere' }}>仓库</strong>
+        <button
+          type="button"
+          onClick={() => openVaultDock?.()}
+          title="回到最近记录"
+          style={{
+            marginLeft: 'auto',
+            font: 'inherit',
+            fontSize: 12,
+            padding: '2px 8px',
+            borderRadius: 999,
+            border: '1px solid color-mix(in srgb, currentColor 25%, transparent)',
+            background: 'transparent',
+            color: 'inherit',
+            cursor: 'pointer',
+          }}
+        >
+          返回最近
+        </button>
+      </div>
+
+      {failed && <p style={{ opacity: 0.7 }}>读不到这条记录，它可能已经被删掉了。</p>}
+      {entry === undefined && !failed && <p style={{ opacity: 0.6 }}>读取中…</p>}
+
+      {entry !== undefined && (
+        <div>
+          <div style={{ overflowWrap: 'anywhere', fontWeight: 500 }}>{headingOf(entry)}</div>
+          <div style={{ fontSize: 12, opacity: 0.6, marginTop: 2 }}>
+            {KIND_LABELS[entry.kind]} · {CATEGORY_LABELS[entry.category]}
+            {entry.watchLater ? ' · 待看' : ''}
+            {` · ${new Date(entry.createdAt).toLocaleString()}`}
+          </div>
+
+          {entry.note !== undefined && entry.note.length > 0 && (
+            <p style={clause}>备注：{entry.note}</p>
+          )}
+
+          {entry.url !== undefined && (
+            <p style={clause}>
+              <a href={entry.url} target="_blank" rel="noreferrer">
+                {entry.url}
+              </a>
+            </p>
+          )}
+
+          {/*
+            The picture, drawn here: this is the record's bytes coming back from
+            the panel's own route on this machine, which is why the conversation
+            could stay text-only and still end with you looking at the image.
+          */}
+          {entry.attachments.map((attachment) => (
+            <div key={attachment.id} style={{ marginTop: 8 }}>
+              {attachment.image ? (
+                <img
+                  src={`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}?id=${encodeURIComponent(attachment.id)}`}
+                  alt={attachment.filename ?? ''}
+                  style={{ maxWidth: '100%', borderRadius: 6, display: 'block' }}
+                />
+              ) : (
+                <div style={{ opacity: 0.7 }}>
+                  📄 {attachment.filename ?? attachment.mime}
+                  {` · ${String(Math.round(attachment.bytes / 1024))} KB`}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {entry.text !== undefined && entry.text.length > 0 && (
+            <pre
+              style={{
+                margin: '10px 0 0',
+                padding: 8,
+                maxHeight: 260,
+                overflow: 'auto',
+                borderRadius: 8,
+                border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
+                font: '12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace',
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {entry.text}
+            </pre>
+          )}
+
+          <p style={{ opacity: 0.6, marginTop: 10 }}>
+            改类目、改备注、删除都在左侧「Inbox」面板里。
+          </p>
+        </div>
+      )}
     </div>
   )
 }
