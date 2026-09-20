@@ -22,7 +22,7 @@ const VERIFIER_PLAINTEXT = 'dsh-inbox master password check'
 /** A capture that needs the key while the vault is locked. */
 export class VaultLockedError extends Error {
   constructor() {
-    super('仓库锁着（或还没设主密码）：账密类内容要先在「入库设置 → 账密加密」里解锁才能存')
+    super('仓库锁着（或还没设主密码）：账密类内容要先在「设置 → 账密加密」里解锁才能存')
     this.name = 'VaultLockedError'
   }
 }

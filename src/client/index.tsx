@@ -913,7 +913,7 @@ function InboxPanel(): React.ReactElement {
             aria-expanded={settingsOpen}
             onClick={() => setSettingsOpen((open) => !open)}
           >
-            <Settings2 size={14} /> 入库设置
+            <Settings2 size={14} /> 设置
           </button>
         </div>
       </header>
@@ -921,7 +921,7 @@ function InboxPanel(): React.ReactElement {
       {settingsOpen && (
         <div
           role="dialog"
-          aria-label="入库设置"
+          aria-label="设置"
           style={{
             position: 'fixed',
             inset: 0,
@@ -1697,8 +1697,7 @@ function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
         </span>
       </div>
       <p style={{ margin: '0 0 8px', opacity: 0.7, fontSize: 12 }}>
-        设了主密码以后，密钥/账密类记录的**正文**以密文写盘（AES-256-GCM，密钥由主密码 scrypt
-        派生）。主密码和密钥都不落盘：服务每次重启都要重新解锁。密码忘了就解不开已有的密文，没有找回。
+        账密正文以密文写盘；主密码和密钥都不落盘，**重启后要重新解锁**。密码忘了就解不开，没有找回。
       </p>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <input
@@ -2694,7 +2693,7 @@ function EntryPane({
       */}
       {detail.text === undefined && detail.category === 'secret' && (
         <p style={{ ...paneRowStyle, margin: 0, opacity: 0.75 }}>
-          这条账密的正文是密文，现在解不开。到「入库设置 → 账密加密」解锁（或先设一个主密码）就能看到。
+          这条账密的正文是密文，现在解不开。到「设置 → 账密加密」解锁（或先设一个主密码）就能看到。
         </p>
       )}
 
