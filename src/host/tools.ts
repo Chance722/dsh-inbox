@@ -6,17 +6,22 @@
  * 1. **Credentials never leave the vault.** A record classified as `secret`
  *    answers with a refusal, not with its text — the model must not be able to
  *    read one out by asking, and the session log must not collect it.
- * 2. **Attachment bytes never cross the conversation.** A tool result is model
+ * 2. **Attachment bytes stay in the vault by default.** A tool result is model
  *    visible and persisted, so an image is described by a marker the panel and
- *    the tool card resolve locally; the picture itself is never part of the
+ *    the tool card resolve locally; the picture itself is not part of the
  *    result. That keeps a pasted ID document out of the cloud even when the
- *    model is the one that fetched the record.
+ *    model is the one that fetched the record. The single exception is
+ *    `inbox_get` with `withImage: true` — the user asking "look at the picture
+ *    and tell me what it is" is a request the model cannot honour otherwise,
+ *    and it is opt-in per call, by name, never the default.
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 
 import {
+  INBOX_IMAGE_TYPES,
   MAX_FILTER_CHARS,
   PREVIEW_CHARS,
   type AttachmentSummary,
@@ -40,6 +45,39 @@ export const TEXT_BUDGET = 1_000
 /** Marker the tool card turns into a thumbnail; the bytes stay off the wire. */
 export function attachmentMarker(attachmentId: string): string {
   return `[attachment:${attachmentId}]`
+}
+
+/**
+ * The first attachment of a record that the panel can draw, if it has one.
+ *
+ * A search line for a picture is a line you cannot act on: "小程序码" could be
+ * any of three images. Carrying the marker into the result lets the card show
+ * the thumbnail right there, so "which one is it" is answered by looking.
+ *
+ * @param vault - the open vault, for attachment metadata.
+ * @param item - the record to inspect.
+ * @returns the attachment id, or undefined when there is nothing to show.
+ */
+function pictureIn(vault: Vault, item: Item): string | undefined {
+  for (const id of item.attachmentIds) {
+    const record = vault.getAttachment(id)
+    if (record !== undefined && (INBOX_IMAGE_TYPES as readonly string[]).includes(record.mime)) {
+      return id
+    }
+  }
+  return undefined
+}
+
+/** The metadata an image content part needs; the store's own reference shape. */
+function imageRefOf(record: Attachment): ImageAttachmentRef {
+  return {
+    attachmentId: record.storeId as ImageAttachmentRef['attachmentId'],
+    mediaType: record.mime as ImageAttachmentRef['mediaType'],
+    bytes: record.bytes,
+    width: record.width ?? 0,
+    height: record.height ?? 0,
+    ...(record.filename === undefined ? {} : { name: record.filename }),
+  }
 }
 
 function when(item: Item): string {
@@ -81,13 +119,22 @@ function headline(item: Item): string {
  * @param matched - how many records matched in total.
  * @returns the model-facing text.
  */
-export function formatSearch(entries: readonly Item[], matched: number): string {
+export function formatSearch(
+  entries: readonly Item[],
+  matched: number,
+  /** The image marker a line should carry, when the caller can find one. */
+  pictureOf?: (item: Item) => string | undefined,
+): string {
   if (matched === 0) {
     return '仓库里没有匹配的记录。可以换个说法，或者让用户在 dsh-inbox 面板里翻一翻。'
   }
 
   const lines = entries.map((item, index) => {
-    const parts = [`${String(index + 1)}. ${labelOf(item)} ${headline(item)}`]
+    const picture = pictureOf?.(item)
+    const parts = [
+      `${String(index + 1)}. ${labelOf(item)} ${headline(item)}` +
+        (picture === undefined ? '' : ` ${attachmentMarker(picture)}`),
+    ]
     // The URL and the note are "the rest of it": worth a line once the headline
     // has already said what this is, noise while it *is* the headline.
     const named = item.title ?? item.linkTitle
@@ -264,7 +311,9 @@ export function registerInboxTools(ctx: Context, vault: () => Vault | undefined)
           ...(args.tag === undefined ? {} : { tags: [args.tag] }),
         })
 
-        return formatSearch(matched.slice(0, SEARCH_PAGE), matched.length)
+        return formatSearch(matched.slice(0, SEARCH_PAGE), matched.length, (item) =>
+          pictureIn(open, item),
+        )
       },
     }),
   )
@@ -274,14 +323,43 @@ export function registerInboxTools(ctx: Context, vault: () => Vault | undefined)
       name: 'inbox_get',
       description:
         'Open one record from the dsh-inbox vault by the id a search returned: its text (truncated to 1000 characters), ' +
-        'link, note, tags and attachment facts. Credentials are never returned in clear text, and image bytes are never put ' +
-        'into the conversation — images come back as attachment markers the UI renders locally.',
+        'link, note, tags and attachment facts. Credentials are never returned in clear text. An image is described by an ' +
+        'attachment marker the UI renders locally; set withImage only when the user asks you to look at the picture itself ' +
+        '(that sends its bytes to you, once, for this call).',
       parameters: {
         id: { type: 'string', required: true, description: 'The record id from inbox_search.' },
+        withImage: {
+          type: 'boolean',
+          description:
+            'Send the record’s image to you so you can look at it (costs tokens and puts the picture in this ' +
+            'conversation). Use it only when the user asks you to see or verify the image; leave it out otherwise.',
+        },
       },
       output: {
         schema: { type: 'string' },
-        render: (_args, value) => [{ type: 'text', text: value }],
+        render: (args, value) => {
+          /*
+            The picture, when the user asked for it.
+
+            Read here rather than returned by `execute` so the text result keeps
+            its shape (tests, the card, and every other caller depend on it), and
+            so the bytes only ever move when `withImage` is true — the default
+            path is byte-for-byte what it was.
+          */
+          /** What a tool result may carry: prose, or a picture by reference. */
+          type ContentPart =
+            | { type: 'text'; text: string }
+            | { type: 'image'; attachment: ImageAttachmentRef }
+          const parts: ContentPart[] = [{ type: 'text', text: value }]
+          if (args.withImage !== true) return parts
+          const open = vault()
+          const item = open?.get(args.id.trim())
+          if (open === undefined || item === undefined) return parts
+          const id = pictureIn(open, item)
+          const record = id === undefined ? undefined : open.getAttachment(id)
+          if (record !== undefined) parts.push({ type: 'image', attachment: imageRefOf(record) })
+          return parts
+        },
       },
       async execute(args) {
         const open = vault()

@@ -34,6 +34,10 @@ const capture = (target: Vault, payload: { text: string }, source: Source) =>
 interface RegisteredTool {
   name: string
   execute: (args: Record<string, unknown>, exec?: unknown) => Promise<string>
+  output?: {
+    /** The content parts a settled call renders; only `inbox_get` varies them. */
+    render?: (args: Record<string, unknown>, value: string) => { type: string; attachment?: unknown }[]
+  }
 }
 
 let root: string
@@ -191,6 +195,61 @@ describe('inbox_get', () => {
     expect(answer).toContain('800×600')
     expect(answer).toContain(`[attachment:${attachmentId}]`)
     expect(answer).toContain('证件类')
+  })
+
+  it('lists an image record with its marker, so a search line can show the picture', async () => {
+    await vault!.addAttachment({
+      storeId: 'sha256:code',
+      mime: 'image/jpeg',
+      bytes: 2400,
+      width: 258,
+      height: 258,
+      filename: 'code.jpg',
+    })
+    const attachmentId = vault!.findAttachmentByStoreId('sha256:code')?.id ?? ''
+    await vault!.create({
+      kind: 'image',
+      category: 'image',
+      source: 'panel',
+      attachmentIds: [attachmentId],
+    })
+
+    const answer = await call('inbox_search', {})
+
+    // "Which of my saved pictures is the mini-program code?" is a question you
+    // answer by looking, and the marker is what makes the card show it.
+    expect(answer).toContain(`[attachment:${attachmentId}]`)
+  })
+
+  it('sends the picture only when the caller asks for it', async () => {
+    await vault!.addAttachment({
+      storeId: 'sha256:shot',
+      mime: 'image/png',
+      bytes: 100,
+      width: 10,
+      height: 10,
+      filename: 'shot.png',
+    })
+    const attachmentId = vault!.findAttachmentByStoreId('sha256:shot')?.id ?? ''
+    const filed = await vault!.create({
+      kind: 'image',
+      category: 'image',
+      source: 'panel',
+      attachmentIds: [attachmentId],
+    })
+    const render = tools.get('inbox_get')?.output?.render
+    expect(render).toBeTypeOf('function')
+
+    // Default: text with a marker, and no image part at all.
+    const plain = render?.({ id: filed.id }, '一段说明') ?? []
+    expect(plain.map((part) => part.type)).toEqual(['text'])
+
+    // Asked for: the picture crosses the conversation exactly once, by reference.
+    const withImage = render?.({ id: filed.id, withImage: true }, '一段说明') ?? []
+    expect(withImage.map((part) => part.type)).toEqual(['text', 'image'])
+    expect(withImage[1]).toMatchObject({
+      attachment: { attachmentId: 'sha256:shot', mediaType: 'image/png', bytes: 100 },
+    })
   })
 
   it('says when the id is unknown', async () => {
