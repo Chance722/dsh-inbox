@@ -13,6 +13,7 @@ import type { Context } from '@deepseek-ai/cordis'
 
 import { deleteObject, putObject, type S3Config, type S3Deps } from '../s3/client.js'
 import { deleteFile, writeFile, type WebdavDeps } from '../webdav/client.js'
+import { syncRootFor } from '../../shared/panel-wire.js'
 import {
   activeUserAgent,
   readPassword,
@@ -41,8 +42,12 @@ export type RemoteWriterResult =
  * @returns the path prefix, without a trailing slash.
  */
 export function syncRoot(settings: WebdavSettings): string {
-  const prefix = settings.directory.replace(/^\/+|\/+$/g, '')
-  return prefix.length === 0 ? 'sync' : `${prefix}/sync`
+  /*
+    One rule, shared with the ingest and the panel: `/`, empty and unset all mean
+    the default directory. Reading `/` as "the bucket root" is what let two
+    machines disagree about where `sync/` lives.
+  */
+  return syncRootFor(settings.directory)
 }
 
 /**

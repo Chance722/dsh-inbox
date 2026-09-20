@@ -142,6 +142,41 @@ export interface WebdavStatus {
 }
 
 /** What one pull did, for the panel and for the log. */
+/** The directory a sync uses when the user never named one. */
+export const DEFAULT_SYNC_DIRECTORY = 'inbox'
+
+/**
+ * The directory a sync actually uses, decided in one place.
+ *
+ * `/`, an empty string and "never named one" all mean the default. They used to
+ * mean different things depending on which path read them: `syncRoot()` turned a
+ * stripped-empty directory into the *bucket root* (`sync/`) while the
+ * drop-folder ingest defaulted to `/inbox`, so two machines set up through the
+ * same dialog could write to `sync/` and `inbox/sync/` respectively — and the
+ * merge, which reads its own prefix, then found nothing and reported nothing new
+ * (measured 2026-09-20).
+ *
+ * @param raw - whatever the settings hold, if anything.
+ * @returns the directory without leading or trailing slashes; never empty.
+ */
+export function syncDirectory(raw: string | undefined): string {
+  const trimmed = (raw ?? '').trim().replace(/^\/+|\/+$/g, '')
+  return trimmed.length === 0 ? DEFAULT_SYNC_DIRECTORY : trimmed
+}
+
+/**
+ * Where the vault's own objects live: `<directory>/sync`.
+ *
+ * Shared by the writer, the drop-folder ingest and the display, so "which
+ * prefix is mine" has one answer on both sides of the wire.
+ *
+ * @param raw - the configured directory, if any.
+ * @returns the sync root, e.g. `inbox/sync`.
+ */
+export function syncRootFor(raw: string | undefined): string {
+  return `${syncDirectory(raw)}/sync`
+}
+
 export interface PullResult {
   status: 'ok' | 'unconfigured' | 'failed'
   reason?: string
@@ -165,6 +200,15 @@ export interface PullResult {
   skippedSync?: number
   /** How many of {@link skipped} were older than the last pull's cursor. */
   skippedOlder?: number
+  /**
+   * How many of {@link skipped} sat under a `…/sync/` prefix that is **not**
+   * ours — another machine syncing under a different directory.
+   */
+  skippedForeign?: number
+  /** Those other prefixes, e.g. `['inbox/sync']`; the panel warns about them. */
+  foreignSyncRoots?: string[]
+  /** This machine's own sync root, so the warning can name both sides. */
+  syncRoot?: string
   /** How many entries the remote listed at all: distinguishes "empty folder"
    * from "everything already ingested". */
   listed: number

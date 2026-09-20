@@ -260,6 +260,47 @@ describe('pulling', () => {
     expect(vault.list().map((item) => item.kind)).toEqual(['link'])
   })
 
+  it('reads `/` as the default directory, not as the bucket root', async () => {
+    // The bug behind "synced from another machine and nothing arrived": `/` used
+    // to mean the bucket root for the writer (`sync/`) while the ingest already
+    // meant `/inbox`, so two machines wrote to two different sync roots.
+    const fake = server({
+      listing: LISTING.replace(
+        '<d:href>/dav/inbox/shot.png</d:href>',
+        '<d:href>/dav/inbox/sync/items/9f1e.json</d:href>',
+      ),
+    })
+    const result = await pullRemote(
+      vault,
+      { baseUrl: 'https://data.cstcloud.cn/dav', directory: '/' },
+      { fetch: fake.fetch, attachments: store as unknown as AttachmentStore },
+    )
+    expect(result).toMatchObject({ skippedSync: 1, skippedForeign: 0, syncRoot: 'inbox/sync' })
+  })
+
+  it('reports a sync area that belongs to another machine', async () => {
+    // `…/sync/` is skipped either way — it is never filed as files — but a
+    // *foreign* one means the two machines disagree about the directory, and
+    // that has to be visible: it looks exactly like "nothing new" otherwise.
+    const fake = server({
+      listing: LISTING.replace(
+        '<d:href>/dav/inbox/shot.png</d:href>',
+        '<d:href>/dav/inbox/sync/items/9f1e.json</d:href>',
+      ),
+    })
+    const result = await pullRemote(
+      vault,
+      { baseUrl: 'https://data.cstcloud.cn/dav', directory: '/custom' },
+      { fetch: fake.fetch, attachments: store as unknown as AttachmentStore },
+    )
+    expect(result).toMatchObject({
+      skippedForeign: 1,
+      skippedSync: 0,
+      foreignSyncRoots: ['inbox/sync'],
+      syncRoot: 'custom/sync',
+    })
+  })
+
   it('names what failed instead of only counting it', async () => {
     // A listing whose file cannot be read: the pull must survive it, and the
     // panel must have something to show that is not just "failed: 1".

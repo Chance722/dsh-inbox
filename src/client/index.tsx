@@ -55,6 +55,7 @@ import {
   LIST_LIMIT,
   MAX_TITLE_CHARS,
   PAGE_SIZE,
+  syncRootFor,
   UI_LIST_MODES,
   type UiListMode,
   type UiPrefs,
@@ -1771,6 +1772,19 @@ function describePull(result: PullResult): string {
     result.skippedSync === undefined
       ? ''
       : t('sync.pullSkipWhy', { sync: result.skippedSync, older: result.skippedOlder ?? 0 })
+  /*
+    Another machine syncing under a different directory is the one failure that
+    looks like success: its records sit under `…/sync/`, which every version of
+    this plugin skipped as "ours", so the panel said "云端的记录没有新的" while
+    the other computer's work was right there. Name both prefixes.
+  */
+  const foreignWhy =
+    result.foreignSyncRoots === undefined || result.foreignSyncRoots.length === 0
+      ? ''
+      : t('sync.pullForeignSync', {
+          roots: result.foreignSyncRoots.join('、'),
+          ours: result.syncRoot ?? '',
+        })
   const failedWhy =
     result.failed > 0
       ? t('sync.pullFailures', {
@@ -1782,7 +1796,7 @@ function describePull(result: PullResult): string {
     listed: result.listed,
     pulled: result.pulled,
     skipped: result.skipped,
-    tail: `${skippedWhy}${syncPart}${failedWhy}`,
+    tail: `${skippedWhy}${syncPart}${foreignWhy}${failedWhy}`,
   })
 }
 
@@ -2187,13 +2201,26 @@ function WebdavSettings({
             />
           </label>
 
-          <p style={{ margin: 0, opacity: 0.6 }}>
-            {t('settings.dirS3.lead')}
-            <code>/inbox</code>
-            {t('settings.dirS3.mid')}
-            <code>inbox/</code>
-            {t('settings.dirS3.tail')}
-          </p>
+          {/*
+            The directory field, which only the WebDAV branch used to carry: on
+            S3 the value existed, decided where `sync/` lived, and could not be
+            seen or changed from this dialog — a machine set up from an older
+            default wrote to the bucket root while another wrote to `inbox/`.
+            Each field now shows the sync root it produces.
+          */}
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ opacity: 0.7, minWidth: 64 }}>{t('settings.bucketDir')}</span>
+            <input
+              value={directory}
+              disabled={busy}
+              onChange={(event) => setDirectory(event.target.value)}
+              placeholder="/inbox"
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            <span style={{ opacity: 0.6 }}>
+              {t('settings.syncRootNow', { root: syncRootFor(directory) })}
+            </span>
+          </label>
         </>
       )}
 

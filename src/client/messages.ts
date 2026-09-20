@@ -164,6 +164,7 @@ export const zh = {
   'settings.save': '保存',
   'settings.probe': '自检',
   'settings.details': '详情（{count} 次请求）',
+  'settings.syncRootNow': '同步根：{root}',
   'settings.noServiceBody': '这个组合里没有设置服务，地址改不了——你多半在用 headless 形态开发。',
   'settings.bucketHint': '别的设备往这里扔东西',
 
@@ -210,6 +211,8 @@ export const zh = {
   'sync.pullAttachments': ' / {count} 个附件',
   'sync.pullDone': '拉取完成：远端列出 {listed} 项，新入库 {pulled} 条，跳过 {skipped} 条{tail}',
   'sync.pullSkipWhy': '（自己的同步对象 {sync} 项、比上次拉取更旧 {older} 项）',
+  'sync.pullForeignSync':
+    ' · ⚠️ 还发现另一套同步前缀 {roots}（本机是 {ours}）：两台机器的「目录」设置不一致，先把两边改成同一个',
   'sync.pullFailures': ' · 失败 {count}：{reason}',
   'sync.thisPage': ' · 本页 {count} 条',
   'settings.status': '{settings} · {webdav} · {s3}',
@@ -443,6 +446,7 @@ export const en: Dictionary = {
   'settings.save': 'Save',
   'settings.probe': 'Test',
   'settings.details': 'Details ({count} requests)',
+  'settings.syncRootNow': 'sync root: {root}',
   'settings.noServiceBody':
     'this composition has no settings service, so the address cannot be changed — you are most likely running the headless shape.',
   'settings.bucketHint': 'other devices drop things here',
@@ -488,6 +492,8 @@ export const en: Dictionary = {
   'sync.pullAttachments': ' / {count} attachment(s)',
   'sync.pullDone': 'Pull done: {listed} listed remotely, {pulled} filed, {skipped} skipped{tail}',
   'sync.pullSkipWhy': ' ({sync} of our own sync objects, {older} older than the last pull)',
+  'sync.pullForeignSync':
+    ' · ⚠️ another sync prefix exists: {roots} (this machine: {ours}) — two machines have different directory settings; make them match',
   'sync.pullFailures': ' · {count} failed: {reason}',
   'sync.thisPage': ' · {count} on this page',
   'settings.status': '{settings} · {webdav} · {s3}',

@@ -14,7 +14,12 @@
 
 import { admitEncodedFile, admitEncodedImages, type AttachmentStore } from '@deepseek-ai/dsh-attachment'
 
-import { INBOX_IMAGE_TYPES, type PullResult } from '../../shared/panel-wire.js'
+import {
+  INBOX_IMAGE_TYPES,
+  syncDirectory,
+  syncRootFor,
+  type PullResult,
+} from '../../shared/panel-wire.js'
 import { captureImage, captureText } from '../capture.js'
 import type { S3Config, S3Deps } from '../s3/client.js'
 import { listPrefix, readObject } from '../s3/client.js'
@@ -50,16 +55,23 @@ function looksTextual(name: string, contentType: string | undefined): boolean {
 }
 
 /**
- * Whether a remote path belongs to the vault's own upload queue.
+ * The `…/sync` prefix a remote path carries, if it carries one.
  *
- * Matched anywhere in the path, not just at the root: the configured directory
- * is whatever the user typed, and the sync root sits under it.
+ * Only the two segments ending at `sync` are kept, so a WebDAV href
+ * (`/dav/inbox/sync/items/x.json`) and an S3 key (`inbox/sync/items/x.json`)
+ * both answer `inbox/sync`. That is what lets this machine tell its own upload
+ * queue apart from a **different** one: another machine with another directory
+ * writes `inbox/sync/...` while this one writes `sync/...`, and until now both
+ * were silently skipped as "ours" (measured 2026-09-20).
  *
  * @param path - the remote path or key.
- * @returns true when this is something the push wrote.
+ * @returns the prefix, or undefined when the path is not in any sync area.
  */
-function isSyncObject(path: string): boolean {
-  return path.split('/').some((part) => part === 'sync')
+function syncPrefixOf(path: string): string | undefined {
+  const parts = path.split('/').filter((part) => part.length > 0)
+  const at = parts.lastIndexOf('sync')
+  if (at === -1) return undefined
+  return parts.slice(0, at + 1).slice(-2).join('/')
 }
 
 /** The later of two optional ISO timestamps, tolerating either being absent. */
@@ -100,6 +112,8 @@ export async function ingestFrom(
   vault: Vault,
   source: RemoteSource,
   attachments: AttachmentStore,
+  /** This machine's own sync root; anything else under `sync/` is a stranger. */
+  syncRoot: string = syncRootFor(undefined),
 ): Promise<PullResult> {
   const lastPullAt = vault.global.sync.lastPullAt
 
@@ -126,6 +140,9 @@ export async function ingestFrom(
    */
   let skippedSync = 0
   let skippedOlder = 0
+  let skippedForeign = 0
+  /** Other machines' sync roots, in the order the listing revealed them. */
+  const foreignSyncRoots = new Set<string>()
   /**
    * The newest entry that actually worked.
    *
@@ -148,7 +165,16 @@ export async function ingestFrom(
       Without this guard the next pull re-captures everything the vault just
       uploaded — the same records, again, as pasted text.
     */
-    if (isSyncObject(entry.path)) {
+    const prefix = syncPrefixOf(entry.path)
+    if (prefix !== undefined && prefix !== syncRoot) {
+      // Someone else's upload queue: never ingest it as files (its records are
+      // already records), but say so instead of folding it into "skipped".
+      skipped += 1
+      skippedForeign += 1
+      foreignSyncRoots.add(prefix)
+      continue
+    }
+    if (prefix !== undefined) {
       skipped += 1
       skippedSync += 1
       continue
@@ -226,6 +252,9 @@ export async function ingestFrom(
     skipped,
     skippedSync,
     skippedOlder,
+    skippedForeign,
+    syncRoot,
+    ...(foreignSyncRoots.size === 0 ? {} : { foreignSyncRoots: [...foreignSyncRoots] }),
     listed,
     lastPullAt: cursor,
     ...(failures.length === 0 ? {} : { reason: failures.slice(0, 3).join('；') }),
@@ -256,9 +285,11 @@ export async function pullRemote(
       listed: 0,
     }
   }
-  const directory = config.directory ?? DEFAULT_DIRECTORY
+  // `/` and "never set" both mean the default directory — the same rule the
+  // writer and the merge use, so the three cannot disagree about where `sync/` is.
+  const directory = `/${syncDirectory(config.directory ?? DEFAULT_DIRECTORY)}`
 
-  return ingestFrom(
+return ingestFrom(
     vault,
     {
       list: async () => (await listFolder(baseUrl, directory, deps)).map((file) => ({
@@ -270,6 +301,8 @@ export async function pullRemote(
         readFile(entry.path, deps, entry.path.startsWith('http') ? entry.path : undefined),
     },
     deps.attachments,
+    // WebDAV resolves the sync root from the same directory rule the writer uses.
+    syncRootFor(config.directory),
   )
 }
 
@@ -302,5 +335,7 @@ export async function pullS3(
       read: async (entry) => readObject(config, entry.path, deps),
     },
     deps.attachments,
+    // S3 is handed the prefix by its caller — that prefix *is* the sync root.
+    prefix,
   )
 }
