@@ -43,6 +43,7 @@ import {
   INBOX_ENDPOINT_LIST,
   INBOX_ENDPOINT_PURGE,
   INBOX_ENDPOINT_RESTORE,
+  INBOX_ENDPOINT_SECRET,
   INBOX_ENDPOINT_UPDATE,
   INBOX_ENDPOINT_PULL,
   INBOX_ENDPOINT_PROBE,
@@ -67,6 +68,7 @@ import {
   type ListResult,
   type PullResult,
   type ProbeRow,
+  type SecretStatus,
   probeVerdict,
   type PurgeResult,
   type WebdavRequest,
@@ -937,6 +939,7 @@ function InboxPanel(): React.ReactElement {
           }}
         >
           <div style={{ ...cardStyle, width: 'min(560px, 100%)', background: 'Canvas' }}>
+            <EncryptionSettings call={call} />
             <WebdavSettings call={call} onClose={() => setSettingsOpen(false)} />
           </div>
         </div>
@@ -1622,6 +1625,122 @@ function describePull(result: PullResult): string {
   return `拉取完成：远端列出 ${String(result.listed)} 项，新入库 ${String(result.pulled)} 条，跳过 ${String(
     result.skipped,
   )} 条${result.failed > 0 ? `，失败 ${String(result.failed)} 条` : ''}`
+}
+
+/**
+ * The master-password block: what state the vault's key is in, and the three
+ * things a person can do about it.
+ *
+ * The copy says the awkward parts out loud, because they are the design: the
+ * password is never stored, the key lives in memory, and a restart therefore
+ * locks the vault again — so credentials are unreadable until someone unlocks,
+ * and a forgotten password is a forgotten password (no reset, by construction).
+ */
+function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
+  const [status, setStatus] = React.useState<SecretStatus>()
+  const [password, setPassword] = React.useState('')
+  const [notice, setNotice] = React.useState<string>()
+  const [busy, setBusy] = React.useState(false)
+
+  const send = React.useCallback(
+    async (action: 'status' | 'set' | 'unlock' | 'lock'): Promise<void> => {
+      setBusy(true)
+      try {
+        const result = await call(INBOX_ENDPOINT_SECRET, {
+          action,
+          ...(password.length === 0 ? {} : { password }),
+        })
+        if (!result.ok) {
+          setNotice(result.error.message)
+          return
+        }
+        const next = result.value as SecretStatus
+        setStatus(next)
+        setPassword('')
+        setNotice(
+          action === 'set'
+            ? next.sealed === undefined || next.sealed === 0
+              ? '主密码已设置，账密从此加密落盘'
+              : `主密码已设置，另有 ${String(next.sealed)} 条旧记录已从明文改为密文`
+            : action === 'unlock'
+              ? '已解锁'
+              : action === 'lock'
+                ? '已锁定：账密正文不可读，直到再次解锁'
+                : undefined,
+        )
+      } finally {
+        setBusy(false)
+      }
+    },
+    [call, password],
+  )
+
+  React.useEffect(() => {
+    void send('status')
+    // Once, on mount: the state belongs to the host, and re-asking on every
+    // keystroke would be noise.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <section style={{ ...cardStyle, marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <strong>账密加密</strong>
+        <span style={{ opacity: 0.7, fontSize: 12 }}>
+          {status === undefined
+            ? '读取中…'
+            : status.unlocked
+              ? '已解锁'
+              : status.configured
+                ? '已锁定'
+                : '还没设主密码'}
+        </span>
+      </div>
+      <p style={{ margin: '0 0 8px', opacity: 0.7, fontSize: 12 }}>
+        设了主密码以后，密钥/账密类记录的**正文**以密文写盘（AES-256-GCM，密钥由主密码 scrypt
+        派生）。主密码和密钥都不落盘：服务每次重启都要重新解锁。密码忘了就解不开已有的密文，没有找回。
+      </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <input
+          type="password"
+          value={password}
+          disabled={busy}
+          autoComplete="new-password"
+          onChange={(event) => setPassword(event.target.value)}
+          aria-label="主密码"
+          placeholder={status?.configured === true ? '输入主密码' : '设一个主密码'}
+          style={{ ...inputStyle, flex: 1, minWidth: 160 }}
+        />
+        <button
+          type="button"
+          style={{ ...buttonStyle, height: CONTROL_HEIGHT, boxSizing: 'border-box' }}
+          disabled={busy || password.length === 0}
+          onClick={() => void send('set')}
+        >
+          设置 / 更换
+        </button>
+        <button
+          type="button"
+          style={{ ...buttonStyle, height: CONTROL_HEIGHT, boxSizing: 'border-box' }}
+          disabled={busy || password.length === 0 || status?.configured !== true}
+          onClick={() => void send('unlock')}
+        >
+          解锁
+        </button>
+        <button
+          type="button"
+          style={{ ...buttonStyle, height: CONTROL_HEIGHT, boxSizing: 'border-box' }}
+          disabled={busy || status?.unlocked !== true}
+          onClick={() => void send('lock')}
+        >
+          锁定
+        </button>
+      </div>
+      {notice !== undefined && notice.length > 0 && (
+        <p style={{ margin: '6px 0 0', opacity: 0.8, fontSize: 12 }}>{notice}</p>
+      )}
+    </section>
+  )
 }
 
 /**
@@ -2566,6 +2685,17 @@ function EntryPane({
         >
           {detail.text}
         </pre>
+      )}
+
+      {/*
+        A credential the host could not open: the body never left the disk, so
+        this is what the pane has to say. Not an error — it is the state the
+        encryption model puts you in after every restart, on purpose.
+      */}
+      {detail.text === undefined && detail.category === 'secret' && (
+        <p style={{ ...paneRowStyle, margin: 0, opacity: 0.75 }}>
+          这条账密的正文是密文，现在解不开。到「入库设置 → 账密加密」解锁（或先设一个主密码）就能看到。
+        </p>
       )}
 
       {detail.attachments.length > 0 && (

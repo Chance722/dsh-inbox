@@ -54,6 +54,7 @@ export const INBOX_ENDPOINT_UI = 'ui'
 
 /** Operate on tags across records (currently: drop one everywhere). */
 export const INBOX_ENDPOINT_TAGS = 'tags'
+export const INBOX_ENDPOINT_SECRET = 'secret'
 
 /** What the panel sends to `webdav`: read the status, or save a patch. */
 export interface WebdavRequest {
@@ -415,6 +416,31 @@ export interface UpdateRequest {
 
 export interface UpdateResult {
   entry: EntrySummary
+}
+
+/** How the vault's key stands, and what the panel may do about it. */
+export interface SecretStatus {
+  /** A master password exists. Without one, nothing can be sealed. */
+  configured: boolean
+  /** The key is in this process's memory: credentials can be read and written. */
+  unlocked: boolean
+  /**
+   * How many credentials the last unlock moved out of plain text. Zero most of
+   * the time; non-zero exactly once, on the unlock after this feature arrived.
+   */
+  sealed?: number
+}
+
+/**
+ * What the panel sends to `secret`.
+ *
+ * `password` travels over the panel's own token-fenced route and is used to
+ * derive a key in memory; it is never written anywhere, which is why unlocking
+ * is something the user does again after every restart.
+ */
+export interface SecretRequest {
+  action: 'status' | 'set' | 'unlock' | 'lock'
+  password?: string
 }
 
 export interface IdRequest {

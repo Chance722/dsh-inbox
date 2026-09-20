@@ -3,13 +3,29 @@
  * need. Callers never touch the storage backend directly.
  */
 
-import { randomUUID } from 'node:crypto'
+import { createHmac, randomUUID } from 'node:crypto'
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 
 import type { Category, CategorySource, Kind, Source } from '../../shared/vocabulary.js'
 import { selectItems, type ItemQuery } from './query.js'
+import { DEFAULT_KDF, deriveKey, newSalt, open, seal, type KdfParams } from '../crypto/secret-box.js'
+
+/**
+ * The one plaintext the verifier seals. Opening it with a candidate key is how
+ * "is this the right master password" gets answered without storing a hash of
+ * the password itself.
+ */
+const VERIFIER_PLAINTEXT = 'dsh-inbox master password check'
+
+/** A capture that needs the key while the vault is locked. */
+export class VaultLockedError extends Error {
+  constructor() {
+    super('仓库锁着（或还没设主密码）：账密类内容要先在「入库设置 → 账密加密」里解锁才能存')
+    this.name = 'VaultLockedError'
+  }
+}
 /**
  * The tag version 1/2 used to carry "not consumed yet". The flag replaced it,
  * so the migration strips it rather than leaving two ways to say one thing.
@@ -37,6 +53,10 @@ export interface NewItem {
   /** A short code explaining a missed headline fetch (see `link-title.ts`). */
   linkTitleError?: string
   text?: string
+  /** A sealed credential body, from `sealSecret` (never both with `text`). */
+  secret?: string
+  /** The keyed digest that matches a re-paste of the same credential. */
+  secretDigest?: string
   url?: string
   platform?: string
   note?: string
@@ -60,8 +80,26 @@ export interface ItemPatch {
   attachmentIds?: readonly string[]
 }
 
+/** Where the vault's key state stands, for the panel to show and the tools to check. */
+export interface VaultLockState {
+  /** A master password exists, so credentials can be sealed at all. */
+  configured: boolean
+  /** The key is in memory: credentials can be read and written. */
+  unlocked: boolean
+}
+
 export class Vault {
   private closed = false
+
+  /**
+   * The derived key, **memory only**.
+   *
+   * Nothing on disk can be used to read a credential: the master password is
+   * never stored, the key is never stored, and a restart therefore locks the
+   * vault again. That is the trade the red line asks for ("主密码永不上传"),
+   * and it is why the panel has an explicit unlock.
+   */
+  private key?: Buffer
 
   private constructor(
     private readonly ctx: Context,
@@ -116,6 +154,151 @@ export class Vault {
     return this.domain.table('attachments')
   }
 
+  /** Where the key state stands; what the panel shows and the tools consult. */
+  get lockState(): VaultLockState {
+    return { configured: this.global.master !== undefined, unlocked: this.key !== undefined }
+  }
+
+  /**
+   * Set (or replace) the master password, and seal everything that needs it.
+   *
+   * Replacing it is allowed on purpose: a user who wrote the password down
+   * badly, or wants a stronger one, must be able to fix that. Records sealed
+   * with the *old* password are re-sealed with the new key, which is why the
+   * old password has to be supplied again in the panel.
+   *
+   * @param password - the new master password, never stored anywhere.
+   * @returns how many records were sealed in the process.
+   */
+  async setMasterPassword(password: string): Promise<number> {
+    /*
+      Changing the password means re-sealing what the old one sealed, so the old
+      key has to be in hand. Refusing here (rather than quietly leaving those
+      records sealed with a password nobody has any more) is the difference
+      between an inconvenience and losing a credential forever.
+    */
+    const sealedAlready = [...this.items.entries()].filter(([, item]) => item.secret !== undefined)
+    if (sealedAlready.length > 0 && this.key === undefined) {
+      throw new Error(
+        `仓库里已有 ${String(sealedAlready.length)} 条密文，但现在是锁定状态：先用现有主密码解锁，再更换主密码`,
+      )
+    }
+
+    const previous = this.key
+    const salt = newSalt()
+    const kdf: KdfParams = DEFAULT_KDF
+    const key = deriveKey(password, salt, kdf)
+    await this.setGlobal({
+      ...this.global,
+      master: {
+        version: 1,
+        salt: salt.toString('base64'),
+        kdf,
+        verifier: seal(key, VERIFIER_PLAINTEXT),
+      },
+    })
+    this.key = key
+    return (await this.resealSecrets(previous)) + (await this.sealLegacySecrets())
+  }
+
+  /**
+   * Derive the key from the stored salt and check it against the verifier.
+   *
+   * @param password - what the user typed.
+   * @returns true when the vault is now unlocked.
+   */
+  async unlock(password: string): Promise<boolean> {
+    const master = this.global.master
+    if (master === undefined) return false
+    const key = deriveKey(password, Buffer.from(master.salt, 'base64'), master.kdf)
+    if (open(key, master.verifier) !== VERIFIER_PLAINTEXT) return false
+    this.key = key
+    await this.sealLegacySecrets()
+    return true
+  }
+
+  /** Drop the key. Credentials stay on disk, unreadable until the next unlock. */
+  lock(): void {
+    this.key = undefined
+  }
+
+  /**
+   * Seal one credential body for storage.
+   *
+   * @param plaintext - the credential as the user pasted it.
+   * @returns the envelope to store, and the keyed digest used for de-duplication.
+   */
+  sealSecret(plaintext: string): { secret: string; secretDigest: string } {
+    const key = this.key
+    if (key === undefined) throw new VaultLockedError()
+    return { secret: seal(key, plaintext), secretDigest: this.digestOf(plaintext) }
+  }
+
+  /**
+   * The plaintext behind a credential, when it can be read.
+   *
+   * @param item - the record.
+   * @returns the plaintext, or undefined while locked.
+   */
+  secretText(item: Item): string | undefined {
+    if (item.secret === undefined) return undefined
+    return this.key === undefined ? undefined : open(this.key, item.secret)
+  }
+
+  /**
+   * The keyed digest a re-paste is matched against (see `spec.ts`).
+   *
+   * @param plaintext - the credential as pasted.
+   * @returns a hex digest, stable for one vault and useless without its key.
+   */
+  digestOf(plaintext: string): string {
+    const key = this.key
+    if (key === undefined) throw new VaultLockedError()
+    return createHmac('sha256', key).update(plaintext).digest('hex')
+  }
+
+  /**
+   * Move credentials that are still sitting in `text` into the sealed field.
+   *
+   * Version-5 vaults kept a credential's body in plain text — that is what this
+   * whole change is about — so the first unlock rewrites them. A record that is
+   * not a `secret` is left alone, even if it looks like one: the category is the
+   * user's own statement about what a record is.
+   *
+   * @returns how many records were sealed.
+   */
+  private async sealLegacySecrets(): Promise<number> {
+    let sealed = 0
+    for (const [id, item] of this.items.entries()) {
+      if (item.category !== 'secret' || item.text === undefined) continue
+      const { secret, secretDigest } = this.sealSecret(item.text)
+      const { text: _dropped, ...rest } = item
+      await this.items.put(id, { ...rest, secret, secretDigest })
+      sealed += 1
+    }
+    return sealed
+  }
+
+  /**
+   * Re-seal everything that was sealed with the previous key.
+   *
+   * @param previous - the key in use until a moment ago, if there was one.
+   * @returns how many records were re-sealed.
+   */
+  private async resealSecrets(previous: Buffer | undefined): Promise<number> {
+    if (previous === undefined) return 0
+    let resealed = 0
+    for (const [id, item] of this.items.entries()) {
+      if (item.secret === undefined) continue
+      const plaintext = open(previous, item.secret)
+      if (plaintext === undefined) continue
+      const { secret, secretDigest } = this.sealSecret(plaintext)
+      await this.items.put(id, { ...item, secret, secretDigest })
+      resealed += 1
+    }
+    return resealed
+  }
+
   /** Total records held, including soft-deleted ones. */
   get size(): number {
     return this.items.size
@@ -143,6 +326,8 @@ export class Vault {
       ...(input.linkTitle === undefined ? {} : { linkTitle: input.linkTitle }),
       ...(input.linkTitleError === undefined ? {} : { linkTitleError: input.linkTitleError }),
       ...(input.text === undefined ? {} : { text: input.text }),
+      ...(input.secret === undefined ? {} : { secret: input.secret }),
+      ...(input.secretDigest === undefined ? {} : { secretDigest: input.secretDigest }),
       ...(input.url === undefined ? {} : { url: input.url }),
       ...(input.platform === undefined ? {} : { platform: input.platform }),
       ...(input.note === undefined ? {} : { note: input.note }),

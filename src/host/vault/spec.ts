@@ -68,6 +68,22 @@ export const itemSchema = z.object({
   linkTitleError: z.string().optional(),
   /** The pasted text itself, for `text` and `secret` records. */
   text: z.string().optional(),
+  /**
+   * A credential's text, sealed with the master password (`crypto/secret-box.ts`).
+   *
+   * Its own field for one reason: `text` is what the panel shows and what the
+   * search reads, and a credential's body must reach neither in the clear. A
+   * sealed record has `secret` and **no** `text` — the migration moves them.
+   */
+  secret: z.string().optional(),
+  /**
+   * A keyed digest of a credential's plaintext, so a re-paste can be recognised
+   * as the same credential without keeping the plaintext around to compare.
+   *
+   * Useless to an attacker without the master key, which is the point: it
+   * survives on disk (and, later, in the sync package) while the secret does not.
+   */
+  secretDigest: z.string().optional(),
   url: z.string().optional(),
   /** Recognised host platform: bilibili, wechat, zhihu, xiaohongshu, … */
   platform: z.string().optional(),
@@ -111,6 +127,22 @@ export const vaultGlobalSchema = z.object({
     lastPullAt: z.string().optional(),
     cursor: z.string().optional(),
   }),
+  /**
+   * How to recognise a master password, and nothing more.
+   *
+   * The salt and work factors are not secret; the `verifier` is a sealed
+   * constant, so a wrong password fails the same way a tampered envelope does.
+   * The password itself is never written anywhere, and neither is the derived
+   * key — that lives in memory for as long as the process does.
+   */
+  master: z
+    .object({
+      version: z.number().int().positive(),
+      salt: z.string(),
+      kdf: z.object({ n: z.number().int().positive(), r: z.number().int().positive(), p: z.number().int().positive() }),
+      verifier: z.string(),
+    })
+    .optional(),
   /** Today's model-fallback spend, so a restart cannot reset the meter. */
   model: z
     .object({
@@ -145,9 +177,13 @@ export const vaultSpec = defineDomain({
    * Version 4 adds the optional `linkTitle` (the fetched page headline), version
    * 5 the optional `linkTitleError` that explains a miss. Both are pure
    * additions, so every older record still validates unchanged.
+   *
+   * Version 6 adds the optional `secret` / `secretDigest`: a credential's text
+   * moves out of `text` and into a sealed envelope. Also a pure addition — a
+   * version-5 record with plaintext simply gets migrated on the next unlock.
    */
-  version: 5,
-  compatibleVersions: [1, 2, 3, 4],
+  version: 6,
+  compatibleVersions: [1, 2, 3, 4, 5],
   layout: 'per-record',
   global: {
     schema: vaultGlobalSchema,

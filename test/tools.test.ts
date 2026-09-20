@@ -115,9 +115,12 @@ describe('inbox_search', () => {
   })
 
   it('lists a secret record but never its text', async () => {
+    // A credential can only be filed once the vault has a key to seal it with —
+    // which is the point of the change: no key, no plaintext on disk.
+    await vault!.setMasterPassword('测试用主密码')
     await capture(vault!, { text: 'secretid=AKIDexample secretkey=abcdef' }, 'panel')
     const record = vault!.list({ kinds: ['text'] })[0]
-    await vault!.patch(record!.id, { category: 'secret', note: '腾讯云测试环境' })
+    await vault!.patch(record!.id, { note: '腾讯云测试环境' })
 
     const answer = await call('inbox_search')
     expect(answer).toContain('腾讯云测试环境')
@@ -158,8 +161,8 @@ describe('inbox_get', () => {
   })
 
   it('refuses to read a credential out loud', async () => {
+    await vault!.setMasterPassword('测试用主密码')
     const filed = await capture(vault!, { text: 'password=hunter2' }, 'panel')
-    await vault!.patch(filed.item.id, { category: 'secret' })
 
     const answer = await call('inbox_get', { id: filed.item.id })
     expect(answer).toContain('明文不会通过对话输出')

@@ -154,6 +154,15 @@ export async function captureText(
   const verdict =
     sniffed.kind === 'link' ? classifyLink(raw.trim()) : classifyText(raw)
   const platform = verdict.platform ?? sniffed.platform
+  /*
+    A credential never travels as `text`.
+
+    The rule layer already knows this is one (it is what put `secret` in the
+    category), so the body is sealed here, before it ever reaches the domain —
+    and when there is no key to seal it with, this throws rather than quietly
+    writing the plaintext the whole change exists to keep off the disk.
+  */
+  const sealed = verdict.category === 'secret' ? vault.sealSecret(raw) : undefined
   const candidate: NewItem = {
     kind: sniffed.kind,
     category: verdict.category,
@@ -165,7 +174,9 @@ export async function captureText(
           url: sniffed.url,
           ...(platform === undefined ? {} : { platform }),
         }
-      : { text: raw }),
+      : sealed === undefined
+        ? { text: raw }
+        : sealed),
   }
 
   const existing = vault
@@ -173,7 +184,9 @@ export async function captureText(
     .find((item) =>
       sniffed.kind === 'link'
         ? item.url !== undefined && normalizeLink(item.url) === normalizeLink(raw)
-        : item.text === raw,
+        : sealed === undefined
+          ? item.text === raw
+          : item.secretDigest === sealed.secretDigest,
     )
 
   if (existing !== undefined) return absorb(vault, existing, { note })

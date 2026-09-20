@@ -43,6 +43,7 @@ import {
   INBOX_ENDPOINT_PROBE,
   INBOX_ENDPOINT_UI,
   INBOX_ENDPOINT_TAGS,
+  INBOX_ENDPOINT_SECRET,
   INBOX_IMAGE_TYPES,
   LIST_LIMIT,
   MAX_ATTACHMENTS_PER_SUBMISSION,
@@ -63,6 +64,8 @@ import {
   type InboxRpcResult,
   type ListResult,
   type PurgeResult,
+  type SecretRequest,
+  type SecretStatus,
   type UpdateResult,
 } from '../shared/panel-wire.js'
 import { CATEGORIES, KINDS, type Category } from '../shared/vocabulary.js'
@@ -82,7 +85,7 @@ import { readPassword, readS3Secret } from './webdav/config.js'
 import { readUiPrefs, saveUiPrefs } from './ui/config.js'
 import type { PullResult } from '../shared/panel-wire.js'
 import type { Attachment, Item } from './vault/spec.js'
-import type { Vault } from './vault/vault.js'
+import { VaultLockedError, type Vault } from './vault/vault.js'
 
 /** Ceiling on one pasted string, so a runaway paste cannot bloat the domain. */
 export const MAX_TEXT_CHARS = 200_000
@@ -254,7 +257,11 @@ function toSummary(
     ...(item.title === undefined ? {} : { title: item.title }),
     ...(item.linkTitle === undefined ? {} : { linkTitle: item.linkTitle }),
     ...(item.linkTitleError === undefined ? {} : { linkTitleError: item.linkTitleError }),
-    ...(preview === undefined || preview.length === 0 ? {} : { preview }),
+    // Belt and braces on top of the sealed field: a credential's row never
+    // carries an excerpt of its body, whatever shape the record is in.
+    ...(item.category === 'secret' || preview === undefined || preview.length === 0
+      ? {}
+      : { preview }),
     ...(item.url === undefined ? {} : { url: item.url }),
     ...(item.platform === undefined ? {} : { platform: item.platform }),
     ...(item.note === undefined ? {} : { note: item.note }),
@@ -283,7 +290,20 @@ function toDetail(vault: Vault, item: Item): EntryDetail {
   }
   return {
     ...toSummary(item, (id) => vault.getAttachment(id)),
-    ...(item.text === undefined ? {} : { text: item.text }),
+    /*
+      A credential's body leaves the host only when it can be opened at all:
+      while the vault is locked this record arrives with no `text`, and the pane
+      says so instead of showing an empty box. Nothing in the *list* ever carries
+      it — `toSummary` refuses the excerpt too.
+    */
+    ...(item.category === 'secret'
+      ? (() => {
+          const plaintext = vault.secretText(item)
+          return plaintext === undefined ? {} : { text: plaintext }
+        })()
+      : item.text === undefined
+        ? {}
+        : { text: item.text }),
     attachments,
   }
 }
@@ -350,6 +370,7 @@ async function handleCapture(
     })
     return { ok: true, value: summary }
   } catch (error) {
+    if (error instanceof VaultLockedError) return failure('inbox/locked', error.message)
     return failure('inbox/capture-failed', reasonOf(error))
   }
 }
@@ -588,6 +609,54 @@ async function handleProbe(ctx: Context): Promise<InboxRpcResult<unknown>> {
     settings.directory,
   )
   return { ok: true, value: rows }
+}
+
+/** Read or change the panel's own preferences (which list layout it remembers). */
+async function handleSecret(
+  vault: Vault | undefined,
+  payload: unknown,
+): Promise<InboxRpcResult<unknown>> {
+  if (vault === undefined) return failure('inbox/vault-closed', '仓库还没打开（或打开失败），稍后再试')
+
+  const parsed = z
+    .object({
+      action: z.enum(['status', 'set', 'unlock', 'lock']),
+      password: z.string().min(1).max(1_000).optional(),
+    })
+    .safeParse(payload)
+  if (!parsed.success) return failure('inbox/bad-secret-request', '这个请求不符合预期形状')
+
+  const request = parsed.data as SecretRequest
+  try {
+    switch (request.action) {
+      case 'status':
+        return { ok: true, value: { ...vault.lockState } satisfies SecretStatus }
+      case 'set': {
+        if (request.password === undefined) {
+          return failure('inbox/no-password', '要设主密码，总得给一个')
+        }
+        const sealed = await vault.setMasterPassword(request.password)
+        return {
+          ok: true,
+          value: { ...vault.lockState, sealed } satisfies SecretStatus,
+        }
+      }
+      case 'unlock': {
+        if (request.password === undefined) {
+          return failure('inbox/no-password', '要解锁，总得给密码')
+        }
+        if (!(await vault.unlock(request.password))) {
+          return failure('inbox/wrong-password', '密码不对——解不开已经落盘的那些密文')
+        }
+        return { ok: true, value: { ...vault.lockState } satisfies SecretStatus }
+      }
+      case 'lock':
+        vault.lock()
+        return { ok: true, value: { ...vault.lockState } satisfies SecretStatus }
+    }
+  } catch (error) {
+    return failure('inbox/secret-failed', reasonOf(error))
+  }
 }
 
 /** Read or change the panel's own preferences (which list layout it remembers). */
@@ -844,6 +913,9 @@ export function registerInboxRpc(ctx: Context, vault: () => Vault | undefined): 
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_TAGS}`, (payload) =>
         serialise(() => handleTags(vault(), payload)),
+      ),
+      endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_SECRET}`, (payload) =>
+        serialise(() => handleSecret(vault(), payload)),
       ),
       {
         path: `${INBOX_API_PREFIX}/${INBOX_ENDPOINT_ATTACHMENT}`,

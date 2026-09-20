@@ -42,11 +42,13 @@ import {
   INBOX_ENDPOINT_PROBE,
   INBOX_ENDPOINT_UI,
   INBOX_ENDPOINT_TAGS,
+  INBOX_ENDPOINT_SECRET,
   type CaptureResult,
   type DetailResult,
   type InboxRpcResult,
   type ListResult,
   type PurgeResult,
+  type SecretStatus,
   type UpdateResult,
 } from '../src/shared/panel-wire.js'
 
@@ -351,6 +353,7 @@ describe('list', () => {
         INBOX_ENDPOINT_PROBE,
         INBOX_ENDPOINT_UI,
         INBOX_ENDPOINT_TAGS,
+        INBOX_ENDPOINT_SECRET,
       ]
         .map((endpoint) => `${INBOX_API_PREFIX}/${endpoint}`)
         .sort(),
@@ -413,6 +416,56 @@ describe('list', () => {
 
     const rest = value<ListResult>(await post(INBOX_ENDPOINT_LIST, { limit: 2, offset: 2 }))
     expect(rest.entries).toHaveLength(1)
+  })
+})
+
+describe('credentials at rest', () => {
+  const CREDENTIAL = 'secretid=AKIDexample secretkey=abcdef123456'
+
+  it('says it is unconfigured, and refuses to file a credential', async () => {
+    expect(value<SecretStatus>(await post(INBOX_ENDPOINT_SECRET, { action: 'status' }))).toEqual({
+      configured: false,
+      unlocked: false,
+    })
+
+    const refused = await post(INBOX_ENDPOINT_CAPTURE, { text: 'password=hunter2' })
+    expect(codeOf(refused)).toBe('inbox/locked')
+    expect(vault?.size).toBe(0)
+  })
+
+  it('seals once it has a password, hides when locked, and shows again after unlocking', async () => {
+    const set = value<SecretStatus>(
+      await post(INBOX_ENDPOINT_SECRET, { action: 'set', password: '主密码' }),
+    )
+    expect(set).toMatchObject({ configured: true, unlocked: true })
+
+    await post(INBOX_ENDPOINT_CAPTURE, { text: CREDENTIAL })
+    const id = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {})).entries[0]?.id ?? ''
+
+    // The list never carries a body — not even an excerpt.
+    const listed = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {})).entries[0]
+    expect(listed?.preview).toBeUndefined()
+    expect(listed?.category).toBe('secret')
+    expect(JSON.stringify(listed)).not.toContain('abcdef')
+
+    const unlocked = value<DetailResult>(await post(INBOX_ENDPOINT_DETAIL, { id })).entry
+    expect(unlocked.text).toBe(CREDENTIAL)
+
+    await post(INBOX_ENDPOINT_SECRET, { action: 'lock' })
+    const locked = value<DetailResult>(await post(INBOX_ENDPOINT_DETAIL, { id })).entry
+    expect(locked.text).toBeUndefined()
+    expect(JSON.stringify(locked)).not.toContain('abcdef')
+
+    expect(codeOf(await post(INBOX_ENDPOINT_SECRET, { action: 'unlock', password: '猜的' }))).toBe(
+      'inbox/wrong-password',
+    )
+    expect(
+      value<SecretStatus>(await post(INBOX_ENDPOINT_SECRET, { action: 'unlock', password: '主密码' }))
+        .unlocked,
+    ).toBe(true)
+    expect(
+      value<DetailResult>(await post(INBOX_ENDPOINT_DETAIL, { id })).entry.text,
+    ).toBe(CREDENTIAL)
   })
 })
 
