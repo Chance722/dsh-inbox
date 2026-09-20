@@ -108,10 +108,13 @@ dsh --profile inbox --no-open --port 3102
 常用选项：
 
 ```powershell
-npx @duoyu/dsh-inbox init --profile inbox      # 装进哪个 profile
+npx @duoyu/dsh-inbox init                      # 装进 inbox profile（默认）
+npx @duoyu/dsh-inbox init --profile web        # 装进你日常用的那个 profile
 npx @duoyu/dsh-inbox init --no-default         # 只装，不动默认 preset
 npx @duoyu/dsh-inbox init --help               # 全部选项
 ```
+
+装进哪个 profile 只决定**面板跑在哪儿**；agent preset 是全局共享的（`~/.dsh/.agent-presets/inbox/`），所以装第二个 profile 时它只会补上缺的那行，不会另建一份。想两个 profile 都能用，就跑两次 `--profile`。
 
 **从本地仓库装**（开发用，改完源码跑一遍 `pnpm build` 即可）：
 

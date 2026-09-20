@@ -108,10 +108,13 @@ Open the printed URL (it carries a token). The Inbox panel is in the left rail; 
 Useful flags:
 
 ```powershell
-npx @duoyu/dsh-inbox init --profile inbox      # which profile to install into
+npx @duoyu/dsh-inbox init                      # into the inbox profile (default)
+npx @duoyu/dsh-inbox init --profile web        # into the profile you already use
 npx @duoyu/dsh-inbox init --no-default         # install only, leave the default preset alone
 npx @duoyu/dsh-inbox init --help               # every flag
 ```
+
+Which profile you install into only decides **where the panel runs**. The agent preset is shared by every profile (`~/.dsh/.agent-presets/inbox/`), so installing into a second profile just fills in the missing row instead of creating a second preset. Run it once per profile if you want the panel in more than one.
 
 **From a local checkout** (development: rebuild with `pnpm build` after editing):
 

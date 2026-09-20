@@ -49,7 +49,7 @@ function usage(): string {
 
 选项：
   --profile <名字>   dsh profile，默认 inbox（不存在则报错并告诉你怎么建）
-  --preset <id>      agent preset 的 id，默认与 profile 同名
+  --preset <id>      agent preset 的 id，默认 inbox
   --package <来源>   插件来源，默认 ${PACKAGE_NAME}（本地开发传仓库路径）
   --no-default       不把默认 preset 指过去（只装，不改 dsh 的默认选择）
   --help             这份说明
@@ -86,7 +86,15 @@ function parse(argv: readonly string[]): Options | undefined {
     else if (flag === '--no-default') options.defaultPreset = false
     else throw new Error(`看不懂的选项：${String(flag)}`)
   }
-  if (options.preset.length === 0) options.preset = options.profile
+  /*
+    The preset id does *not* follow the profile name.
+
+    `~/.dsh/.agent-presets` is shared by every profile, so installing into a
+    second profile would otherwise create a second, identically-composed preset
+    ("web", say) that shadows nothing and confuses everyone. One plugin, one
+    preset; the profile only decides where the panel and the host half run.
+  */
+  if (options.preset.length === 0) options.preset = 'inbox'
   if (!/^[a-z0-9][a-z0-9-]*$/.test(options.preset)) {
     throw new Error(`preset id 只能用小写字母、数字和连字符：${options.preset}`)
   }
