@@ -380,6 +380,29 @@ describe('detail, edit and the recycle bin', () => {
     expect(vault?.get(id)?.updatedAt).not.toBe(vault?.get(id)?.createdAt)
   })
 
+  it('names an uploaded photo by its file, and lets the user rename it', async () => {
+    await post(INBOX_ENDPOINT_CAPTURE, {
+      images: [{ mediaType: 'image/png', data: PNG_BASE64, name: 'IMG_20260918.jpg' }],
+    })
+    // What the list row can call this record without the user typing anything:
+    // the name the file arrived with. Before this it had only 「（无标题）」.
+    const listed = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {}))
+    expect(listed.entries[0]?.attachmentName).toBe('IMG_20260918.jpg')
+    const id = listed.entries[0]?.id ?? ''
+
+    await post(INBOX_ENDPOINT_UPDATE, { id, title: '身份证正面' })
+    expect(value<ListResult>(await post(INBOX_ENDPOINT_LIST, {})).entries[0]?.title).toBe(
+      '身份证正面',
+    )
+
+    // Emptying the field means "no name again", not "a name that is blank": the
+    // heading must fall back to the file name rather than to an empty row.
+    await post(INBOX_ENDPOINT_UPDATE, { id, title: '' })
+    const cleared = value<ListResult>(await post(INBOX_ENDPOINT_LIST, {})).entries[0]
+    expect(cleared?.title).toBeUndefined()
+    expect(cleared?.attachmentName).toBe('IMG_20260918.jpg')
+  })
+
   it('refuses an edit or a delete for a record that is gone', async () => {
     expect(codeOf(await post(INBOX_ENDPOINT_UPDATE, { id: 'nope', watchLater: true }))).toBe(
       'inbox/not-found',

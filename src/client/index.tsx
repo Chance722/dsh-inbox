@@ -54,6 +54,7 @@ import {
   INBOX_ENDPOINT_WEBDAV,
   INBOX_IMAGE_TYPES,
   LIST_LIMIT,
+  MAX_TITLE_CHARS,
   PAGE_SIZE,
   UI_LIST_MODES,
   type UiListMode,
@@ -2386,10 +2387,12 @@ function EntryPane({
   onZoom: (target: Lightbox) => void
 }): React.ReactElement {
   const [note, setNote] = React.useState(detail.note ?? '')
+  const [title, setTitle] = React.useState(detail.title ?? '')
   const [tags, setTags] = React.useState(detail.tags.join(', '))
 
   React.useEffect(() => {
     setNote(detail.note ?? '')
+    setTitle(detail.title ?? '')
     setTags(detail.tags.join(', '))
   }, [detail])
 
@@ -2571,6 +2574,23 @@ function EntryPane({
         stole a third of every field's width and repeated what the field already
         says. The placeholder carries the hint, and every control fills the pane.
       */}
+      {/*
+        The name comes first because it is what the list, the cards and the dock
+        show — for a photo or a file it is the difference between 「身份证正面」 and
+        「（无标题）」, or between two rows both called `IMG_1234.jpg`. Emptying it
+        clears the name again and hands the heading back to the file name.
+      */}
+      <input
+        value={title}
+        disabled={busy}
+        maxLength={MAX_TITLE_CHARS}
+        onChange={(event) => setTitle(event.target.value)}
+        aria-label="名称"
+        title="列表、卡片和对话卡片显示这个名字；留空则用文件原名"
+        placeholder="名称，如：身份证正面（留空用文件原名）"
+        style={{ ...paneRowStyle, ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+      />
+
       <SelectBox
         block
         label="类目"
@@ -2663,6 +2683,7 @@ function EntryPane({
           disabled={busy}
           onClick={() =>
             void onUpdate({
+              title: title.trim(),
               note,
               tags: tags
                 .split(',')

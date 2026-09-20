@@ -50,6 +50,7 @@ import {
   MAX_NOTE_CHARS,
   MAX_TAGS,
   MAX_TAG_CHARS,
+  MAX_TITLE_CHARS,
   PREVIEW_CHARS,
   type AttachmentSummary,
   type CaptureResult,
@@ -84,9 +85,6 @@ import type { Vault } from './vault/vault.js'
 
 /** Ceiling on one pasted string, so a runaway paste cannot bloat the domain. */
 export const MAX_TEXT_CHARS = 200_000
-
-/** Ceiling on a user-chosen title. */
-const MAX_TITLE_CHARS = 300
 
 const imageSchema = z.object({
   mediaType: z.enum(INBOX_IMAGE_TYPES),
@@ -224,6 +222,20 @@ function toSummary(
   const previewRecord = item.attachmentIds
     .map((id) => attachmentOf?.(id))
     .find((record) => record !== undefined && renderableMime(record.mime))
+  /*
+    What a nameless record can be called: the file it arrived as.
+
+    The picture's own attachment is preferred, so the name and the thumbnail on
+    the card are about the same file; otherwise the first attachment that has a
+    name wins. Without this an uploaded photo had nothing but 「（无标题）」 —
+    the name was stored all along, in the attachment row, and never used.
+  */
+  const namedRecord =
+    previewRecord?.filename === undefined
+      ? item.attachmentIds
+          .map((id) => attachmentOf?.(id))
+          .find((record) => record !== undefined && record.filename !== undefined)
+      : previewRecord
   return {
     id: item.id,
     kind: item.kind,
@@ -237,6 +249,7 @@ function toSummary(
     ...(previewRecord === undefined
       ? {}
       : { previewId: previewRecord.id, previewMime: previewRecord.mime }),
+    ...(namedRecord?.filename === undefined ? {} : { attachmentName: namedRecord.filename }),
     ...(item.title === undefined ? {} : { title: item.title }),
     ...(preview === undefined || preview.length === 0 ? {} : { preview }),
     ...(item.url === undefined ? {} : { url: item.url }),

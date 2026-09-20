@@ -242,6 +242,16 @@ export interface EntrySummary {
    */
   watchLater: boolean
   title?: string
+  /**
+   * The file name the record arrived with, when it has one.
+   *
+   * A picture or a file carries no text of its own, so without this its row has
+   * nothing to be called but 「（无标题）」 — which is what an uploaded photo used
+   * to show. It is a **fallback, never an override**: a name the user typed wins
+   * over it, and a credential record ignores it entirely (its heading is fixed;
+   * see `src/client/heading.ts`).
+   */
+  attachmentName?: string
   /** A short excerpt of the stored text, already trimmed by the host. */
   preview?: string
   url?: string
@@ -408,3 +418,12 @@ export const MAX_TAG_CHARS = 40
 
 /** Ceiling on one filter's free text. */
 export const MAX_FILTER_CHARS = 200
+
+/**
+ * Ceiling on the name a user gives a record.
+ *
+ * It is a heading, not a document: the ceiling is here so a runaway paste into
+ * the name field cannot bloat the domain, and the card ellipsises long before
+ * this number is ever reached.
+ */
+export const MAX_TITLE_CHARS = 300

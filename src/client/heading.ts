@@ -6,6 +6,10 @@
  * copies of that rule are two chances to leak: the dock printed a credential's
  * `preview`, which is the first line of the secret itself.
  *
+ * It is also the only place that decides what a record with *no* name of its own
+ * is called: an uploaded photo used to render as 「（无标题）」 even though the
+ * file name had been stored all along (`attachmentName`).
+ *
  * Presentation only, and browser-side only: it reads `EntrySummary` and returns
  * strings. Nothing here may import a host module.
  */
@@ -26,10 +30,12 @@ export function isSecret(entry: EntrySummary): boolean {
   return entry.category === 'secret'
 }
 
-/** The heading without the description: what the record *is*, or its name. */
-function bareHeading(entry: EntrySummary): string {
-  if (isSecret(entry)) return '密钥 / 账密'
-  return entry.title ?? entry.url ?? entry.preview ?? '（无标题）'
+/** What a record with nothing to show is called. */
+const UNTITLED = '（无标题）'
+
+/** The first of these that is actually a name — an empty string is not one. */
+function firstFilled(...values: readonly (string | undefined)[]): string | undefined {
+  return values.find((value) => value !== undefined && value.trim().length > 0)
 }
 
 /** One clamped line of a description, or `''` when there is none to show. */
@@ -44,6 +50,27 @@ function parenthesised(heading: string, note: string): string {
 }
 
 /**
+ * The one-line heading, with the description clamped to `noteChars`.
+ *
+ * Two records reach the fallback half of this: a credential, and a record whose
+ * own type carries no text at all (a picture, a file). Both are named the same
+ * way — 「名字（描述）」 — because in both cases the name alone cannot tell two of
+ * them apart.
+ */
+function build(entry: EntrySummary, noteChars: number): string {
+  if (isSecret(entry)) return parenthesised('密钥 / 账密', noteLine(entry.note, noteChars))
+  // A name the record can produce itself: what the user typed, then the link,
+  // then its own text.
+  const own = firstFilled(entry.title, entry.url, entry.preview)
+  if (own !== undefined) return own
+  // Nothing to name itself with. The file name it arrived as is the fallback,
+  // and with no name either, the description is the only thing left.
+  const name = firstFilled(entry.attachmentName)
+  if (name === undefined) return noteLine(entry.note, noteChars) || UNTITLED
+  return parenthesised(name, noteLine(entry.note, noteChars))
+}
+
+/**
  * The one-line heading a card or a dock row shows.
  *
  * A credential's heading says nothing on its own, and three 「密钥 / 账密」 rows are
@@ -52,13 +79,16 @@ function parenthesised(heading: string, note: string): string {
  * the parenthetical: 密钥 / 账密（公司邮箱）. Records that may show their text do not
  * need it — their heading already is their name.
  *
+ * The same shape covers a picture or a file, which has no text to be named by:
+ * its file name takes the name slot and the description the parentheses —
+ * 身份证正面.jpg（我的身份证）. A name the user typed into the detail pane outranks
+ * both.
+ *
  * @param entry - the record to name.
  * @returns the heading, clamped to one short line.
  */
 export function headingOf(entry: EntrySummary): string {
-  const heading = bareHeading(entry)
-  if (!isSecret(entry)) return heading
-  return parenthesised(heading, noteLine(entry.note, NOTE_IN_HEADING_CHARS))
+  return build(entry, NOTE_IN_HEADING_CHARS)
 }
 
 /**
@@ -71,7 +101,5 @@ export function headingOf(entry: EntrySummary): string {
  * @returns the heading, with the whole description in the parentheses.
  */
 export function headingTooltipOf(entry: EntrySummary): string {
-  const heading = bareHeading(entry)
-  if (!isSecret(entry)) return heading
-  return parenthesised(heading, noteLine(entry.note, Number.MAX_SAFE_INTEGER))
+  return build(entry, Number.MAX_SAFE_INTEGER)
 }

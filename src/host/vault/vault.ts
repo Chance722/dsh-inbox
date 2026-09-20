@@ -179,7 +179,18 @@ export class Vault {
         if (patch.watchLater) next.watchLater = true
         else delete next.watchLater
       }
-      if (patch.title !== undefined) next.title = patch.title
+      /*
+        An empty title means "no title", not a title that happens to be blank.
+
+        The panel's name field clears by emptying, and a stored empty string
+        would win the heading chain in `src/client/heading.ts` (`?? ` only skips
+        `undefined`) — the row would go blank instead of falling back to the
+        file name it came with.
+      */
+      if (patch.title !== undefined) {
+        if (patch.title.trim().length === 0) delete next.title
+        else next.title = patch.title
+      }
       if (patch.note !== undefined) next.note = patch.note
       if (patch.platform !== undefined) next.platform = patch.platform
       if (patch.tags !== undefined) next.tags = [...patch.tags]

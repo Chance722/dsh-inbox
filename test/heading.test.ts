@@ -77,4 +77,53 @@ describe('record headings', () => {
   it('does not hang a description on records that may show their own text', () => {
     expect(headingOf(entry({ title: '公众号文章', note: '缓存那篇' }))).toBe('公众号文章')
   })
+
+  describe('a record with no text of its own', () => {
+    it('is named by the file it arrived as, plus the description', () => {
+      // Exactly the case that used to read 「（无标题）」: an uploaded photo, whose
+      // file name was stored all along and never used.
+      expect(headingOf(entry({ kind: 'image', attachmentName: 'IMG_20260918.jpg' }))).toBe(
+        'IMG_20260918.jpg',
+      )
+      expect(
+        headingOf(
+          entry({ kind: 'image', attachmentName: 'IMG_20260918.jpg', note: '身份证正面' }),
+        ),
+      ).toBe('IMG_20260918.jpg（身份证正面）')
+    })
+
+    it('prefers a name the user typed over the file name', () => {
+      expect(
+        headingOf(
+          entry({
+            kind: 'image',
+            title: '身份证正面',
+            attachmentName: 'IMG_20260918.jpg',
+            note: '给银行用',
+          }),
+        ),
+      ).toBe('身份证正面')
+    })
+
+    it('falls back to the description when there is no file name either', () => {
+      expect(headingOf(entry({ kind: 'file', note: '报税表' }))).toBe('报税表')
+      expect(headingOf(entry({ kind: 'file' }))).toBe('（无标题）')
+    })
+
+    it('treats an empty name as no name, not as a blank heading', () => {
+      expect(headingOf(entry({ kind: 'image', title: '   ', attachmentName: 'a.png' }))).toBe('a.png')
+    })
+
+    it('clamps the description on the card and keeps it whole in the tooltip', () => {
+      const note = '身份证正面，给银行开户用，别和反面那张搞混了，反面那张已经没用了'
+      const image = entry({ kind: 'image', attachmentName: 'IMG_1.jpg', note })
+      expect(headingOf(image)).toBe(`IMG_1.jpg（${note.slice(0, NOTE_IN_HEADING_CHARS)}…）`)
+      expect(headingTooltipOf(image)).toBe(`IMG_1.jpg（${note}）`)
+    })
+
+    it('never lets a file name name a credential', () => {
+      const secret = entry({ category: 'secret', attachmentName: 'password.txt', note: '测试环境' })
+      expect(headingOf(secret)).toBe('密钥 / 账密（测试环境）')
+    })
+  })
 })
