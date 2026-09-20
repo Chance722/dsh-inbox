@@ -70,9 +70,13 @@
 npx @duoyu/dsh-inbox init
 ```
 
-**全新机器上先建 profile**（还没有 `inbox` 这个 profile 时会报错并告诉你怎么建；这条命令只创建、不启动）：
+**全新机器**（还没有 `inbox` 这个 profile）两种走法，选一个：
 
 ```powershell
+# A. 让 init 顺手建（用 dsh 自带的 web 模板）
+npx @duoyu/dsh-inbox init --create-profile
+
+# B. 自己建再装（--dump-config 让它创建完就退出，不启动）
 dsh --profile inbox --from-default-profile web --dump-config
 npx @duoyu/dsh-inbox init
 ```
@@ -94,7 +98,8 @@ dsh --profile inbox --no-open --port 3102
 常用选项：
 
 ```powershell
-npx @duoyu/dsh-inbox init                      # 装进 inbox profile（默认）
+npx @duoyu/dsh-inbox init                      # 装进 inbox profile（默认，不存在则报错）
+npx @duoyu/dsh-inbox init --create-profile     # profile 不存在就顺手建一个
 npx @duoyu/dsh-inbox init --profile web        # 装进你日常用的那个 profile
 npx @duoyu/dsh-inbox init --no-default         # 只装，不动默认 preset
 npx @duoyu/dsh-inbox init --help               # 全部选项

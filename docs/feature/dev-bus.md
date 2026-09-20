@@ -1111,3 +1111,21 @@ revision 非数字归零）。
 keyed `tool.call.toolview` 是**替换普通行**、以及"一轮多次调用默认折叠"这条 UX 事实。
 
 **验证**：`pnpm typecheck` 干净、**27 文件 266 条**测试全绿（+4）、`pnpm build` 通过；调试用的 `console.log` 全部删除。
+
+#### M8 第八步 — 让"一条命令"对全新机器也成立（同日）
+
+用户拍板两件（都属于对外发布行为，按 AGENTS 的规矩先问后做）：
+
+1. **`init --create-profile`**：profile 不存在时，用 dsh 自己的 `dsh --profile <名字> --from-default-profile web --dump-config` 建一个再继续。
+   默认**不开**——profile 名打错（`--profile web2`）应该得到"没有这个 profile"，而不是凭空冒出一个谁也说不清的 profile；报错信息现在把这条路也写出来了。
+   **为什么要它**：实测全新机器上 `npx @duoyu/dsh-inbox init` 直接退出码 1（dsh 的 `web` 模板里没有 `inbox` 这个 profile），
+   而 README 写的是"一条命令装好"——README 与行为对不上。
+   **顺手修输出**：`--dump-config` 会把整棵组合树打出来（第一次跑刷屏几百行），改成捕获输出、成功只报一行「建好了 <路径>」，失败才把原文打到 stderr。
+   **真机验收**：连续在 `inbox-fresh`、`inbox-fresh2` 两个全新 profile 上跑通（⓪ 建 profile → ① 装插件 → ② preset 已存在只补行 → ③ 默认 preset 已是它），两个临时 profile 用完已删。
+2. **`package.json` 加 `"prepublishOnly": "pnpm build"`**：以后不会把过期的 `lib/` 发出去（此前只能靠人记得先 build）。
+
+**新增 `test/cli.test.ts`（5 条）**：默认值（profile/preset/source/不动默认 preset/不建 profile）、全部选项、`--create-profile` 默认关闭与开启、
+`--help` 返回"无事可做"、以及拒绝未知选项 / 缺值 / 不合规的 preset id（它要当目录名用，`../evil` 这种必须挡）。
+为了能测解析，`src/cli.ts` 末尾加了**"只在作为程序运行时才执行 `main`"**的守卫——否则单测一 import 就会真的去改 `~/.dsh`（这条比测试本身更重要）。
+
+**验证**：`pnpm typecheck` 干净、**28 文件 271 条**测试全绿（+5）、`pnpm build` 通过、`--help` 文案已更新、README 中英的安装段改成 A/B 两种走法。

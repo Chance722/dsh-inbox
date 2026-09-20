@@ -70,11 +70,13 @@ One command installs it:
 npx @duoyu/dsh-inbox init
 ```
 
-**On a fresh machine, create the profile first** (without an `inbox` profile the
-command above refuses and tells you how; this line only creates it, it does not
-boot anything):
+**On a fresh machine** (no `inbox` profile yet) either of these works:
 
 ```powershell
+# A. let init create it, using dsh's own web template
+npx @duoyu/dsh-inbox init --create-profile
+
+# B. create it yourself, then install (--dump-config creates and exits)
 dsh --profile inbox --from-default-profile web --dump-config
 npx @duoyu/dsh-inbox init
 ```
@@ -96,7 +98,8 @@ Open the printed URL (it carries a token). The Inbox panel is in the left rail; 
 Useful flags:
 
 ```powershell
-npx @duoyu/dsh-inbox init                      # into the inbox profile (default)
+npx @duoyu/dsh-inbox init                      # into the inbox profile (default; refuses if it is missing)
+npx @duoyu/dsh-inbox init --create-profile     # create that profile when it is missing
 npx @duoyu/dsh-inbox init --profile web        # into the profile you already use
 npx @duoyu/dsh-inbox init --no-default         # install only, leave the default preset alone
 npx @duoyu/dsh-inbox init --help               # every flag
