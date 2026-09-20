@@ -88,8 +88,40 @@ interface TabInfoLike {
   }
 }
 
-/** Props the slot framework injects into this tab's body. */
+/**
+ * Which record the tab was opened on, and how many times it has been navigated.
+ *
+ * Pulled out of the component so the reading can be tested: the shape is the
+ * platform's, not ours, and getting it wrong is silent — the dock falls back to
+ * its list and 「打开 ↗」 looks like it does nothing.
+ *
+ * @param info - whatever the tab-information hook answered, untyped on purpose.
+ * @returns the record id when the opener named one, plus the navigation revision.
+ */
+export function dockFocusOf(info: unknown): { id?: string; revision: number } {
+  const navigation = (info as TabInfoLike | undefined)?.tab?.navigation
+  const wanted = navigation?.params?.id
+  const revision = navigation?.revision
+  return {
+    ...(typeof wanted === 'string' && wanted.length > 0 ? { id: wanted } : {}),
+    revision: typeof revision === 'number' ? revision : 0,
+  }
+}
+
+/**
+ * Props the slot framework hands this tab's body.
+ *
+ * Measured 2026-09-20 in the running web app: a `sidebar.right.pane.tab` body
+ * receives the **session slot share** — `usePanelInfo`, `useSession`,
+ * `useConversation`, … `useTabInfo` — and *not* a `hooks.tabInfo` entry. Reading
+ * the latter (which is what the first version did) silently yielded undefined,
+ * so 「打开 ↗」 opened the dock on its list instead of the record. The share
+ * shape below is only the slice this file needs.
+ */
 interface DockProps {
+  /** Live tab information: address, navigation params, actions. */
+  useTabInfo?: () => TabInfoLike
+  /** The hook under `hooks`, kept as a fallback for a share shape we have not seen. */
   hooks?: {
     tabInfo?: () => TabInfoLike
   }
@@ -153,10 +185,8 @@ function InboxDock(props?: DockProps): React.ReactElement {
     without the hook (a test, or a future seat with a different share): the dock
     then simply behaves as it always did, a list of the newest records.
   */
-  const info = props?.hooks?.tabInfo?.()
-  const wanted = info?.tab?.navigation?.params?.id
-  const focused = typeof wanted === 'string' && wanted.length > 0 ? wanted : undefined
-  const revision = info?.tab?.navigation?.revision ?? 0
+  const info = (props?.useTabInfo ?? props?.hooks?.tabInfo)?.()
+  const { id: focused, revision } = dockFocusOf(info)
 
   return focused === undefined ? <DockList /> : <DockRecord id={focused} revision={revision} />
 }
