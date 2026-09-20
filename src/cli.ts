@@ -260,9 +260,28 @@ function dshHome(): string {
  * Resolved from the *profile's* perspective, because that is where dsh keeps the
  * packages it runs: the plugin itself may be linked in from anywhere, but the
  * preset it copies has to be the one this dsh installation ships.
+ *
+ * A profile made on a fresh machine is *thin* — it holds the plugin and its
+ * dependencies and nothing else — while the roster ships inside the **global dsh
+ * install** (`<prefix>\node_modules\@deepseek-ai\dsh\node_modules\...`). Measured
+ * 2026-09-20 on an empty `%DSH_HOME%`: every profile-local lookup missed and
+ * `init` stopped at step ② with "找不到随 dsh 附带的 standard preset" — the step
+ * that decides whether the assistant can see the tools at all. Hence the two
+ * extra places: the module root dsh links into `profiles/`, and whatever prefix
+ * the `dsh` on PATH came from.
+ *
+ * @param home - `<DSH_HOME>`.
+ * @param profileDir - the profile being installed into.
+ * @returns the shipped preset directory, or undefined when it cannot be found.
  */
-function shippedStandard(profileDir: string): string | undefined {
+function shippedStandard(home: string, profileDir: string): string | undefined {
   const candidates: string[] = []
+  /** `<module root>/@deepseek-ai/dsh-agent-presets`. */
+  const roster = (moduleRoot: string): string =>
+    join(moduleRoot, '@deepseek-ai', 'dsh-agent-presets')
+  /** `<module root>/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-agent-presets`. */
+  const nestedRoster = (moduleRoot: string): string =>
+    join(moduleRoot, '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai', 'dsh-agent-presets')
   try {
     const require = createRequire(join(profileDir, 'package.json'))
     candidates.push(dirname(require.resolve('@deepseek-ai/dsh-agent-presets/package.json')))
@@ -272,14 +291,41 @@ function shippedStandard(profileDir: string): string | undefined {
     // differently than expected.
   }
   candidates.push(
-    join(profileDir, 'node_modules', '@deepseek-ai', 'dsh-agent-presets'),
-    join(profileDir, 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai', 'dsh-agent-presets'),
+    roster(join(profileDir, 'node_modules')),
+    nestedRoster(join(profileDir, 'node_modules')),
+    roster(join(home, 'profiles', 'node_modules')),
+    nestedRoster(join(home, 'profiles', 'node_modules')),
   )
+  for (const prefix of dshPrefixes()) {
+    candidates.push(nestedRoster(join(prefix, 'node_modules')), roster(join(prefix, 'node_modules')))
+  }
   for (const candidate of candidates) {
     const standard = join(candidate, 'presets', 'standard')
     if (existsSync(join(standard, 'agent.cordis.yml'))) return standard
   }
   return undefined
+}
+
+/**
+ * The npm prefixes the `dsh` on PATH may have been installed into.
+ *
+ * npm puts its shell shims next to `node_modules` (`<prefix>\dsh.cmd`), which is
+ * the one thing about the install `init` can discover without knowing anything
+ * about how dsh was installed.
+ *
+ * @returns candidate prefixes, most likely first.
+ */
+function dshPrefixes(): string[] {
+  const found = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['dsh'], {
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  })
+  const prefixes: string[] = []
+  for (const line of (found.stdout ?? '').split(/\r?\n/)) {
+    const bin = line.trim()
+    if (bin.length > 0) prefixes.push(dirname(bin))
+  }
+  return prefixes
 }
 
 /**
@@ -360,29 +406,22 @@ function main(argv: readonly string[]): number {
     */
     const hint =
       `先建一个：dsh --profile ${profile} --from-default-profile web --dump-config\n` +
+      `（profile 名是 dsh 自带模板时用：dsh --profile ${profile} --dump-config）\n` +
       `（或者重跑时加上 --create-profile，让这一步自己发生）\n`
     if (!options.createProfile) {
       process.stderr.write(`找不到 profile 「${profile}」（${profileDir}）。\n${hint}`)
       return 1
     }
-    process.stdout.write(`⓪ profile 「${profile}」不存在，用 dsh 的 web 模板建一个…\n`)
+    process.stdout.write(`⓪ profile 「${profile}」不存在，用 dsh 自带的模板建一个…\n`)
     /*
       Capture rather than inherit: `dsh --dump-config` prints the whole composed
       tree, which buries the three lines that matter. It is only interesting
       when the profile could not be created, so that is when it gets printed.
     */
-    const created = spawnSync(
-      'dsh',
-      ['--profile', profile, '--from-default-profile', 'web', '--dump-config'],
-      { encoding: 'utf8', shell: process.platform === 'win32' },
-    )
-    if (created.error !== undefined || created.status !== 0 || !existsSync(join(profileDir, 'package.json'))) {
-      for (const stream of [created.stdout, created.stderr]) {
-        if (typeof stream === 'string' && stream.trim().length > 0) process.stderr.write(`${stream.trimEnd()}\n`)
-      }
-      process.stderr.write(
-        `建 profile 失败${created.error === undefined ? '' : `（${created.error.message}）`}。\n${hint}`,
-      )
+    const created = createProfile(profile)
+    if (!created.ok || !existsSync(join(profileDir, 'package.json'))) {
+      if (created.output.trim().length > 0) process.stderr.write(`${created.output.trimEnd()}\n`)
+      process.stderr.write(`建 profile 失败。\n${hint}`)
       return 1
     }
     process.stdout.write(`   建好了 ${profileDir}\n`)
@@ -401,7 +440,7 @@ function main(argv: readonly string[]): number {
     return 1
   }
 
-  const standard = shippedStandard(profileDir)
+  const standard = shippedStandard(home, profileDir)
   if (standard === undefined) {
     process.stderr.write('找不到随 dsh 附带的 standard preset，无法创建 agent preset。\n')
     return 1
@@ -454,6 +493,45 @@ function main(argv: readonly string[]): number {
       `  · 面板（侧栏 Inbox）不需要 preset，装完就在\n`,
   )
   return 0
+}
+
+/**
+ * The commands that can create a missing profile, in the order to try them.
+ *
+ * A *shipped* template cannot be the target of `--from-default-profile`: dsh
+ * refuses with `profile "web" is shipped and cannot be a custom profile target;
+ * omit --from-default-profile to use it`. `init --profile web --create-profile`
+ * on a machine that has never run dsh is exactly that case — and since choosing
+ * `web` is what this installer now does by default, that would have been the
+ * *first* thing a new user hit (measured 2026-09-20, on a fresh `%DSH_HOME%`,
+ * before 0.2.0 shipped). The bare form is also the one that initializes a
+ * shipped profile at all, so it is the fallback rather than the first choice.
+ *
+ * Both forms are tried instead of special-casing `web`: `headless` is shipped
+ * too, and a future template should not need this file to change.
+ *
+ * @param profile - the profile to create.
+ * @returns argv lists for `dsh`, most specific first.
+ */
+export function profileCreationAttempts(profile: string): readonly (readonly string[])[] {
+  return [
+    ['--profile', profile, '--from-default-profile', 'web', '--dump-config'],
+    ['--profile', profile, '--dump-config'],
+  ]
+}
+
+/** Create a missing profile, telling dsh to initialise the profile and exit. */
+function createProfile(profile: string): { ok: boolean; output: string } {
+  let output = ''
+  for (const args of profileCreationAttempts(profile)) {
+    const run = spawnSync('dsh', [...args], {
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+    })
+    output = `${run.stdout ?? ''}${run.stderr ?? ''}`
+    if (run.error === undefined && run.status === 0) return { ok: true, output }
+  }
+  return { ok: false, output }
 }
 
 /*

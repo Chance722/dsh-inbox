@@ -16,7 +16,14 @@ import { pathToFileURL } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { chooseProfile, ensurePresetRow, isEntryPoint, listProfiles, parse } from '../src/cli.js'
+import {
+  chooseProfile,
+  ensurePresetRow,
+  isEntryPoint,
+  listProfiles,
+  parse,
+  profileCreationAttempts,
+} from '../src/cli.js'
 
 /** A composition that already speaks for a couple of other plugins. */
 const COMPOSITION = [
@@ -145,6 +152,28 @@ describe('reading the machine', () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe('creating a missing profile', () => {
+  it('tries the web template first, then the bare form dsh asks for', () => {
+    // Measured on a fresh %DSH_HOME% before 0.2.0 shipped: `web` is a *shipped*
+    // template, and `--from-default-profile web` refuses it with
+    // "profile \"web\" is shipped and cannot be a custom profile target" — so
+    // the retry is what makes `init --profile web --create-profile` work at all.
+    const attempts = profileCreationAttempts('web')
+    expect(attempts).toHaveLength(2)
+    expect(attempts[0]).toContain('--from-default-profile')
+    expect(attempts[1]).not.toContain('--from-default-profile')
+    expect(attempts.every((args) => args.includes('--dump-config'))).toBe(true)
+    // A custom name keeps the same shape: the template, then the bare form.
+    expect(profileCreationAttempts('inbox')[0]).toEqual([
+      '--profile',
+      'inbox',
+      '--from-default-profile',
+      'web',
+      '--dump-config',
+    ])
   })
 })
 

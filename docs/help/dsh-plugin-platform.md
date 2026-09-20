@@ -7,6 +7,16 @@
 ## 命令与装配
 
 - `dsh web` 只是 `--profile web` 的**别名**（证据：`.research/dsh-api/cli` 的帮助文本）。
+- **自带模板不能当 `--from-default-profile` 的目标**（2026-09-20 在空 `%DSH_HOME%` 上实测）：
+  `dsh --profile web --from-default-profile web --dump-config` 直接报
+  `profile "web" is shipped and cannot be a custom profile target; omit --from-default-profile to use it`。
+  也就是说 **`web`（`headless` 同理）本身就是 shipped profile**，建它的正确姿势是**不带这个 flag**：
+  `dsh --profile web --dump-config`（= `dsh web` 走的那条初始化路）。自定义名字才需要 `--from-default-profile web`——
+  不加的话 `plugin add` 会顺手建一个**只有 `dsh-base`、没有 web 应用**的 profile（见下面 M0 笔记）。
+- **`standard` preset 在全局 dsh 安装里，不在 profile 里**（同一次实测）：全新 profile 只含插件与其依赖，roster 在
+  `<npm prefix>\node_modules\@deepseek-ai\dsh\node_modules\@deepseek-ai\dsh-agent-presets\presets\standard\`；
+  开发机上能直接在 `<DSH_HOME>\profiles\node_modules\@deepseek-ai\...` 找到，是因为那个共享 `node_modules` 指回了全局安装。
+  第三方插件要复制这份 preset，得同时找这四处（profile 内 / `profiles\node_modules` / npm prefix / `require.resolve`）。
 - `dsh --profile web` 只认 4 个应用级 flag：`--host`、`--port`、`--no-open`、`--trusted-host`；该解析器**没开 `allowUnknownOption`**（证据：`profiles/node_modules/@deepseek-ai/dsh-web-app/lib/startup.js`）。启动器会把 `--inbox` 原样转给应用，因此 **`dsh web --inbox` 会报未知参数退出**。
 - 可用替代：`dsh --from-default-profile web --profile inbox` 派生自己的 profile；或用启动器 `--patch` 叠加补丁层；或在自己的 patch 层替换 `web-startup` 那一行。
 - 插件安装：`dsh plugin --profile <name> add <包名>`（转发 pnpm）。

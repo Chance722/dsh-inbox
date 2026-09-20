@@ -1179,3 +1179,24 @@ README 中英、`AGENTS.md`、`docs/help/dev-setup.md`、`product-decisions.md`�
 **证据**：`@chance722/dsh-inbox@0.1.0` 已发布（2026-09-20 20:01 +08），`pnpm view` 可见；发布产物解包核对过；`docs/help/index.md` 维护记录里的 M8 各步。
 
 **遗留**：发布后用 `npx @chance722/dsh-inbox@0.2.0` 在一个全新的 `%DSH_HOME%` 上把 README 的路径重走一遍（本机没跑，发布后补）；宿主侧 wire 句子与安装器输出仍是中文（见 `docs/help/panel-i18n.md`）。
+
+### M8 第十步 — 发布前的"全新机器"演练：逮到两个只在空 home 上才炸的坑（2026-09-20）
+
+用户发布 0.2.0 之前（npm 403，见下），先在**空 `%DSH_HOME%`** 上用**本地 `pnpm pack` 出来的 0.2.0 tarball**（字节与将发布的一致）
+把新用户路径走了一遍——**两个坑都是这一步逮到的，都只在"从没跑过 dsh 的机器"上出现**：
+
+1. **`--profile web --create-profile` 必炸**：dsh 拒绝把 shipped 模板当 `--from-default-profile` 的目标
+   （`profile "web" is shipped and cannot be a custom profile target`）。而 0.2.0 新加的"自动挑 profile"恰好会挑 `web`
+   （= `dsh web`），所以这会是新用户碰到的**第一件事**。修法：创建 profile 时**先试模板形式、失败后退回不带 flag 的 bare 形式**
+   （`profileCreationAttempts()`，两条参数表可测）；`headless` 同理，所以不写死 `web`。
+2. **找不到 standard preset**：全新 profile 是"薄"的（只有插件），roster 在**全局 dsh 安装**里
+   （`<npm prefix>\node_modules\@deepseek-ai\dsh\node_modules\@deepseek-ai\dsh-agent-presets\presets\standard`），
+   而当时只找了 profile 自己那份 ⇒ `init` 卡在 ② 步——**恰好是"助手看不看得见工具"的那一步**。修法：候选位置加上
+   `%DSH_HOME%\profiles\node_modules\...` 与 `dsh` 所在 npm prefix 下的两处（`dshPrefixes()`）。
+
+**修完的实测（空 `%DSH_HOME%`，本地 0.2.0 tarball）**：`⓪ 建 profile → ① 装包 → ② 复制 standard 到 `.agent-presets/inbox` 并追加行 → ③ 新建 settings.yaml 写 `agent-presets.default: inbox`，exit 0`；
+落点三处核对：bundles = `dsh-base + dsh-web-app + @chance722/dsh-inbox`、preset 里 `- id: dsh-inbox / name: '@chance722/dsh-inbox'`、
+`settings.yaml` 有 `agent-presets: default: inbox`；**第二次运行幂等**（"已经有这个插件，跳过" / "没改"）；
+`dsh --profile web --dump-config` 里出现 `# == @chance722/dsh-inbox`（宿主半边确实在组合里）；演练用的临时 home 已删，**没碰日常 profile**。
+
+**仍未验**：`npx @chance722/dsh-inbox@0.2.0` 从注册表解析这一步（0.2.0 还没上去）；以及英文界面的视觉验收（沙箱里的 Chrome 画不出内容）。
