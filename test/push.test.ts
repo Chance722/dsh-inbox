@@ -94,7 +94,9 @@ describe('pushOnce', () => {
     await captureText(vault, '第一条', 'panel')
     const first = recorder()
     await pushOnce(vault, fakeAttachments(new Map()), first.write, 'inbox/sync')
-    expect(first.written.size).toBe(1)
+    // Each record lands twice: the JSON that sync reads, and the text a person
+    // can open in the cloud drive.
+    expect(first.written.size).toBe(2)
 
     const second = recorder()
     const nothing = await pushOnce(vault, fakeAttachments(new Map()), second.write, 'inbox/sync')
@@ -153,12 +155,14 @@ describe('pushOnce', () => {
   })
 
   it('names objects by media type, with a fallback that still opens', () => {
-    expect(attachmentObjectName('id-1', 'image/jpeg')).toBe('id-1.jpg')
-    expect(attachmentObjectName('id-1', 'image/png')).toBe('id-1.png')
-    expect(attachmentObjectName('id-1', 'video/mp4')).toBe('id-1.mp4')
-    expect(attachmentObjectName('id-1', 'application/pdf')).toBe('id-1.pdf')
+    expect(attachmentObjectName('id-1', { mime: 'image/jpeg' })).toBe('id-1.jpg')
+    expect(attachmentObjectName('id-1', { mime: 'image/png' })).toBe('id-1.png')
+    expect(attachmentObjectName('id-1', { mime: 'video/mp4' })).toBe('id-1.mp4')
+    expect(attachmentObjectName('id-1', { mime: 'application/pdf' })).toBe('id-1.pdf')
+    // The file's own name beats the table: nothing here has to know what xlsx is.
+    expect(attachmentObjectName('id-1', { mime: 'application/octet-stream', filename: '报税表.xlsx' })).toBe('id-1.xlsx')
     // Something exotic keeps a name that says "unknown", not a name that lies.
-    expect(attachmentObjectName('id-1', 'application/x-rar-compressed')).toBe('id-1.bin')
+    expect(attachmentObjectName('id-1', { mime: 'application/x-rar-compressed' })).toBe('id-1.bin')
   })
 
   it('keeps going when one write fails, and says which one', async () => {
@@ -175,7 +179,9 @@ describe('pushOnce', () => {
     expect(result.status).toBe('partial')
     expect(result.pushed).toBe(1)
     expect(result.reason).toContain('AccessDenied')
-    expect(written).toHaveLength(1)
+    // The record that did go up wrote both of its objects; the other wrote none.
+    expect(written).toHaveLength(2)
+    expect(written.every((path) => !path.includes(second.item.id))).toBe(true)
   })
 
   it('still syncs a record whose bytes this host cannot read', async () => {
@@ -214,5 +220,79 @@ describe('pushOnce', () => {
       new TextDecoder().decode(written.get(`inbox/sync/items/${filed.item.id}.json`)?.bytes),
     ) as { record: { deletedAt?: string } }
     expect(packed.record.deletedAt).toBeDefined()
+  })
+
+  describe('the text view beside the record', () => {
+    it('is readable on its own, and names the attachments it refers to', async () => {
+      const attachment = await vault.addAttachment({
+        storeId: 'sha256:photo',
+        mime: 'image/jpeg',
+        bytes: 50085,
+        width: 3024,
+        height: 4032,
+        filename: 'IMG_9270.jpg',
+      })
+      const filed = await vault.create({
+        kind: 'image',
+        category: 'document',
+        source: 'panel',
+        note: '身份证正面',
+        tags: ['证件'],
+        attachmentIds: [attachment.id],
+      })
+      await vault.setWatchLater(filed.id, true)
+      const { written, write } = recorder()
+      await pushOnce(
+        vault,
+        fakeAttachments(new Map([[attachment.storeId, new Uint8Array([1, 2, 3])]])),
+        write,
+        'inbox/sync',
+      )
+
+      const text = new TextDecoder().decode(written.get(`inbox/sync/items/${filed.id}.txt`)?.bytes)
+
+      expect(text).toContain('身份证正面')
+      expect(text).toContain('类目：证件')
+      expect(text).toContain('类型：图片')
+      expect(text).toContain('待看：是')
+      expect(text).toContain(`attachments/${attachment.id}.jpg`)
+      expect(text).toContain('原名 IMG_9270.jpg')
+      // Readable means readable: no JSON envelope in the file a person opens.
+      expect(text).not.toContain('dsh-inbox-item/1')
+    })
+
+    it('renders a long link record the way you would want to read it', async () => {
+      const filed = await captureText(vault, 'https://mp.weixin.qq.com/s/abc', 'panel')
+      await vault.patch(filed.item.id, { linkTitle: '用AI的这三年', note: '回头再看' })
+      const { written, write } = recorder()
+      await pushOnce(vault, fakeAttachments(new Map()), write, 'inbox/sync')
+
+      const text = new TextDecoder().decode(written.get(`inbox/sync/items/${filed.item.id}.txt`)?.bytes)
+
+      expect(text.startsWith('用AI的这三年')).toBe(true)
+      expect(text).toContain('类目：文章')
+      expect(text).toContain('链接：https://mp.weixin.qq.com/s/abc')
+      expect(text).toContain('备注')
+      expect(text).toContain('回头再看')
+    })
+
+    it('never writes a credential\u2019s plaintext into the readable copy', async () => {
+      await vault.setMasterPassword('主密码')
+      const filed = await captureText(vault, 'secretid=AKIDexample secretkey=abcdef123456', 'panel')
+      await vault.patch(filed.item.id, { note: '腾讯云测试环境' })
+      const { written, write } = recorder()
+      await pushOnce(vault, fakeAttachments(new Map()), write, 'inbox/sync')
+
+      const text = new TextDecoder().decode(written.get(`inbox/sync/items/${filed.item.id}.txt`)?.bytes)
+
+      expect(text).toContain('加密')
+      expect(text).toContain('腾讯云测试环境')
+      expect(text).not.toContain('AKIDexample')
+      expect(text).not.toContain('abcdef123456')
+      // The JSON beside it holds the ciphertext, never the body.
+      const json = new TextDecoder().decode(written.get(`inbox/sync/items/${filed.item.id}.json`)?.bytes)
+      expect(json).toContain('v1:')
+      expect(json).not.toContain('abcdef123456')
+    })
   })
 })

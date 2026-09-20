@@ -17,6 +17,7 @@ import type { AttachmentStore, FileAttachmentRef, ImageAttachmentRef } from '@de
 import type { Context } from '@deepseek-ai/cordis'
 
 import type { PushResult } from '../../shared/panel-wire.js'
+import { CATEGORY_LABELS, KIND_LABELS } from '../../shared/vocabulary.js'
 import { putObject, type S3Config, type S3Deps } from '../s3/client.js'
 import { s3Fetch, webdavFetch } from '../webdav/run.js'
 import { activeUserAgent, readPassword, readS3Secret, readSettings, type WebdavSettings } from '../webdav/config.js'
@@ -97,6 +98,25 @@ const EXTENSIONS: Record<string, string> = {
 }
 
 /**
+ * The suffix one attachment should carry.
+ *
+ * The file's *own* name wins when it has one: a `报税表.xlsx` knows what it is
+ * far better than any table here does, and guessing from the media type would
+ * hand back `bin` for every format nobody thought to list. The table is the
+ * fallback, and `bin` the last resort — a name that says "unknown" rather than a
+ * name that lies.
+ *
+ * @param filename - the name the file arrived with, when there is one.
+ * @param mime - its media type.
+ * @returns the extension without the dot.
+ */
+export function extensionOf(filename: string | undefined, mime: string): string {
+  const fromName = /\.([A-Za-z0-9]{1,8})$/.exec(filename ?? '')?.[1]
+  if (fromName !== undefined) return fromName.toLowerCase()
+  return EXTENSIONS[mime.toLowerCase()] ?? 'bin'
+}
+
+/**
  * The object name one attachment gets on the remote.
  *
  * `<our id>.<extension>`: the id keeps it unique and idempotent, the extension
@@ -106,12 +126,11 @@ const EXTENSIONS: Record<string, string> = {
  * id was the whole reason.
  *
  * @param attachmentId - our row id for the attachment.
- * @param mime - its media type.
+ * @param record - the attachment row, for its own name and media type.
  * @returns the file name to PUT.
  */
-export function attachmentObjectName(attachmentId: string, mime: string): string {
-  const extension = EXTENSIONS[mime.toLowerCase()] ?? 'bin'
-  return `${attachmentId}.${extension}`
+export function attachmentObjectName(attachmentId: string, record: Pick<Attachment, 'mime' | 'filename'>): string {
+  return `${attachmentId}.${extensionOf(record.filename, record.mime)}`
 }
 
 /** The metadata a pulling device needs to re-create the record's attachment row. */
@@ -134,6 +153,62 @@ function packAttachment(record: Attachment): Uint8Array {
       0,
     ),
   )
+}
+
+/** `2026-09-20 13:20` in local time, for a file a person reads. */
+function readableTime(iso: string): string {
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return iso
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${String(at.getFullYear())}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())}`
+}
+
+/**
+ * The record as a text file a person can open in the cloud drive.
+ *
+ * The JSON beside it is the source of truth — this is a **view**, regenerated on
+ * every push and never read back. It exists because a bucket full of
+ * `{"format":"dsh-inbox-item/1",…}` is a bucket you cannot *use*: you cannot read
+ * the article you saved, you cannot see which photo belongs to which record, and
+ * you cannot tell a note from a link without a JSON viewer.
+ *
+ * A credential's body is the one thing it never contains: it is ciphertext on
+ * this machine and it stays ciphertext on the remote, so the text file says so
+ * instead of pretending the record is empty.
+ *
+ * @param item - the record.
+ * @param attachmentNames - the remote names of its attachments, in order.
+ * @returns the file's text.
+ */
+export function renderItemText(item: Item, attachmentNames: readonly string[]): string {
+  const heading = item.title ?? item.linkTitle ?? item.url ?? (item.category === 'secret' ? '密钥 / 账密' : '（无标题）')
+  const lines: string[] = [heading, '='.repeat(Math.min(40, Math.max(6, heading.length))), '']
+
+  lines.push(`类目：${CATEGORY_LABELS[item.category]}　类型：${KIND_LABELS[item.kind]}　来源：${item.source}`)
+  lines.push(`存入：${readableTime(item.createdAt)}${item.updatedAt === item.createdAt ? '' : `　更新：${readableTime(item.updatedAt)}`}`)
+  if (item.platform !== undefined) lines.push(`平台：${item.platform}`)
+  if (item.tags.length > 0) lines.push(`标签：${item.tags.map((tag) => `#${tag}`).join(' ')}`)
+  if (item.watchLater === true) lines.push('待看：是')
+  if (item.deletedAt !== undefined) lines.push(`回收站：是（${readableTime(item.deletedAt)} 删除）`)
+  if (item.url !== undefined) lines.push(`链接：${item.url}`)
+  if (item.linkTitle !== undefined && item.linkTitle !== heading) lines.push(`页面标题：${item.linkTitle}`)
+  if (attachmentNames.length > 0) {
+    lines.push('附件：')
+    for (const name of attachmentNames) lines.push(`  - ${name}`)
+  }
+  lines.push('')
+
+  if (item.note !== undefined && item.note.length > 0) {
+    lines.push('备注', '----', item.note, '')
+  }
+
+  if (item.category === 'secret') {
+    lines.push('正文', '----', '（加密。需要主密码在本机解锁后才能读到正文；密钥与密码永不随同步上传。）')
+  } else if (item.text !== undefined && item.text.length > 0) {
+    lines.push('正文', '----', item.text)
+  }
+
+  return `${lines.join('\n').trimEnd()}\n`
 }
 
 /**
@@ -247,22 +322,26 @@ export async function pushOnce(
       continue
     }
 
+    /*
+      The attachment objects first, so the text file can name them: the point of
+      that file is that a person opening the bucket can see which photo belongs
+      to which record.
+    */
+    const attachmentNames: string[] = []
     for (const attachmentId of item.attachmentIds) {
       if (seenAttachments.has(attachmentId)) continue
       seenAttachments.add(attachmentId)
       const record = vault.getAttachment(attachmentId)
       if (record === undefined) continue
+      const objectName = attachmentObjectName(attachmentId, record)
+      attachmentNames.push(`attachments/${objectName}（${record.mime}，${String(record.bytes)} 字节${record.filename === undefined ? '' : `，原名 ${record.filename}`}）`)
       const bytes = await bytesOf(attachments, record)
       if (bytes === undefined) {
         failures.push(`附件 ${attachmentId}：本机拿不到字节`)
         continue
       }
       try {
-        await writer(
-          `${basePath}/attachments/${attachmentObjectName(attachmentId, record.mime)}`,
-          bytes,
-          record.mime,
-        )
+        await writer(`${basePath}/attachments/${objectName}`, bytes, record.mime)
         // The row travels beside the bytes: without the original name, the
         // intrinsic size and the digest, another device could download the file
         // but never rebuild the record that points at it.
@@ -275,6 +354,23 @@ export async function pushOnce(
       } catch (error) {
         failures.push(`附件 ${attachmentId}：${reasonOf(error)}`)
       }
+    }
+
+    /*
+      And the record itself, in a form a person can open.
+
+      Written after the bytes so it can name them, and written even when the
+      record has no text: a text file saying "类目：图片 / 附件：…" is how you find
+      out which of two photos belongs to which record without a JSON viewer.
+    */
+    try {
+      await writer(
+        `${basePath}/items/${item.id}.txt`,
+        new TextEncoder().encode(renderItemText(item, attachmentNames)),
+        'text/plain; charset=utf-8',
+      )
+    } catch (error) {
+      failures.push(`记录 ${item.id}（文本视图）：${reasonOf(error)}`)
     }
   }
 
