@@ -67,6 +67,7 @@ import {
   type ListResult,
   type PullResult,
   type ProbeRow,
+  probeVerdict,
   type PurgeResult,
   type WebdavRequest,
   type WebdavStatus,
@@ -1685,6 +1686,8 @@ function WebdavSettings({
 
   /** The identity field always edits whichever protocol the form is showing. */
   const userAgent = protocol === 's3' ? s3UserAgent : webdavUserAgent
+  /** The self-test's rows, summed up: the answer, before the evidence. */
+  const verdict = probeVerdict(probe ?? [])
   const setUserAgent = (value: string): void => {
     if (protocol === 's3') setS3UserAgent(value)
     else setWebdavUserAgent(value)
@@ -1934,31 +1937,52 @@ function WebdavSettings({
         {detailNotice(notice)}
       </div>
 
-      {probe !== undefined && probe.length > 0 && probe.every((row) => row.status === 401) && (
-        <p style={{ margin: 0, opacity: 0.7 }}>
-          每一行都是 401，说明不是签名写法的问题：这个网关多半按客户端标识认人。把上面的「客户端标识」填成你的
-          AccessKey 绑定的应用名（数据胶囊控制台里创建 key 时选的那个），再自检一次。
-        </p>
-      )}
-
       {probe !== undefined && (
-        <pre
-          style={{
-            ...inputStyle,
-            margin: 0,
-            maxHeight: 220,
-            overflow: 'auto',
-            whiteSpace: 'pre-wrap',
-            fontSize: 12,
-          }}
-        >
-          {probe
-            .map(
-              (row) =>
-                `${row.status === 0 ? 'ERR' : String(row.status)}  ${row.label}\n     ${row.url}\n     ${row.detail}`,
-            )
-            .join('\n')}
-        </pre>
+        <div style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {/*
+            One sentence first: "does this channel work" is the question the
+            button was pressed to answer. The rows stay underneath, folded away,
+            for the day the answer is no — telling a gateway's four same-looking
+            refusals apart is exactly what they are for.
+          */}
+          <p
+            style={{
+              margin: 0,
+              color: verdict.ok ? 'inherit' : 'salmon',
+              fontWeight: 600,
+            }}
+          >
+            {verdict.ok ? '✅ ' : '❌ '}
+            {verdict.title}
+          </p>
+          {verdict.hint !== undefined && verdict.hint.length > 0 && (
+            <p style={{ margin: 0, opacity: 0.7 }}>{verdict.hint}</p>
+          )}
+          {probe.length > 1 && (
+            <details>
+              <summary style={{ cursor: 'pointer', opacity: 0.7, fontSize: 12 }}>
+                详情（{probe.length} 次请求）
+              </summary>
+              <pre
+                style={{
+                  ...inputStyle,
+                  margin: '6px 0 0',
+                  maxHeight: 220,
+                  overflow: 'auto',
+                  whiteSpace: 'pre-wrap',
+                  fontSize: 12,
+                }}
+              >
+                {probe
+                  .map(
+                    (row) =>
+                      `${row.status === 0 ? 'ERR' : String(row.status)}  ${row.label}\n     ${row.url}\n     ${row.detail}`,
+                  )
+                  .join('\n')}
+              </pre>
+            </details>
+          )}
+        </div>
       )}
 
       <p style={{ margin: 0, opacity: 0.6 }}>

@@ -162,6 +162,71 @@ export interface ProbeRow {
   detail: string
 }
 
+/** What the self-test's rows add up to, in one line. */
+export interface ProbeVerdict {
+  ok: boolean
+  /** The sentence itself, e.g. 「通道可用：v4 精简（只签 host + date）」. */
+  title: string
+  /** The thing to try next when it is not usable. */
+  hint?: string
+}
+
+/** The statuses a successful read can come back with (206/207 included). */
+function isSuccess(status: number): boolean {
+  return status >= 200 && status < 300
+}
+
+/**
+ * Turn the self-test's rows into one sentence.
+ *
+ * The matrix below it exists for the day something breaks (it is what tells a
+ * gateway's four same-looking refusals apart), but nobody opening 入库设置 wants
+ * to read eight rows to learn whether the channel works. This says yes or no,
+ * names the shape that worked when there is one, and — when nothing worked —
+ * points at the cause the statuses actually imply.
+ *
+ * @param rows - the self-test's rows, in the order they were tried.
+ * @returns the verdict to show above them.
+ */
+export function probeVerdict(rows: readonly ProbeRow[]): ProbeVerdict {
+  if (rows.length === 0) return { ok: false, title: '没有可用的自检结果' }
+
+  const winner = rows.find((row) => isSuccess(row.status))
+  if (winner !== undefined) {
+    const shape = winner.label.replace(/\s*（[^）]*）\s*/g, '').trim()
+    return { ok: true, title: `通道可用（可用形状：${shape}）` }
+  }
+
+  const statuses = new Set(rows.map((row) => row.status))
+  if (statuses.has(0)) {
+    const failed = rows.find((row) => row.status === 0)
+    return { ok: false, title: '连不上', hint: failed?.detail ?? '' }
+  }
+  if (statuses.size === 1 && statuses.has(401)) {
+    return {
+      ok: false,
+      title: '认证被拒（每一行都是 401）',
+      hint: '不是签名写法的问题：把「客户端标识」填成 AccessKey 绑定的应用名（数据胶囊控制台里创建 key 时选的那个），或者换一次密钥，再自检。',
+    }
+  }
+  if (statuses.size === 1 && statuses.has(403)) {
+    return {
+      ok: false,
+      title: '权限被拒（每一行都是 403）',
+      hint: '密钥认出来了，但不允许这个操作：检查桶/目录的授权，以及客户端标识是否与该 AccessKey 绑定的应用一致。',
+    }
+  }
+  if (statuses.size === 1 && statuses.has(404)) {
+    return { ok: false, title: '路径不存在（每一行都是 404）', hint: '检查桶名、endpoint 与目录前缀。' }
+  }
+  const first = rows[0]?.status ?? 0
+  return {
+    ok: false,
+    title: `通道不可用（收到的状态：${[...statuses].join(' / ')}）`,
+    hint: `逐行看下面的详情；第一行是 ${String(first)}。`,
+  }
+}
+
 /** Raster formats dsh's own attachment store accepts, and we therefore pass through. */
 export const INBOX_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const
 export type InboxImageType = (typeof INBOX_IMAGE_TYPES)[number]

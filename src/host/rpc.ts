@@ -75,9 +75,10 @@ import {
   type WebdavPatch,
   type WebdavStatus,
 } from './webdav/config.js'
-import { runPull, s3Fetch } from './webdav/run.js'
+import { runPull, s3Fetch, webdavFetch } from './webdav/run.js'
 import { probeS3 } from './s3/probe.js'
-import { readS3Secret } from './webdav/config.js'
+import { probeWebdav } from './webdav/probe.js'
+import { readPassword, readS3Secret } from './webdav/config.js'
 import { readUiPrefs, saveUiPrefs } from './ui/config.js'
 import type { PullResult } from '../shared/panel-wire.js'
 import type { Attachment, Item } from './vault/spec.js'
@@ -547,22 +548,44 @@ async function handlePull(
 /** Run the connection self-test for whichever protocol is configured. */
 async function handleProbe(ctx: Context): Promise<InboxRpcResult<unknown>> {
   const settings = readSettings(ctx)
-  if (settings.protocol !== 's3') {
-    return failure('inbox/probe-webdav', '自检目前只对 S3 有用：WebDAV 的错误信息已经够直白了')
-  }
-  const secret = await readS3Secret(ctx)
-  if (secret === undefined) return failure('inbox/no-secret', '还没存 AccessKey Secret')
+  if (settings.protocol === 's3') {
+    if (settings.endpoint.trim().length === 0 || settings.bucket.trim().length === 0) {
+      return failure('inbox/unconfigured', '还没配置 S3 的 endpoint 或 bucket，先填上再自检')
+    }
+    const secret = await readS3Secret(ctx)
+    if (secret === undefined) return failure('inbox/no-secret', '还没存 AccessKey Secret')
 
-  const rows = await probeS3(
+    const rows = await probeS3(
+      {
+        endpoint: settings.endpoint,
+        bucket: settings.bucket,
+        region: settings.region,
+        signatureVersion: settings.signatureVersion,
+        userAgent: activeUserAgent(settings),
+      },
+      { fetch: s3Fetch, accessKeyId: settings.accessKeyId, accessKeySecret: secret },
+      settings.directory.replace(/^\//, ''),
+    )
+    return { ok: true, value: rows }
+  }
+
+  // WebDAV: one PROPFIND, because one status already says everything (see
+  // `webdav/probe.ts`). A password is optional — an anonymous folder answers
+  // the same question, and a server that wants auth says so with a 401 row.
+  if (settings.baseUrl.trim().length === 0) {
+    return failure('inbox/unconfigured', '还没配置远端地址，先填上再自检')
+  }
+  const password = await readPassword(ctx)
+  const rows = await probeWebdav(
     {
-      endpoint: settings.endpoint,
-      bucket: settings.bucket,
-      region: settings.region,
-      signatureVersion: settings.signatureVersion,
+      fetch: webdavFetch,
+      ...(settings.username.length === 0 || password === undefined
+        ? {}
+        : { auth: { username: settings.username, password } }),
       userAgent: activeUserAgent(settings),
     },
-    { fetch: s3Fetch, accessKeyId: settings.accessKeyId, accessKeySecret: secret },
-    settings.directory.replace(/^\//, ''),
+    settings.baseUrl,
+    settings.directory,
   )
   return { ok: true, value: rows }
 }
