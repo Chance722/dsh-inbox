@@ -83,6 +83,7 @@ import { registerToolCards } from './card.js'
 import { registerInboxDock } from './dock.js'
 import { headingOf, headingTooltipOf, isSecret } from './heading.js'
 import { ManualDialog } from './manual.jsx'
+import { schemeOf } from './scheme.js'
 import {
   CATEGORIES,
   CATEGORY_LABELS,
@@ -196,10 +197,6 @@ const panelStyle: React.CSSProperties = {
   // No page scroll: the list is the only thing that scrolls, so it gets the
   // whole screen minus the chrome above it and the pager can sit at its foot.
   overflow: 'hidden',
-  // Native controls (the select's popup, scrollbars) follow this. Without it
-  // the popup is drawn light while our text is light, which is why the options
-  // were invisible until hovered.
-  colorScheme: 'dark',
 }
 
 /**
@@ -253,6 +250,15 @@ const dangerStyle: React.CSSProperties = {
  * so the 待看 capsule borrows it the way 删除 borrows `salmon`.
  */
 const WATCH_COLOR = '#6e9ef7'
+
+/**
+ * The one accent the panel is allowed to paint with, for "this is yours / this
+ * is the one you are looking at".
+ *
+ * Taken from the v2 prototype's `--accent`, which is also the blue dsh itself
+ * uses — a selected card in grey read as "slightly darker", not as selection.
+ */
+const ACCENT_COLOR = '#6e9ef7'
 
 /**
  * The colour of a 「模型判定」 badge.
@@ -317,7 +323,8 @@ const selectStyle: React.CSSProperties = {
   paddingRight: 26,
   background: 'Canvas',
   color: 'CanvasText',
-  colorScheme: 'dark',
+  // Inherited from the panel root, which declares the app's own scheme.
+  colorScheme: 'inherit',
 }
 
 /**
@@ -473,6 +480,17 @@ function InboxPanel(): React.ReactElement {
   const [panelWidth, setPanelWidth] = React.useState(1200)
   const [railOpen, setRailOpen] = React.useState(false)
   const panelRef = React.useRef<HTMLDivElement>(null)
+  /**
+   * The app's colour scheme, re-read when it changes.
+   *
+   * Declared on the panel root, and *declared* is the point: leaving the
+   * property unset made the native `<select>` popup light while the app was
+   * dark (options invisible), and hardcoding `dark` made every dialog the panel
+   * draws unreadable in a light app — `Canvas` follows this property while the
+   * text colour is inherited from the app. Which one to declare is decided in
+   * `./scheme.js`; the effect below re-decides when the app switches.
+   */
+  const [scheme, setScheme] = React.useState<'light' | 'dark'>(() => schemeOf(null))
 
   React.useEffect(() => {
     const element = panelRef.current
@@ -482,6 +500,33 @@ function InboxPanel(): React.ReactElement {
     })
     observer.observe(element)
     return () => observer.disconnect()
+  }, [])
+
+  React.useEffect(() => {
+    const read = (): void => setScheme(schemeOf(panelRef.current))
+    read()
+    if (typeof MutationObserver === 'undefined') return
+    const observer = new MutationObserver(read)
+    // Every way the app we live in can change its theme, we watch the element
+    // it changes: dsh writes `color-scheme` onto `<html>`'s style and its token
+    // variables onto `<body>`, and other apps use a class or a data attribute
+    // (measured 2026-09-20 — `docs/help/panel-theme.md`). Attributes only, no
+    // subtree: our own root sets `color-scheme` on itself, and watching
+    // descendants would let that write feed back into a re-read.
+    observer.observe(document.documentElement, { attributes: true })
+    if (document.body !== null) observer.observe(document.body, { attributes: true })
+    // An app that follows the operating system's setting without writing
+    // anything new to its own markup leaves the observer with nothing to see,
+    // so the media query is the other half of "the theme changed".
+    const media =
+      typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-color-scheme: dark)')
+        : undefined
+    media?.addEventListener('change', read)
+    return () => {
+      observer.disconnect()
+      media?.removeEventListener('change', read)
+    }
   }, [])
 
   /** Narrow means: no room for a detail column, so it becomes a sheet. */
@@ -936,7 +981,7 @@ function InboxPanel(): React.ReactElement {
   }, [])
 
   return (
-    <div ref={panelRef} style={panelStyle}>
+    <div ref={panelRef} style={{ ...panelStyle, colorScheme: scheme }}>
       <header>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <div>
@@ -2390,7 +2435,9 @@ function EntryCard({
   const headingTitle = headingTooltipOf(entry)
   const compact = mode === 'compact'
   const hairline = 'color-mix(in srgb, currentColor 10%, transparent)'
-  const accent = 'color-mix(in srgb, currentColor 45%, transparent)'
+  // Selection is the accent, not a darker grey: the user asked for dsh's own
+  // light blue, and a grey "highlight" was indistinguishable from hover.
+  const accent = `color-mix(in srgb, ${ACCENT_COLOR} 55%, transparent)`
 
   /**
    * The glyph keeps its own square slot, and shows the *category*.
@@ -2517,7 +2564,7 @@ function EntryCard({
         font: 'inherit',
         color: 'inherit',
         background: selected
-          ? 'color-mix(in srgb, currentColor 12%, transparent)'
+          ? `color-mix(in srgb, ${ACCENT_COLOR} 16%, transparent)`
           : compact
             ? 'transparent'
             : 'color-mix(in srgb, currentColor 4%, transparent)',
