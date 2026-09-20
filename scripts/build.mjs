@@ -28,6 +28,15 @@ const PLATFORM_EXTERNALS = ['react', 'react/jsx-runtime', 'react-dom', '@deepsee
  */
 const HOST_EXTERNALS = ['@deepseek-ai/*', 'node:*', 'zod']
 
+/**
+ * The version both halves report, substituted in at build time.
+ *
+ * `package.json` stays the one place a version is written: the status tool that
+ * says "dsh-inbox v0.1.0: vault open" used to print an internal milestone
+ * (`M6c`), which is a note for us and meant nothing to the person reading it.
+ */
+const defines = { __DSH_INBOX_VERSION__: JSON.stringify(pkg.version) }
+
 await mkdir(resolve(root, 'lib'), { recursive: true })
 
 // ── host half ───────────────────────────────────────────────────────────────
@@ -39,6 +48,7 @@ await build({
   platform: 'node',
   target: 'node22',
   external: HOST_EXTERNALS,
+  define: defines,
   logLevel: 'warning',
 })
 
@@ -51,6 +61,7 @@ const client = await build({
   target: 'es2022',
   jsx: 'automatic',
   external: PLATFORM_EXTERNALS,
+  define: defines,
   write: false,
   logLevel: 'warning',
 })

@@ -6,8 +6,16 @@ export const PACKAGE_NAME = '@duoyu/dsh-inbox'
 /** Sidebar panel id: addresses both the `sidebar.panellist` row and the `main` key. */
 export const PANEL_ID = 'inbox'
 
-/** Milestone marker surfaced by the status tool; see docs/feature/dev-bus.md. */
-export const MILESTONE = 'M6c'
+/**
+ * The version the plugin reports, substituted from `package.json` at build time.
+ *
+ * The status tool used to print an internal milestone marker instead (`M6c`),
+ * which told the user nothing — and the assistant relays that string verbatim,
+ * so it was also the first thing they saw when they asked what the vault held.
+ * `typeof` keeps a build that forgot the substitution from throwing.
+ */
+export const VERSION: string =
+  typeof __DSH_INBOX_VERSION__ === 'string' ? __DSH_INBOX_VERSION__ : '0.0.0-dev'
 
 /**
  * What the plugin calls itself in `User-Agent` when the user configured nothing.

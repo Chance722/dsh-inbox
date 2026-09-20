@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { apply, inject, name } from '../src/host/index.js'
-import { MILESTONE, PACKAGE_NAME } from '../src/shared/constants.js'
+import { PACKAGE_NAME, VERSION } from '../src/shared/constants.js'
 
 /**
  * Stand-in for the Cordis context. `effect` deliberately never runs its
@@ -59,7 +59,7 @@ describe('dsh-inbox host half', () => {
     expect(definition.input?.attachments).toBe(true)
   })
 
-  it('reports package identity and milestone through inbox_status', async () => {
+  it('reports package identity and version through inbox_status', async () => {
     const { register, ctx } = fakeContext()
     apply(ctx)
 
@@ -68,10 +68,14 @@ describe('dsh-inbox host half', () => {
       .find((candidate) => candidate.name === 'inbox_status')
     if (tool === undefined) throw new Error('inbox_status was not registered')
 
-    await expect(tool.execute({}, {})).resolves.toEqual({
+    // `toMatchObject`, not `toEqual`: whether the fake context's doomed open has
+    // already recorded a failure message is a microtask race, and the status
+    // tool is allowed to say either — what it must never do is claim an open
+    // vault it does not have.
+    await expect(tool.execute({}, {})).resolves.toMatchObject({
       ok: true,
       package: PACKAGE_NAME,
-      milestone: MILESTONE,
+      version: VERSION,
       vaultOpen: false,
       items: 0,
     })

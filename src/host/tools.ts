@@ -279,8 +279,9 @@ export function registerInboxTools(ctx: Context, vault: () => Vault | undefined)
     defineTool({
       name: 'inbox_search',
       description:
-        "Search the user's local dsh-inbox vault — the personal store where they paste links, text, images and credentials. " +
-        'Use it whenever they ask what they saved, want a link they stored earlier, or want the ones they flagged 待看. ' +
+        "Search the user's personal dsh-inbox — their 收件箱, which they also call 仓库 / 个人仓库 / inbox. It is the local " +
+        'store where they paste links, text, images and credentials. Use it whenever they ask what they saved, ask for ' +
+        'something from 收件箱 / 仓库 / inbox, want a link they stored earlier, or want the ones they flagged 待看. ' +
         'Returns at most ten matches with their ids, newest first; records classified as secrets are listed but their text is never returned.',
       parameters: {
         text: { type: 'string', description: 'Words to look for in title, text, url, note or tags.' },
@@ -322,10 +323,10 @@ export function registerInboxTools(ctx: Context, vault: () => Vault | undefined)
     defineTool({
       name: 'inbox_get',
       description:
-        'Open one record from the dsh-inbox vault by the id a search returned: its text (truncated to 1000 characters), ' +
-        'link, note, tags and attachment facts. Credentials are never returned in clear text. An image is described by an ' +
-        'attachment marker the UI renders locally; set withImage only when the user asks you to look at the picture itself ' +
-        '(that sends its bytes to you, once, for this call).',
+        "Open one record from the user's dsh-inbox (their 收件箱 / 仓库 / inbox) by the id a search returned: its text " +
+        '(truncated to 1000 characters), link, note, tags and attachment facts. Credentials are never returned in clear ' +
+        'text. An image is described by an attachment marker the UI renders locally; set withImage only when the user asks ' +
+        'you to look at the picture itself (that sends its bytes to you, once, for this call).',
       parameters: {
         id: { type: 'string', required: true, description: 'The record id from inbox_search.' },
         withImage: {
