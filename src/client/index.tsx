@@ -46,6 +46,7 @@ import {
   INBOX_ENDPOINT_SECRET,
   INBOX_ENDPOINT_UPDATE,
   INBOX_ENDPOINT_PULL,
+  INBOX_ENDPOINT_PUSH,
   INBOX_ENDPOINT_PROBE,
   INBOX_ENDPOINT_UI,
   INBOX_ENDPOINT_TAGS,
@@ -67,6 +68,7 @@ import {
   type InboxRpcResult,
   type ListResult,
   type PullResult,
+  type PushResult,
   type ProbeRow,
   type SecretStatus,
   probeVerdict,
@@ -1618,6 +1620,18 @@ function InboxPanel(): React.ReactElement {
 /** How the panel talks to the host; shared by the panel and the settings form. */
 type CallHost = (endpoint: string, payload: unknown) => Promise<InboxRpcResult<unknown>>
 
+/** One line describing what a push did. */
+function describePush(result: PushResult): string {
+  if (result.status === 'unconfigured') return `推送：${result.reason ?? '还没配置远端'}`
+  if (result.status === 'failed') return `推送失败：${result.reason ?? '未知原因'}`
+  const head =
+    result.pushed === 0 && result.attachments === 0
+      ? `推送：没有新内容（${String(result.skipped)} 条已是最新）`
+      : `推送：${String(result.pushed)} 条记录 / ${String(result.attachments)} 个附件`
+  // `partial` always carries the reason it is only partial.
+  return result.status === 'partial' ? `${head} · 部分失败：${result.reason ?? ''}` : head
+}
+
 /** One line describing what a pull did. */
 function describePull(result: PullResult): string {
   if (result.status === 'unconfigured') return result.reason ?? '还没配置地址'
@@ -1844,6 +1858,27 @@ function WebdavSettings({
     }
   }
 
+  /**
+   * One button, both directions.
+   *
+   * Push first, then pull, in that order: this machine's newest edits are the
+   * ones a conflict would lose, and a pull that overwrote them with an older
+   * remote copy before they had been uploaded is exactly the mistake the
+   * "newer wins" rule cannot undo.
+   */
+  const sync = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const pushed = await call(INBOX_ENDPOINT_PUSH, {})
+      const pushLine = pushed.ok ? describePush(pushed.value as PushResult) : `推送失败：${pushed.error.message}`
+      const pulled = await call(INBOX_ENDPOINT_PULL, {})
+      const pullLine = pulled.ok ? describePull(pulled.value as PullResult) : `拉取失败：${pulled.error.message}`
+      setNotice(`${pushLine} · ${pullLine}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const pull = async (): Promise<void> => {
     setBusy(true)
     try {
@@ -2045,6 +2080,14 @@ function WebdavSettings({
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button type="button" style={buttonStyle} disabled={busy} onClick={() => void save()}>
           保存
+        </button>
+        <button
+          type="button"
+          style={{ ...primaryStyle, height: CONTROL_HEIGHT, boxSizing: 'border-box' }}
+          disabled={busy}
+          onClick={() => void sync()}
+        >
+          {busy ? '处理中…' : '立即同步'}
         </button>
         <button type="button" style={buttonStyle} disabled={busy} onClick={() => void pull()}>
           {busy ? '处理中…' : '立即拉取'}

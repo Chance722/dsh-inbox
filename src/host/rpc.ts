@@ -44,6 +44,7 @@ import {
   INBOX_ENDPOINT_UI,
   INBOX_ENDPOINT_TAGS,
   INBOX_ENDPOINT_SECRET,
+  INBOX_ENDPOINT_PUSH,
   INBOX_IMAGE_TYPES,
   LIST_LIMIT,
   MAX_ATTACHMENTS_PER_SUBMISSION,
@@ -64,6 +65,7 @@ import {
   type InboxRpcResult,
   type ListResult,
   type PurgeResult,
+  type PushResult,
   type SecretRequest,
   type SecretStatus,
   type UpdateResult,
@@ -79,6 +81,7 @@ import {
   type WebdavStatus,
 } from './webdav/config.js'
 import { runPull, s3Fetch, webdavFetch } from './webdav/run.js'
+import { pushRemote } from './remote/push.js'
 import { probeS3 } from './s3/probe.js'
 import { probeWebdav } from './webdav/probe.js'
 import { readPassword, readS3Secret } from './webdav/config.js'
@@ -566,6 +569,19 @@ async function handlePull(
   return { ok: true, value: result }
 }
 
+/** Push this machine's records (and their attachment bytes) to the remote. */
+async function handlePush(
+  ctx: Context,
+  vault: Vault | undefined,
+  attachments: AttachmentStore,
+): Promise<InboxRpcResult<unknown>> {
+  if (vault === undefined) {
+    return failure('inbox/vault-closed', 'inbox 仓库还没打开（或打开失败），稍后再试')
+  }
+  const result: PushResult = await pushRemote(ctx, vault, attachments)
+  return { ok: true, value: result }
+}
+
 /** Run the connection self-test for whichever protocol is configured. */
 async function handleProbe(ctx: Context): Promise<InboxRpcResult<unknown>> {
   const settings = readSettings(ctx)
@@ -904,6 +920,9 @@ export function registerInboxRpc(ctx: Context, vault: () => Vault | undefined): 
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_PULL}`, () =>
         serialise(() => handlePull(scoped, vault(), attachments)),
+      ),
+      endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_PUSH}`, () =>
+        serialise(() => handlePush(scoped, vault(), attachments)),
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_PROBE}`, () =>
         Promise.resolve(handleProbe(scoped)),

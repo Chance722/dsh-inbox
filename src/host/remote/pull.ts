@@ -49,6 +49,19 @@ function looksTextual(name: string, contentType: string | undefined): boolean {
   return contentType !== undefined && TEXT_TYPES.some((prefix) => contentType.startsWith(prefix))
 }
 
+/**
+ * Whether a remote path belongs to the vault's own upload queue.
+ *
+ * Matched anywhere in the path, not just at the root: the configured directory
+ * is whatever the user typed, and the sync root sits under it.
+ *
+ * @param path - the remote path or key.
+ * @returns true when this is something the push wrote.
+ */
+function isSyncObject(path: string): boolean {
+  return path.split('/').some((part) => part === 'sync')
+}
+
 /** The file name out of a remote path or key. */
 function nameOf(path: string): string {
   const parts = path.split('/').filter((part) => part.length > 0)
@@ -95,8 +108,22 @@ export async function ingestFrom(
   let pulled = 0
   let failed = 0
   let skipped = 0
+  /** Why the entries that failed failed; the panel shows the first few. */
+  const failures: string[] = []
 
   for (const entry of entries) {
+    /*
+      Never eat our own upload queue.
+
+      The push writes records to `<prefix>/sync/items/*.json`, and a remote
+      listing is recursive (S3 lists by prefix; WebDAV hands back collections).
+      Without this guard the next pull re-captures everything the vault just
+      uploaded — the same records, again, as pasted text.
+    */
+    if (isSyncObject(entry.path)) {
+      skipped += 1
+      continue
+    }
     if (!isNewer(entry, lastPullAt)) {
       skipped += 1
       continue
@@ -142,15 +169,28 @@ export async function ingestFrom(
         'webdav',
       )
       pulled += 1
-    } catch {
-      // One bad file must not stop the rest; the counter is what the panel shows.
+    } catch (error) {
+      /*
+        One bad file must not stop the rest — but it must not vanish either.
+        "failed: 1" with no name is a number nobody can act on; the first few
+        names go back to the panel, and the real reason goes to the log.
+      */
       failed += 1
+      failures.push(`${name}：${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
   const now = new Date().toISOString()
   await vault.setSync({ ...vault.global.sync, lastPullAt: now })
-  return { status: 'ok', pulled, failed, skipped, listed, lastPullAt: now }
+  return {
+    status: 'ok',
+    pulled,
+    failed,
+    skipped,
+    listed,
+    lastPullAt: now,
+    ...(failures.length === 0 ? {} : { reason: failures.slice(0, 3).join('；') }),
+  }
 }
 
 /** What the user configures for WebDAV. */

@@ -55,6 +55,7 @@ export const INBOX_ENDPOINT_UI = 'ui'
 /** Operate on tags across records (currently: drop one everywhere). */
 export const INBOX_ENDPOINT_TAGS = 'tags'
 export const INBOX_ENDPOINT_SECRET = 'secret'
+export const INBOX_ENDPOINT_PUSH = 'push'
 
 /** What the panel sends to `webdav`: read the status, or save a patch. */
 export interface WebdavRequest {
@@ -153,6 +154,27 @@ export interface PullResult {
   listed: number
   /** Set when the pull completed. */
   lastPullAt?: string
+}
+
+/**
+ * What one push did.
+ *
+ * `partial` exists because the useful answer to "did it work" is often "these
+ * twelve did, that one attachment could not be read" — a plain ok/failed would
+ * have to throw that away.
+ */
+export interface PushResult {
+  status: 'ok' | 'partial' | 'unconfigured' | 'failed'
+  reason?: string
+  /** Records written to the remote. */
+  pushed: number
+  /** Attachment objects written alongside them. */
+  attachments: number
+  /** Records the remote already had, untouched since the last push. */
+  skipped: number
+  /** Records the push considered (including tombstones). */
+  listed: number
+  lastPushAt?: string
 }
 
 /** One row of the connection self-test. */

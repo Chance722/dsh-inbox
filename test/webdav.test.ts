@@ -231,6 +231,44 @@ describe('pulling', () => {
     expect(vault.size).toBe(2)
   })
 
+  it('never eats the vault\u2019s own upload queue', async () => {
+    // `sync/` is where the push writes. A remote listing is recursive, so
+    // without the guard the next pull would file the vault's own records as
+    // pasted text — and then again on the pull after that.
+    const fake = server({
+      listing: LISTING.replace(
+        '<d:href>/dav/inbox/shot.png</d:href>',
+        '<d:href>/dav/inbox/sync/items/9f1e.json</d:href>',
+      ),
+    })
+
+    const result = await pullRemote(vault, { baseUrl: 'https://data.cstcloud.cn/dav' }, {
+      fetch: fake.fetch,
+      attachments: store as unknown as AttachmentStore,
+    })
+
+    expect(result).toMatchObject({ pulled: 1, skipped: 1 })
+    expect(vault.list().map((item) => item.kind)).toEqual(['link'])
+  })
+
+  it('names what failed instead of only counting it', async () => {
+    // A listing whose file cannot be read: the pull must survive it, and the
+    // panel must have something to show that is not just "failed: 1".
+    const fake = server({ listing: LISTING })
+    const broken: FetchLike = async (url, init) =>
+      url.endsWith('.png')
+        ? { ok: false, status: 500, text: async () => 'broken', arrayBuffer: async () => new ArrayBuffer(0) }
+        : fake.fetch(url, init)
+
+    const result = await pullRemote(vault, { baseUrl: 'https://data.cstcloud.cn/dav' }, {
+      fetch: broken,
+      attachments: store as unknown as AttachmentStore,
+    })
+
+    expect(result.failed).toBe(1)
+    expect(result.reason).toContain('shot.png')
+  })
+
   it('merges a re-pulled file instead of storing it twice', async () => {
     const fake = server()
     await pullRemote(vault, { baseUrl: 'https://data.cstcloud.cn/dav' }, {

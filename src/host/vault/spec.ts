@@ -125,6 +125,8 @@ export const attachmentSchema = z.object({
 export const vaultGlobalSchema = z.object({
   sync: z.object({
     lastPullAt: z.string().optional(),
+    /** When this machine last wrote its own records up; the push cursor. */
+    lastPushAt: z.string().optional(),
     cursor: z.string().optional(),
   }),
   /**
@@ -181,9 +183,13 @@ export const vaultSpec = defineDomain({
    * Version 6 adds the optional `secret` / `secretDigest`: a credential's text
    * moves out of `text` and into a sealed envelope. Also a pure addition — a
    * version-5 record with plaintext simply gets migrated on the next unlock.
+   *
+   * Version 7 adds `sync.lastPushAt`: the cursor that keeps a push to "what
+   * changed since last time" instead of re-uploading the vault on every pass.
+   * A `global` field, so no record shape changes at all.
    */
-  version: 6,
-  compatibleVersions: [1, 2, 3, 4, 5],
+  version: 7,
+  compatibleVersions: [1, 2, 3, 4, 5, 6],
   layout: 'per-record',
   global: {
     schema: vaultGlobalSchema,
