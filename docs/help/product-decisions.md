@@ -9,6 +9,8 @@
 
 ## 平台与装配
 
+**安装形态（2026-08-… 起的目标，2026-09-20 落地一半）**：用户侧只该记住**一条命令**——`npx @duoyu/dsh-inbox init`。它做三件事：把包装进他们的 profile、**复制** dsh 自带的 `standard` preset 到 `~/.dsh/.agent-presets/inbox/` 并把插件追加进组合（工具能进模型的唯一路径）、把**用户级默认 preset** 指过去。改用户的 `settings.yaml` 前必须**先备份**，值没变就不写。`init` 重复运行必须安全（不覆盖用户改过的 preset 文件，只补齐缺的）。
+
 - 代码跨平台；**v1 只在这台 Windows 验收**，README 明写 mac/Linux 未验证。
 - 安装要自动化：装包 + 建 agent preset + 指默认，一条 `init` 完成。
 - 开发期 `dsh --profile inbox` 隔离，稳定后叠 patch 进 web profile。
