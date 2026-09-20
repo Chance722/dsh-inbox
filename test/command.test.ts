@@ -31,6 +31,15 @@ let definition: CommandDefinition
 function register(): void {
   const fake = {
     get: () => undefined,
+    /*
+      `/inbox` wires a debounced auto-push through the attachment store, which
+      arrives with injection. Without a store in this fake the wiring simply
+      stays undefined — which is what a headless composition without attachments
+      looks like too.
+    */
+    inject: (_deps: readonly string[], run: (scoped: unknown) => void) => {
+      run({})
+    },
     commands: {
       register: (candidate: CommandDefinition) => {
         definition = candidate

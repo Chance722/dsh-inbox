@@ -9,6 +9,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { CommandInvocation } from '@deepseek-ai/dsh-commands'
 
 import { capture, type CapturedAttachment } from './capture.js'
+import { makeAutoPush, scheduleAutoPush } from './remote/auto-push.js'
 import type { Vault } from './vault/vault.js'
 
 /** One-line result text for the composer; the same words the panel uses. */
@@ -52,6 +53,14 @@ function toCaptured(block: CommandInvocation['attachments'][number]): CapturedAt
  * @param vault - reads the currently open vault, which may not be open yet.
  */
 export function registerInboxCommand(ctx: Context, vault: () => Vault | undefined): void {
+  // `/inbox` is the other way in, and it deserves the same "it is in the cloud a
+  // moment later" as the panel. Wired lazily: the attachment store arrives with
+  // the same injection the panel's routes use.
+  let autoPush: (() => Promise<unknown>) | undefined
+  ctx.inject(['attachments'], (scoped) => {
+    autoPush = makeAutoPush(scoped, vault, () => scoped.attachments)
+  })
+
   ctx.commands.register({
     name: 'inbox',
     description: '收进仓库：把这段文字、链接或附件存进 dsh-inbox，不发给模型',
@@ -76,6 +85,7 @@ export function registerInboxCommand(ctx: Context, vault: () => Vault | undefine
           text: '没东西可存：/inbox 后面跟文字或链接，或者把图片拖进输入框',
         }
       }
+      if (autoPush !== undefined && summary.stored > 0) scheduleAutoPush(autoPush)
       return { kind: 'success', text: describe(summary) }
     },
   })

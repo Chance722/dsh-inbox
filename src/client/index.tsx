@@ -82,6 +82,7 @@ import { MILESTONE, PANEL_ID, PACKAGE_NAME } from '../shared/constants.js'
 import { registerToolCards } from './card.js'
 import { registerInboxDock } from './dock.js'
 import { headingOf, headingTooltipOf, isSecret } from './heading.js'
+import { ManualDialog } from './manual.jsx'
 import {
   CATEGORIES,
   CATEGORY_LABELS,
@@ -455,6 +456,7 @@ function InboxPanel(): React.ReactElement {
   const [selectedId, setSelectedId] = React.useState<string>()
   const [detail, setDetail] = React.useState<EntryDetail>()
   const [settingsOpen, setSettingsOpen] = React.useState(false)
+  const [manualOpen, setManualOpen] = React.useState(false)
   const [listMode, setListMode] = React.useState<ListMode>('grid')
   const [page, setPage] = React.useState(0)
   /** The attachment being looked at full size, if any. */
@@ -621,36 +623,40 @@ function InboxPanel(): React.ReactElement {
   )
 
   /**
-   * Refresh: re-read the list, and pull the remote first when one is configured.
+   * 刷新 = 同步.
    *
-   * A refresh that only re-reads the local list is indistinguishable from
-   * nothing happening, and the interesting number is usually "did the phone's
-   * stuff arrive" — so it pulls, then re-reads, then says what changed.
+   * One button for the whole question "is everything up to date": push this
+   * machine's changes, pull everyone else's, then re-read the list. The old
+   * button only pulled, which left the other direction to a second button in
+   * the settings form — and two buttons for one idea is how the settings row
+   * ended up with five.
+   *
+   * Push first, deliberately: this machine's newest edits are the ones a
+   * conflict would lose, and a pull that overwrote them with an older remote
+   * copy before they had been uploaded is the one mistake "newer wins" cannot
+   * undo.
    */
   const refreshAll = React.useCallback(async (): Promise<void> => {
     setBusy(true)
-    setNotice('刷新中…')
+    setNotice('同步中…')
     try {
+      const pushed = await call(INBOX_ENDPOINT_PUSH, {})
+      const pushLine = pushed.ok
+        ? describePush(pushed.value as PushResult)
+        : `推送失败：${pushed.error.message}`
       const pulled = await call(INBOX_ENDPOINT_PULL, {})
       let suffix = ''
       if (pulled.ok) {
         const result = pulled.value as PullResult
-        if (result.status === 'ok') {
-          suffix =
-            result.pulled > 0
-              ? ` · 远端新入库 ${String(result.pulled)} 条`
-              : result.listed > 0
-                ? ' · 远端没有新内容'
-                : ' · 远端是空的'
-        } else if (result.status === 'unconfigured') {
-          suffix = ' · 未配置远端'
-        } else {
-          suffix = ` · 远端失败：${result.reason ?? '未知原因'}`
-        }
+        suffix = ` · ${describePull(result)}`
+      } else {
+        suffix = ` · 拉取失败：${pulled.error.message}`
       }
       await refresh()
       const total = list?.matched
-      setNotice(`已刷新${total === undefined ? '' : `（${String(total)} 条）`}${suffix}`)
+      setNotice(
+        `${pushLine}${suffix}${total === undefined ? '' : ` · 本页 ${String(total)} 条`}`,
+      )
     } finally {
       setBusy(false)
     }
@@ -945,6 +951,13 @@ function InboxPanel(): React.ReactElement {
           <button
             type="button"
             style={{ ...buttonStyle, marginLeft: 'auto' }}
+            onClick={() => setManualOpen(true)}
+          >
+            ? 使用手册
+          </button>
+          <button
+            type="button"
+            style={buttonStyle}
             aria-expanded={settingsOpen}
             onClick={() => setSettingsOpen((open) => !open)}
           >
@@ -979,6 +992,8 @@ function InboxPanel(): React.ReactElement {
           </div>
         </div>
       )}
+
+      {manualOpen && <ManualDialog onClose={() => setManualOpen(false)} />}
 
       {zoom !== undefined && (
         <div
@@ -1899,59 +1914,6 @@ function WebdavSettings({
     }
   }
 
-  /**
-   * One button, both directions.
-   *
-   * Push first, then pull, in that order: this machine's newest edits are the
-   * ones a conflict would lose, and a pull that overwrote them with an older
-   * remote copy before they had been uploaded is exactly the mistake the
-   * "newer wins" rule cannot undo.
-   */
-  const sync = async (): Promise<void> => {
-    setBusy(true)
-    try {
-      const pushed = await call(INBOX_ENDPOINT_PUSH, {})
-      const pushLine = pushed.ok ? describePush(pushed.value as PushResult) : `推送失败：${pushed.error.message}`
-      const pulled = await call(INBOX_ENDPOINT_PULL, {})
-      const pullLine = pulled.ok ? describePull(pulled.value as PullResult) : `拉取失败：${pulled.error.message}`
-      setNotice(`${pushLine} · ${pullLine}`)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  /**
-   * Send everything again, ignoring the cursor.
-   *
-   * The repair button. It exists because of one afternoon when every object in
-   * the bucket turned out to be 0 bytes while the push reported success: after a
-   * bug like that, "what is up there is wrong and I know it" needs an answer
-   * that is not "delete your synced state by hand".
-   */
-  const resendAll = async (): Promise<void> => {
-    setBusy(true)
-    try {
-      const pushed = await call(INBOX_ENDPOINT_PUSH, { all: true })
-      setNotice(
-        pushed.ok
-          ? `全部重传：${describePush(pushed.value as PushResult)}`
-          : `全部重传失败：${pushed.error.message}`,
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const pull = async (): Promise<void> => {
-    setBusy(true)
-    try {
-      const result = await call(INBOX_ENDPOINT_PULL, {})
-      setNotice(result.ok ? describePull(result.value as PullResult) : `拉取失败：${result.error.message}`)
-    } finally {
-      setBusy(false)
-    }
-  }
-
   /** Ask the remote every shape of question at once. */
   const selfTest = async (): Promise<void> => {
     setBusy(true)
@@ -2144,26 +2106,12 @@ function WebdavSettings({
         <button type="button" style={buttonStyle} disabled={busy} onClick={() => void save()}>
           保存
         </button>
-        <button
-          type="button"
-          style={{ ...primaryStyle, height: CONTROL_HEIGHT, boxSizing: 'border-box' }}
-          disabled={busy}
-          onClick={() => void sync()}
-        >
-          {busy ? '处理中…' : '立即同步'}
-        </button>
-        <button type="button" style={buttonStyle} disabled={busy} onClick={() => void pull()}>
-          {busy ? '处理中…' : '立即拉取'}
-        </button>
-        <button
-          type="button"
-          style={{ ...buttonStyle, height: CONTROL_HEIGHT, boxSizing: 'border-box' }}
-          disabled={busy}
-          title="忽略「已推过」的记录，把全部内容重新上传一遍（远端内容不对时用）"
-          onClick={() => void resendAll()}
-        >
-          全部重传
-        </button>
+        {/*
+          Three buttons used to live here: 立即同步, 立即拉取 and 全部重传. All three
+          were second doors onto things the panel already had — 刷新 does the
+          sync now, and a full re-push is a repair action worth keeping in the
+          API rather than in a form the user opens to change a bucket name.
+        */}
         <button type="button" style={buttonStyle} disabled={busy} onClick={() => void selfTest()}>
           自检
         </button>

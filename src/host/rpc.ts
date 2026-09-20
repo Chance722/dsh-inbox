@@ -83,6 +83,7 @@ import {
 import { runPull, s3Fetch, webdavFetch } from './webdav/run.js'
 import { pushRemote } from './remote/push.js'
 import { removeRemoteRecords } from './remote/remove.js'
+import { makeAutoPush, scheduleAutoPush } from './remote/auto-push.js'
 import { probeS3 } from './s3/probe.js'
 import { probeWebdav } from './webdav/probe.js'
 import { readPassword, readS3Secret } from './webdav/config.js'
@@ -928,9 +929,25 @@ export function registerInboxRpc(ctx: Context, vault: () => Vault | undefined): 
       return next
     }
 
+    /*
+      Anything that changes the vault queues a push for a few seconds later.
+
+      A capture is the case the user asked for (入库后防抖自动推); an edit or a
+      soft delete is the same kind of news for other devices, and it costs one
+      more debounced call rather than a second mechanism. Purging is deliberately
+      absent: it already deletes on the remote right there, and queueing a push
+      behind it would only re-announce a record that no longer exists.
+    */
+    const autoPush = makeAutoPush(scoped, vault, () => attachments)
+    const afterChange = (): void => scheduleAutoPush(autoPush)
+
     const routes: readonly ConnectionFetchRoute[] = [
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_CAPTURE}`, (payload) =>
-        serialise(() => handleCapture(vault(), attachments, payload, scoped)),
+        serialise(async () => {
+          const answer = await handleCapture(vault(), attachments, payload, scoped)
+          if (answer.ok) afterChange()
+          return answer
+        }),
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_LIST}`, (payload) =>
         Promise.resolve(handleList(vault(), payload)),
@@ -939,13 +956,25 @@ export function registerInboxRpc(ctx: Context, vault: () => Vault | undefined): 
         Promise.resolve(handleDetail(vault(), payload)),
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_UPDATE}`, (payload) =>
-        serialise(() => handleUpdate(vault(), payload)),
+        serialise(async () => {
+          const answer = await handleUpdate(vault(), payload)
+          if (answer.ok) afterChange()
+          return answer
+        }),
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_DELETE}`, (payload) =>
-        serialise(() => handleDelete(vault(), payload)),
+        serialise(async () => {
+          const answer = await handleDelete(vault(), payload)
+          if (answer.ok) afterChange()
+          return answer
+        }),
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_RESTORE}`, (payload) =>
-        serialise(() => handleRestore(vault(), payload)),
+        serialise(async () => {
+          const answer = await handleRestore(vault(), payload)
+          if (answer.ok) afterChange()
+          return answer
+        }),
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_PURGE}`, () =>
         serialise(() => handlePurge(scoped, vault())),

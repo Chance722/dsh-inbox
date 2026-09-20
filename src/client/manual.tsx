@@ -1,0 +1,205 @@
+/**
+ * The three-minute manual.
+ *
+ * The panel has grown features faster than it has grown explanations — sync,
+ * encryption, naming, the conversation tools — and a user who has to ask "what
+ * does this button do" in chat has already lost. This is the answer that lives
+ * in the product: one screen, scenarios in the order a person meets them, three
+ * lines each at most.
+ *
+ * Deliberately not a reference manual: the help docs are that. This is the part
+ * you read once.
+ */
+
+import React from 'react'
+
+import { CATEGORY_LABELS, CATEGORY_SOURCE_LABELS } from '../shared/vocabulary.js'
+
+/** A titled block: one sentence of what, a few bullets of how. */
+function Section({
+  title,
+  children,
+}: {
+  title: string
+  children: React.ReactNode
+}): React.ReactElement {
+  return (
+    <section style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <strong>{title}</strong>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, opacity: 0.85 }}>
+        {children}
+      </div>
+    </section>
+  )
+}
+
+/** One line of explanation, with the label part emphasised. */
+function Line({ label, children }: { label: string; children: React.ReactNode }): React.ReactElement {
+  return (
+    <p style={{ margin: 0 }}>
+      <strong style={{ fontWeight: 600 }}>{label}</strong>
+      {label.length === 0 ? '' : '：'}
+      {children}
+    </p>
+  )
+}
+
+/**
+ * The manual, as a dialog.
+ *
+ * @param props - how to close it.
+ * @returns the dialog.
+ */
+export function ManualDialog({ onClose }: { onClose: () => void }): React.ReactElement {
+  return (
+    <div
+      role="dialog"
+      aria-label="使用手册"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 45,
+        background: 'color-mix(in srgb, #000 55%, transparent)',
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        padding: '5vh 16px',
+        overflow: 'auto',
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <div
+        style={{
+          width: 'min(600px, 100%)',
+          background: 'Canvas',
+          color: 'CanvasText',
+          border: '1px solid color-mix(in srgb, currentColor 18%, transparent)',
+          borderRadius: 12,
+          padding: 18,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+          boxShadow: '0 18px 40px #0007',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <strong style={{ fontSize: 16 }}>dsh-inbox 怎么用</strong>
+          <span style={{ opacity: 0.6, fontSize: 12 }}>三分钟看完</span>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              marginLeft: 'auto',
+              font: 'inherit',
+              padding: '4px 10px',
+              borderRadius: 8,
+              border: '1px solid color-mix(in srgb, currentColor 25%, transparent)',
+              background: 'transparent',
+              color: 'inherit',
+              cursor: 'pointer',
+            }}
+          >
+            关闭
+          </button>
+        </div>
+
+        <Section title="1. 往里存">
+          <Line label="面板">
+            粘贴文字/链接、拖进图片文件，或点「选择文件…」，然后「存入仓库」（Ctrl+Enter 也行）。
+          </Line>
+          <Line label="对话里">
+            输入 <code>/inbox 文字或链接</code>，图片直接附在输入框上；不发给模型。
+          </Line>
+          <Line label="重复">
+            同一样东西再存一次不会新增，会并进原记录；如果它之前在回收站，会顺手取回来。
+          </Line>
+        </Section>
+
+        <Section title="2. 怎么翻、怎么改">
+          <Line label="筛选">
+            左侧「全部 / 待看 / 回收站」与类目、标签互斥；「待看」是你自己打的标记，新记录不带任何标记。
+          </Line>
+          <Line label="列表">
+            两种密度（{`两列`} / 紧凑）随手切，会记住；上面搜索框搜标题、正文、链接、备注。
+          </Line>
+          <Line label="详情">
+            右边一栏可以改名称、类目、备注、标签，也能标待看、删除、恢复。
+          </Line>
+        </Section>
+
+        <Section title="3. 列表里显示的名字是哪儿来的">
+          <Line label="顺序">
+            你起的名称 → 抓来的页面标题 → 链接/正文/文件名 → 备注（最后兜底）。
+          </Line>
+          <Line label="类目图标">
+            {Object.values(CATEGORY_LABELS).join(' / ')} 各有图标；密钥/账密是钥匙，一眼能认出来。
+          </Line>
+          <Line label="谁判的">
+            类目旁的标签分三种：{Object.values(CATEGORY_SOURCE_LABELS).join(' / ')}
+            （你选过的类目，规则和模型都不会覆盖）。
+          </Line>
+        </Section>
+
+        <Section title="4. 密钥与账密">
+          <Line label="先设主密码">
+            设置 → 账密加密。设了之后，账密正文以密文写盘；没设的时候，账密不会被存进去（宁可不存，也不写明文）。
+          </Line>
+          <Line label="每次重启要解锁">
+            主密码和密钥都不落盘，所以服务一重启就要在同一个地方解锁一次；密码忘了就解不开，没有找回。
+          </Line>
+          <Line label="永不外显">
+            列表里只显示你起的名字；对话里只回一句「明文不会通过对话输出」；发给模型的分类请求先脱敏。
+          </Line>
+        </Section>
+
+        <Section title="5. 同步（本机 ↔ 云盘）">
+          <Line label="自动">
+            入库/改动后几秒自动推送一次（防抖，连着存五条只会推一次）。
+          </Line>
+          <Line label="手动">
+            右上角「刷新」= 一次完整同步：先推本机改动，再拉别人的，然后重读列表。
+          </Line>
+          <Line label="云端长什么样">
+            `items/&lt;id&gt;.json`（机器读）、`items/&lt;id&gt;.txt`（你读，能直接打开）、
+            `attachments/&lt;id&gt;.&lt;扩展名&gt;`（图片/视频/PDF 直接能开）。0 字节的目录项是云盘自己建的。
+          </Line>
+          <Line label="删除">
+            面板里的删除是软删（进回收站，墓碑会同步）；清空回收站会连云端一起删。
+          </Line>
+          <Line label="冲突">
+            多设备改同一条按时间后写赢，不留冲突副本。上云的密文只有账密正文，其余是明文——桶务必要有访问控制。
+          </Line>
+        </Section>
+
+        <Section title="6. 在对话里取回来">
+          <Line label="查">
+            让 Codex 用 <code>inbox_search</code> 按关键词/类目/标签/待看/类型找，最多 10 条 + 还有几条。
+          </Line>
+          <Line label="取">
+            <code>inbox_get</code> 按 id 打开一条：正文最多 1000 字、链接、备注、标签、附件信息。
+          </Line>
+          <Line label="两条硬拒绝">
+            账密永不回明文；图片只回 <code>[attachment:id]</code> 标记，字节不进对话，由界面在本机渲染。
+          </Line>
+        </Section>
+
+        <Section title="7. 出问题先看这里">
+          <Line label="链接没名字">
+            正常：有些站点（如微信）对非浏览器请求只回空壳页，抓不到标题；点进详情自己起个名字即可。
+          </Line>
+          <Line label="云盘里有 0 字节目录">
+            云盘自己建的占位对象，不是插件写的，可以忽略。
+          </Line>
+          <Line label="同步不对">
+            设置里点「自检」：会告诉你通道通不通、哪种签名可用；认证被拒通常是「客户端标识」与 AccessKey 绑定的应用不一致。
+          </Line>
+          <Line label="想全量重传">
+            找 Codex「帮我全量重传一次同步」（接口支持 push 加 all: true）；日常不用它。
+          </Line>
+        </Section>
+      </div>
+    </div>
+  )
+}
