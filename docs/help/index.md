@@ -9,6 +9,7 @@
 | 本地开发与验收流程 | `dev-setup.md` | 建 profile、挂插件、起服务、headless 验证工具的命令 |
 | 仓库数据模型 | `vault-data-model.md` | 域 spec、词汇表、记录结构、查询语义、软删 |
 | 对象存储网关兼容性排查 | `remote-gateway-compat.md` | 401/403 的三种可能、客户端标识按凭证绑定、数据胶囊实测矩阵 |
+| 远端目录布局 | `remote-sync-layout.md` | `inbox/` 里每个名字的含义、记录信封、附件命名理由、上云加密边界、还没做的两件事 |
 | 面板 UI 的视觉/几何验证 | `ui-visual-check.md` | 真机 token 拿不到时，用 headless Chrome 量列宽与"能否放一行" |
 
 ## 维护记录
@@ -28,5 +29,6 @@
 | 2026-09-20 | `58055e1` | M7 第二十三步：**账密加密落盘落地**（域 **v6**）——正文进 `secret`（AES-256-GCM，密钥由主密码 scrypt 派生），主密码/密钥**都不落盘**（内存持有、重启即锁、界面显式解锁），无密钥时**拒绝捕获账密**而非写明文，老明文记录在首次设置/解锁时自动转密文，判重改用 `secretDigest`（HMAC）；`global.master` 存 salt + KDF 参数 + seal 过的固定常量（不存密码哈希）。新增 `POST /api/inbox/secret`（status/set/unlock/lock）+ 面板「账密加密」块；列表侧补第二道闸：`secret` 记录不再有任何 `preview`。**用户同时拍板：推送/双向同步要做，做完才算完整、才进 M8**（顺序：加密 → 推送 → M8），已写进 `product-decisions.md` |
 | 2026-09-20 | `250a2c1` | M7 第二十四步：**推送落地并真机验收**（用户 S3：`s3.cstcloud.cn/duoyu-inbox`）——`sync/items/<id>.json` + `sync/attachments/<id>`，增量靠 `global.sync.lastPushAt`（域 **v7**），附件内容寻址只传一遍，墓碑随记录上，一处失败返回 `partial` 且不拖累其余。S3 侧真坑：**PUT 必须对实际字节签名**（原来 payload 哈希写死空 body）；WebDAV 侧加 `writeFile`。面板「设置」新增**立即同步**（先推后拉）+ 结果描述。两条护栏：**拉取绝不吞 `sync/`**（否则自己的同步包会被当投放文件反复入库）、**拉取失败要带文件名**（`failed: 1` 这种数字没法处理）。真机：首次推 7 条 + 2 附件，二次推 0 条跳过 7 条，推送后拉取记录数不变。**还没做**：拉取合并（多设备互见）、远端删除；已知小缺口：失败条目因游标前进不自动重试 |
 | 2026-09-20 | `9b29136` | M7 第二十五步（**用户发现的事故**）：推上去的文件全是 **0 字节**——根因是 `s3Fetch` 适配器 `fetch(url,{method,headers})` **把 `init.body` 丢了**，网关对空 body 的 PUT 也返回 200，整条链路无一处报错；**假 fetch 的单测永远看不见适配器吞字段**，新增 `test/adapters.test.ts`（stub 全局 fetch + 写读往返）才钉住。顺手加**「全部重传」**（`push {all:true}`，忽略游标）与把自检响应摘录 120→400 字符（"key 都在、对象全空"正是 120 字看不出的）。真机复验：附件 50085/80095 字节、7 条记录 JSON 277–689 字节；列表里 0 字节的 `inbox/`、`inbox/sync/`、`inbox/sync/items/` 是云盘自己的目录占位对象 |
+| 2026-09-20 | `01692c7` | M7 第二十六步：用户问"`inbox/` 里那些目录名什么意思" ⇒ 新增 **`docs/help/remote-sync-layout.md`**（投放区 vs `sync/` 的分工、`items/<记录 id>.json` 与 `attachments/<附件 id>` 的命名理由、记录信封 `{format,record}`、附件为何用我们的行 id 而非 `sha256:` storeId、0 字节目录占位对象的来历、上云加密边界、以及"没有删除 / 没有合并"两个现状），并登记进本索引 |
 
 > 锚点必须是**已提交的 HEAD**；每次维护最多保留 5 条。
