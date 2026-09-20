@@ -92,6 +92,16 @@ dsh --profile inbox-check "调用 inbox_status 工具，把它的原始结果原
 
 ## 环境上的坑
 
+- **在仓库目录里跑 `npx @chance722/dsh-inbox …` 会报「'dsh-inbox' 不是内部或外部命令」**（2026-09-20 实测）：npm/npx 在项目目录里
+  会先判断「本地这个项目是不是就叫这个包」——本仓库的 `package.json` 名字正是 `@chance722/dsh-inbox`，版本也对得上，
+  于是它**不装包、直接拿本地那份**，再去 `node_modules\.bin` 找 `dsh-inbox`；而我们从未在仓库里 link 过自己的 bin ⇒ cmd 报错。
+  **模拟新用户请先换到中性目录**（`Set-Location $env:TEMP`）；非要在仓库里跑，就用
+  `pnpm dlx @chance722/dsh-inbox@<版本> init …` 或 `npm exec --yes --package=@chance722/dsh-inbox@<版本> -- dsh-inbox init …`。
+- **刚发布完的几分钟内，pnpm 可能按缓存的 packument 解析 `latest`**（实测 0.2.1 发出后，profile 里看到的仍是 `0.2.0` 的元数据；过一会儿自己就好了）。
+  验证刚发的版本时**把版本号写死**：`dsh plugin add @chance722/dsh-inbox@<版本>`、`npx @chance722/dsh-inbox@<版本> …`。
+- **一个"新用户"演练的标准姿势**：`$env:DSH_HOME` 指到一个空目录（profiles / presets / settings 全空，等价于新机器），**不碰日常 home**；
+  起服务时换端口（`dsh web --no-open --port 3103`）；web UI 建会话要先有工作区（临时 home 是空的，添加工作区会弹原生目录框，得手点一次）。
+
 - **构建**：早先的记录写着"esbuild spawn 子进程，沙箱里必 `EPERM`，要提权"。2026-09-20 在这台机器上**沙箱内直接 `pnpm build` 就过了**（`pnpm install` 也过，pnpm 把 store 落在仓库内 `.pnpm-store/`，未跟踪、未 gitignore）。所以先按普通方式跑，真报 `EPERM` 再提权。
 - **改完代码怎么生效**（2026-09-20 实测，不是猜的）：
 

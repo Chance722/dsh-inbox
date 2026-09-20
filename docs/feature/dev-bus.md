@@ -1199,4 +1199,12 @@ README 中英、`AGENTS.md`、`docs/help/dev-setup.md`、`product-decisions.md`�
 `settings.yaml` 有 `agent-presets: default: inbox`；**第二次运行幂等**（"已经有这个插件，跳过" / "没改"）；
 `dsh --profile web --dump-config` 里出现 `# == @chance722/dsh-inbox`（宿主半边确实在组合里）；演练用的临时 home 已删，**没碰日常 profile**。
 
-**仍未验**：`npx @chance722/dsh-inbox@0.2.0` 从注册表解析这一步（0.2.0 还没上去）；以及英文界面的视觉验收（沙箱里的 Chrome 画不出内容）。
+**发布后的补验（同日，M8 至此闭环）**：0.2.0 先上架，但**它是修复前的构建**（用户发布早于 `728fa2c`；解包对比：`lib/cli.js` 14043 B vs 修复后 15186 B），
+在空 `%DSH_HOME%` 上照样炸在 `⓪`。于是发 **0.2.1**（`package.json` 升版本 + 推送 `14a221c`），发布产物与本地构建**字节一致**（`lib/cli.js` 15186 B，
+含 `profileCreationAttempts` 与 `dshPrefixes`）。用**注册表上的 0.2.1**、**从中性目录**（不是仓库目录）跑完整新用户路径：
+`⓪ 建 profile → ① 装包 → ② 复制 standard 并追加行 → ③ 新建 settings.yaml，exit 0`；落点三处正确（bundles / preset 行 / `agent-presets.default: inbox`）、
+第二次运行幂等、`dsh --profile web --dump-config` 里出现 `# == @chance722/dsh-inbox`；临时 home 已删。
+**顺带记下两个环境坑**（写进 `docs/help/dev-setup.md`）：在**仓库目录**里跑 `npx @chance722/dsh-inbox …` 会因"本地项目同名"而报
+`'dsh-inbox' 不是内部或外部命令`；刚发布完几分钟内 pnpm 的 packument 缓存可能仍把 `latest` 当旧版，验证时要**写死版本号**。
+
+**仍未验**：英文界面的视觉验收（沙箱里的 Chrome 画不出内容）、模型侧工具调用（需要工作区 + 用户自己的 API key）。
