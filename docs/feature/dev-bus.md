@@ -34,7 +34,7 @@
 
 **做到了什么**
 
-- `@duoyu/dsh-inbox` 双半边插件跑通：宿主侧注册 `inbox_status` 工具，浏览器侧用 `sidebar.panellist` + 布局 `main` keyed slot 长出侧栏入口和整页面板。
+- 双半边插件跑通（包名后来换成 `@chance722/dsh-inbox`）：宿主侧注册 `inbox_status` 工具，浏览器侧用 `sidebar.panellist` + 布局 `main` keyed slot 长出侧栏入口和整页面板。
 - 构建链：esbuild 产出 `lib/index.js`（ESM）+ `lib/client.js`（`window.__ModuleLoader__.load` 包裹的 CJS 工厂）；`pnpm typecheck` 与 `pnpm test`（3 条）全绿。
 - 装配链：`dsh plugin --profile inbox add` 自动进 `dsh.profile.bundles`，隔离 profile 不影响日常 web profile。
 - 实测结论 8 条回写 `docs/help/dsh-plugin-platform.md`（含「客户端插件不声明 `inject: ['slots']` 会静默失效」这个坑）。
@@ -957,9 +957,9 @@ Mozilla/5.0 (compatible; dsh-inbox/0.1; +https://github.com/Chance722/dsh-inbox)
 
 **这一轮做到**：
 
-- **`src/cli.ts` → `lib/cli.js`**（`bin: dsh-inbox`，`npx @duoyu/dsh-inbox init`）。三件事，**重复运行安全**：
+- **`src/cli.ts` → `lib/cli.js`**（`bin: dsh-inbox`，一条 `npx` 命令）。三件事，**重复运行安全**：
   1. `dsh plugin --profile <profile> add <来源>`（pnpm 幂等；profile 不存在时报错并给出创建命令）
-  2. 把 dsh 自带的 `standard` preset **复制**到 `<DSH_HOME>/.agent-presets/<id>/`，改写 `preset.yml` 的 name/description，并**追加**插件的行（`- id: dsh-inbox / name: '@duoyu/dsh-inbox'`）——这就是 AGENTS 第 2 条那条"工具必须挂进 preset"的自动化
+  2. 把 dsh 自带的 `standard` preset **复制**到 `<DSH_HOME>/.agent-presets/<id>/`，改写 `preset.yml` 的 name/description，并**追加**插件的行（`- id: dsh-inbox / name: '<当时的包名>'`）——这就是 AGENTS 第 2 条那条"工具必须挂进 preset"的自动化
   3. 把**用户级默认 preset** 指过去：`settings.yaml` 里写 `agent-presets: { default: <id> }`；**动手前先备份** `settings.yaml.bak-<时间戳>`，且**内容没变就不写、不备份**（第二版才修掉"每次跑都多一个备份"）
   - preset 来源用 `createRequire(profile/package.json).resolve('@deepseek-ai/dsh-agent-presets/package.json')` 找，带两条目录兜底（dsh 把依赖嵌套在自己 node_modules 里时也能找到）
   - `--profile / --preset / --package / --no-default / --help`；`--package` 默认包名，本地开发传仓库路径
@@ -982,7 +982,7 @@ Mozilla/5.0 (compatible; dsh-inbox/0.1; +https://github.com/Chance722/dsh-inbox)
 用户问"仓库要转 public 了，README 有没有暴露个人信息、够不够专业、封面图怎么做"。查出来的东西比预期严重：
 
 - **原型文件里有他真实的 AccessKey ID**（`docs/prototype/*.html`，两处）——已换成假的 `AKIDEXAMPLEEXAMPLE`（那个文件本来就是假数据页，理应用假 ID）。
-- **桶名、账号名、个人文件名**散在 dev-bus / index / 原型 / `remote-gateway-compat.md` 里（`duoyu-inbox` / `chance722` / `IMG_9270.jpg`）→ 分别替换成 `<我的桶>` / `<账号>` / `IMG_0001.jpg`；`dev-setup.md` 里的 `C:\Users\chengjialong\.dsh` → `%DSH_HOME%`（对别的开发者也更顺手）。
+- **桶名、账号名、个人文件名**散在 dev-bus / index / 原型 / `remote-gateway-compat.md` 里（桶名 / 账号名 / 个人文件名）→ 分别替换成 `<我的桶>` / `<账号>` / `IMG_0001.jpg`；`dev-setup.md` 里的 `C:\Users\chengjialong\.dsh` → `%DSH_HOME%`（对别的开发者也更顺手）。
 - 剩下唯一真实标识是 **`Chance722`**——仓库 URL 本来就公开的 GitHub handle，留着。
 - **顺带两处该修的**：README 中英的状态行还写着"M0–M6 完成、M7 进行中"（已改成"M0–M7 完成、M8 进行中"，并把加密与双向同步列为可用）；**仓库没有 LICENSE 文件**（package.json 声明 MIT）→ 补上 `LICENSE`（署名用 GitHub handle）。
 - **包形状**：`package.json` 补 `repository`/`homepage`/`bugs`/`keywords`/`publishConfig.access`；`types` 之前指向一个**根本不会生成的文件**（`lib/types/index.d.ts`）→ 新增 `tsconfig.build.json`（只编 `src`、`rootDir: src`）在 build 时产出声明，路径改成 `lib/types/host/index.d.ts`。`pnpm pack` 实测包内容：`cordis.patch.yml` + 三个 `lib/*.js` + `lib/types/**/*.d.ts` + LICENSE + 中英 README，**没有源码、没有 docs、没有草稿**。
@@ -1118,7 +1118,7 @@ keyed `tool.call.toolview` 是**替换普通行**、以及"一轮多次调用默
 
 1. **`init --create-profile`**：profile 不存在时，用 dsh 自己的 `dsh --profile <名字> --from-default-profile web --dump-config` 建一个再继续。
    默认**不开**——profile 名打错（`--profile web2`）应该得到"没有这个 profile"，而不是凭空冒出一个谁也说不清的 profile；报错信息现在把这条路也写出来了。
-   **为什么要它**：实测全新机器上 `npx @duoyu/dsh-inbox init` 直接退出码 1（dsh 的 `web` 模板里没有 `inbox` 这个 profile），
+   **为什么要它**：实测全新机器上 `npx <当时的包名> init` 直接退出码 1（dsh 的 `web` 模板里没有 `inbox` 这个 profile），
    而 README 写的是"一条命令装好"——README 与行为对不上。
    **顺手修输出**：`--dump-config` 会把整棵组合树打出来（第一次跑刷屏几百行），改成捕获输出、成功只报一行「建好了 <路径>」，失败才把原文打到 stderr。
    **真机验收**：连续在 `inbox-fresh`、`inbox-fresh2` 两个全新 profile 上跑通（⓪ 建 profile → ① 装插件 → ② preset 已存在只补行 → ③ 默认 preset 已是它），两个临时 profile 用完已删。
@@ -1132,7 +1132,7 @@ keyed `tool.call.toolview` 是**替换普通行**、以及"一轮多次调用默
 
 #### M8 第九步 — 包名换成 `@chance722/dsh-inbox`（同日）
 
-用户的 npm 用户名是 `chance722`，而 `@duoyu` 不是他的 scope（只读核对：`@duoyu/dsh-inbox` 未发布、`scope:duoyu` 下没有任何公开包；
+用户的 npm 用户名是 `chance722`，而当时用的那个 scope 不是他的（只读核对：那个 scope 下没有任何公开包、也没有发布过同名包；
 但 scope 归属只能由账号本人确认）。所以包名改成**用户名 scope** `@chance722/dsh-inbox`——用户名 scope 自动归本人，不用去建组织。
 
 **改到的地方**：`package.json`、`cordis.patch.yml`、`src/cli.ts`、`src/shared/constants.ts`（它也决定 dock tab 的 id）、`test/cli.test.ts`、
@@ -1146,8 +1146,8 @@ README 中英、`AGENTS.md`、`docs/help/dev-setup.md`、`product-decisions.md`�
 
 **真机（本机）**：
 
-- 两个 profile 的依赖与 `dsh.profile.bundles` 都换成新名（`dsh plugin --profile <p> add <仓库>` → `remove @duoyu/dsh-inbox`；pnpm 留下的两个旧 junction 也清掉了，只删链接不碰仓库）
-- `init --profile inbox` 输出「preset 里那一行的来源从 @duoyu/dsh-inbox 改成 @chance722/dsh-inbox」；`init --profile web` 输出「已经有这个插件，跳过」（幂等）
+- 两个 profile 的依赖与 `dsh.profile.bundles` 都换成新名（`dsh plugin --profile <p> add <仓库>` → `remove <旧包名>`；pnpm 留下的两个旧 junction 也清掉了，只删链接不碰仓库）
+- `init --profile inbox` 输出「preset 里那一行的来源从 <旧包名> 改成 @chance722/dsh-inbox」；`init --profile web` 输出「已经有这个插件，跳过」（幂等）
 - preset 第 259 行现在是 `name: '@chance722/dsh-inbox'`，**只有一行**
 - 服务重启后：首页 200、客户端产物里是 `@chance722/dsh-inbox/client.js`（无旧名残留）、`/api/inbox/list` 仍返回 7 条
 - `dsh --profile inbox --dump-config` 里出现 `# == @chance722/dsh-inbox` ⇒ bundle 正常解析（不用花模型调用就能验这一层）

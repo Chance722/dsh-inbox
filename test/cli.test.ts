@@ -34,7 +34,7 @@ const COMPOSITION = [
   '',
   '# dsh-inbox: the vault tools',
   '- id: dsh-inbox',
-  "  name: '@duoyu/dsh-inbox'",
+  "  name: '@oldscope/dsh-inbox'",
   '',
 ].join('\n')
 
@@ -241,31 +241,31 @@ describe('the preset row', () => {
   })
 
   it('leaves the file alone when the row already points at the package', () => {
-    const body = COMPOSITION.replace('@duoyu/dsh-inbox', '@chance722/dsh-inbox')
+    const body = COMPOSITION.replace('@oldscope/dsh-inbox', '@chance722/dsh-inbox')
     const outcome = ensurePresetRow(body)
     expect(outcome.change).toBe('unchanged')
     expect(outcome.body).toBe(body)
   })
 
-  it('renames a row left over from the old package instead of adding a second one', () => {
+  it('renames a row left over from an older package name instead of adding a second one', () => {
     // The trap: the package was renamed, so matching by name would say "not
     // there" and append a row pointing at a package that no longer resolves.
     const outcome = ensurePresetRow(COMPOSITION)
     expect(outcome.change).toBe('renamed')
-    expect(outcome.from).toBe('@duoyu/dsh-inbox')
+    expect(outcome.from).toBe('@oldscope/dsh-inbox')
     expect(outcome.body).toContain("name: '@chance722/dsh-inbox'")
-    expect(outcome.body).not.toContain('@duoyu/dsh-inbox')
+    expect(outcome.body).not.toContain('@oldscope/dsh-inbox')
     expect(rows(outcome.body)).toBe(1)
     // Everything else in the file is untouched.
     expect(outcome.body).toContain("name: '@deepseek-ai/dsh-tool-web'")
   })
 
   it('copes with the quoting styles YAML allows', () => {
-    for (const line of ['  name: @duoyu/dsh-inbox', '  name: "@duoyu/dsh-inbox"']) {
+    for (const line of ['  name: @oldscope/dsh-inbox', '  name: "@oldscope/dsh-inbox"']) {
       const outcome = ensurePresetRow(`- id: dsh-inbox\n${line}\n`)
       expect(outcome.change).toBe('renamed')
       expect(outcome.body).toContain('@chance722/dsh-inbox')
-      expect(outcome.body).not.toContain('@duoyu/dsh-inbox')
+      expect(outcome.body).not.toContain('@oldscope/dsh-inbox')
     }
   })
 })
