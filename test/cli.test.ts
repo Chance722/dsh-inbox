@@ -23,6 +23,7 @@ import {
   listProfiles,
   missingPnpmMessage,
   parse,
+  pnpmInstallAttempts,
   profileCreationAttempts,
 } from '../src/cli.js'
 
@@ -48,6 +49,7 @@ describe('dsh-inbox init arguments', () => {
       source: '@chance722/dsh-inbox',
       defaultPreset: true,
       createProfile: false,
+      installPnpm: false,
     })
     // The command word is optional: the README shows it, `npx` may drop it.
     expect(parse([])?.profile).toBeUndefined()
@@ -65,6 +67,7 @@ describe('dsh-inbox init arguments', () => {
         'C:\\repo\\dsh-inbox',
         '--no-default',
         '--create-profile',
+        '--install-pnpm',
       ]),
     ).toEqual({
       profile: 'web',
@@ -72,6 +75,7 @@ describe('dsh-inbox init arguments', () => {
       source: 'C:\\repo\\dsh-inbox',
       defaultPreset: false,
       createProfile: true,
+      installPnpm: true,
     })
   })
 
@@ -186,7 +190,19 @@ describe('a machine without pnpm', () => {
     const message = missingPnpmMessage('web', '@chance722/dsh-inbox')
     expect(message).toContain('pnpm')
     expect(message).toContain('npm i -g pnpm')
+    // …including the flag that does it for you, which is the one-liner the
+    // README leads with.
+    expect(message).toContain('--install-pnpm')
     expect(message).toContain('dsh plugin --profile web add @chance722/dsh-inbox')
+  })
+
+  it('prefers npm, then falls back to corepack', () => {
+    // npm is what ran `npx`, and its global shims are already on PATH;
+    // corepack is the no-download fallback for Nodes that still ship it.
+    expect(pnpmInstallAttempts()).toEqual([
+      ['npm', 'i', '-g', 'pnpm'],
+      ['corepack', 'enable', 'pnpm'],
+    ])
   })
 })
 

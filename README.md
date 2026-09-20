@@ -60,22 +60,14 @@ Two questions in the same conversation, on a real machine:
 
 ## Install
 
-Needs three things: **Node ≥ 22**, a working **`dsh`** (`@deepseek-ai/dsh`), and **pnpm**.
-
-pnpm is dsh's requirement, not this plugin's: `dsh plugin add` is a thin forwarder to pnpm (its own help text says "forwarding the remaining arguments to pnpm"), so **no dsh plugin installs without it — npm cannot stand in**. If you do not have it:
-
-```powershell
-npm i -g pnpm                 # or: corepack enable pnpm, when your Node ships corepack
-```
-
-`init` checks for pnpm before touching anything, and says this if it is missing.
+Needs Node ≥ 22 and a working `dsh`. `dsh plugin add` forwards to pnpm, so the installer brings pnpm along when your machine does not have it:
 
 **Platform**: fully accepted on **Windows** only so far; macOS and Linux are **not verified yet** (no platform-specific dependency in the code — try it and tell me how it goes).
 
 `dsh web` is just `dsh --profile web`, so install into the profile you already start:
 
 ```powershell
-npx @chance722/dsh-inbox init --profile web
+npx @chance722/dsh-inbox init --profile web --install-pnpm
 ```
 
 Then start dsh the way you always do — `dsh web`. The **Inbox** entry is in the left rail, and a new session's assistant can look things up for you ("what links in my inbox haven't I read yet?").
@@ -83,7 +75,7 @@ Then start dsh the way you always do — `dsh web`. The **Inbox** entry is in th
 On a machine that has never run dsh there is no `web` profile yet; `--create-profile` makes it first:
 
 ```powershell
-npx @chance722/dsh-inbox init --profile web --create-profile
+npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
 ```
 
 `init` does three things, and running it twice is safe:
@@ -101,7 +93,7 @@ npx @chance722/dsh-inbox init --create-profile     # an isolated `inbox` profile
 dsh --profile inbox --no-open --port 3102          # start it there
 ```
 
-Other flags: `--profile <name>` installs elsewhere, `--no-default` leaves the default preset alone, `--help` lists everything. Which profile you install into only decides **where the panel runs** — the agent preset is shared by every profile (`~/.dsh/.agent-presets/inbox/`), so installing into a second one just fills in the missing row.
+Other flags: `--profile <name>` installs elsewhere, `--install-pnpm` installs pnpm first when it is missing (the two commands above already carry it), `--no-default` leaves the default preset alone, `--help` lists everything. Which profile you install into only decides **where the panel runs** — the agent preset is shared by every profile (`~/.dsh/.agent-presets/inbox/`), so installing into a second one just fills in the missing row.
 
 ### From a local checkout
 

@@ -85,6 +85,8 @@ export interface Options {
   defaultPreset: boolean
   /** Create the profile when it is missing, instead of refusing. */
   createProfile: boolean
+  /** Install pnpm when it is missing, instead of stopping to explain it. */
+  installPnpm: boolean
 }
 
 function usage(): string {
@@ -99,6 +101,7 @@ function usage(): string {
   --create-profile   profile 不存在时用 dsh 自带的 web 模板建一个（默认不开）
   --preset <id>      agent preset 的 id，默认 inbox
   --package <来源>   插件来源，默认 ${PACKAGE_NAME}（本地开发传仓库路径）
+  --install-pnpm     PATH 上没有 pnpm 时替你装（先 npm i -g pnpm，不行再试 corepack）
   --no-default       不把默认 preset 指过去（只装，不改 dsh 的默认选择）
   --help             这份说明
 
@@ -114,6 +117,7 @@ export function parse(argv: readonly string[]): Options | undefined {
     source: PACKAGE_NAME,
     defaultPreset: true,
     createProfile: false,
+    installPnpm: false,
   }
   // `init` is the only command there is; accept it explicitly (that is what the
   // README shows) and also accept no argument at all.
@@ -134,6 +138,7 @@ export function parse(argv: readonly string[]): Options | undefined {
     else if (flag === '--package') options.source = value()
     else if (flag === '--no-default') options.defaultPreset = false
     else if (flag === '--create-profile') options.createProfile = true
+    else if (flag === '--install-pnpm') options.installPnpm = true
     else throw new Error(`看不懂的选项：${String(flag)}`)
   }
   /*
@@ -403,8 +408,16 @@ function main(argv: readonly string[]): number {
     "'pnpm' 不是内部或外部命令" that dsh forwards upward reads like our bug.
   */
   if (!hasPnpm()) {
-    process.stderr.write(missingPnpmMessage(profile, options.source))
-    return 1
+    if (!options.installPnpm) {
+      process.stderr.write(missingPnpmMessage(profile, options.source))
+      return 1
+    }
+    process.stdout.write('· PATH 上没有 pnpm，先装一个（--install-pnpm）…\n')
+    if (!installPnpm()) {
+      process.stderr.write(missingPnpmMessage(profile, options.source))
+      return 1
+    }
+    process.stdout.write('   pnpm 装好了\n')
   }
 
   if (!existsSync(join(profileDir, 'package.json'))) {
@@ -551,6 +564,45 @@ function hasPnpm(): boolean {
 }
 
 /**
+ * The commands that can put pnpm on PATH, in the order to try them.
+ *
+ * `npm i -g pnpm` first because whoever ran `npx` has npm by definition and
+ * knows where its global shims land. `corepack enable pnpm` is the fallback:
+ * no download, but it needs a Node that still ships corepack (Node ≥ 25 does
+ * not), so it cannot be the first choice.
+ *
+ * @returns argv lists, most likely to work first.
+ */
+export function pnpmInstallAttempts(): readonly (readonly string[])[] {
+  return [
+    ['npm', 'i', '-g', 'pnpm'],
+    ['corepack', 'enable', 'pnpm'],
+  ]
+}
+
+/**
+ * Put pnpm on PATH, because `--install-pnpm` asked for it.
+ *
+ * Installing a global tool is a change to someone's machine, so it only happens
+ * behind that flag — but when it does happen, it has to be *verified*: the
+ * command's exit code is not the question, {@link hasPnpm} is.
+ *
+ * @returns true when pnpm answers afterwards.
+ */
+function installPnpm(): boolean {
+  for (const args of pnpmInstallAttempts()) {
+    const command = args.join(' ')
+    process.stdout.write(`   ${command} …\n`)
+    const run = spawnSync(args[0] as string, [...args].slice(1), {
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    })
+    if (run.error === undefined && run.status === 0 && hasPnpm()) return true
+  }
+  return false
+}
+
+/**
  * What to say when there is no pnpm to hand.
  *
  * Exported because the wording is the whole value here: the point is that the
@@ -563,7 +615,8 @@ function hasPnpm(): boolean {
 export function missingPnpmMessage(profile: string, source: string): string {
   return (
     '装插件需要 pnpm：dsh 的 `plugin add` 是转发给 pnpm 的（不是本命令的选择）。\n' +
-    '先装一个再重跑：npm i -g pnpm    （或者：corepack enable pnpm）\n' +
+    '要么自己装：npm i -g pnpm    （或者：corepack enable pnpm）\n' +
+    '要么重跑时加上 --install-pnpm，让本命令替你装。\n' +
     `手动等价命令：dsh plugin --profile ${profile} add ${source}\n`
   )
 }
