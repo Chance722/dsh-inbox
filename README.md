@@ -70,6 +70,15 @@ One command installs it:
 npx @duoyu/dsh-inbox init
 ```
 
+**On a fresh machine, create the profile first** (without an `inbox` profile the
+command above refuses and tells you how; this line only creates it, it does not
+boot anything):
+
+```powershell
+dsh --profile inbox --from-default-profile web --dump-config
+npx @duoyu/dsh-inbox init
+```
+
 It does three things, and running it twice is safe:
 
 1. installs the plugin into a profile (`inbox` by default; if that profile does not exist it tells you how to create one)

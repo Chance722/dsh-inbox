@@ -70,6 +70,13 @@
 npx @duoyu/dsh-inbox init
 ```
 
+**全新机器上先建 profile**（还没有 `inbox` 这个 profile 时会报错并告诉你怎么建；这条命令只创建、不启动）：
+
+```powershell
+dsh --profile inbox --from-default-profile web --dump-config
+npx @duoyu/dsh-inbox init
+```
+
 它做三件事，重复运行是安全的：
 
 1. 把插件装进 profile（默认 `inbox`；profile 不存在会告诉你先建一个）
