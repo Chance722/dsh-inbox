@@ -200,7 +200,7 @@ export function ManualDialog({ onClose }: { onClose: () => void }): React.ReactE
         <Section title="6. 在对话里取回来">
           <Line label="查">
             在对话里直接问：「我的收件箱里有哪些还没看的链接？」助手会去仓库里找，
-            最多列 10 条，并告诉你还剩几条。
+            最多列 10 条，并告诉你还剩几条。叫它「收件箱」「仓库」「个人仓库」还是「inbox」都认。
           </Line>
           <Line label="取">
             接着说「打开第 3 条」，助手就把那条拿回来：正文（最多 1000 字）、链接、备注、标签、附件信息。

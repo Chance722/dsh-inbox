@@ -238,7 +238,7 @@ function main(argv: readonly string[]): number {
           .replace(/^name:.*$/m, 'name: 收件箱（带 dsh-inbox）')
           .replace(
             /^description:.*$/m,
-            'description: 标准模式 + dsh-inbox：助手可以直接查你的收件箱（inbox_search / inbox_get）。',
+            'description: 标准模式 + dsh-inbox：助手可以直接查你的收件箱（叫它仓库 / inbox 也行）并把内容取回来。',
           ),
         'utf8',
       )
