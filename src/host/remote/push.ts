@@ -81,6 +81,61 @@ function packItem(item: Item): Uint8Array {
   )
 }
 
+/** Suffix per media type, so a stored object is recognisable outside this plugin. */
+const EXTENSIONS: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+  'audio/mpeg': 'mp3',
+  'audio/mp4': 'm4a',
+  'application/pdf': 'pdf',
+  'text/plain': 'txt',
+  'application/json': 'json',
+}
+
+/**
+ * The object name one attachment gets on the remote.
+ *
+ * `<our id>.<extension>`: the id keeps it unique and idempotent, the extension
+ * keeps it *readable* — a cloud drive with a folder full of extension-less files
+ * cannot preview a photo, cannot open it, and cannot tell you which one is which.
+ * The user asked exactly that question ("我的图片呢？都是 json 文件？"), and a bare
+ * id was the whole reason.
+ *
+ * @param attachmentId - our row id for the attachment.
+ * @param mime - its media type.
+ * @returns the file name to PUT.
+ */
+export function attachmentObjectName(attachmentId: string, mime: string): string {
+  const extension = EXTENSIONS[mime.toLowerCase()] ?? 'bin'
+  return `${attachmentId}.${extension}`
+}
+
+/** The metadata a pulling device needs to re-create the record's attachment row. */
+function packAttachment(record: Attachment): Uint8Array {
+  return new TextEncoder().encode(
+    JSON.stringify(
+      {
+        format: 'dsh-inbox-attachment/1',
+        attachment: {
+          id: record.id,
+          mime: record.mime,
+          bytes: record.bytes,
+          ...(record.filename === undefined ? {} : { filename: record.filename }),
+          ...(record.width === undefined ? {} : { width: record.width }),
+          ...(record.height === undefined ? {} : { height: record.height }),
+          ...(record.sha256 === undefined ? {} : { sha256: record.sha256 }),
+        },
+      },
+      undefined,
+      0,
+    ),
+  )
+}
+
 /**
  * Push everything that changed since the last push.
  *
@@ -203,7 +258,19 @@ export async function pushOnce(
         continue
       }
       try {
-        await writer(`${basePath}/attachments/${attachmentId}`, bytes, record.mime)
+        await writer(
+          `${basePath}/attachments/${attachmentObjectName(attachmentId, record.mime)}`,
+          bytes,
+          record.mime,
+        )
+        // The row travels beside the bytes: without the original name, the
+        // intrinsic size and the digest, another device could download the file
+        // but never rebuild the record that points at it.
+        await writer(
+          `${basePath}/attachments/${attachmentId}.meta.json`,
+          packAttachment(record),
+          'application/json',
+        )
         attachmentCount += 1
       } catch (error) {
         failures.push(`附件 ${attachmentId}：${reasonOf(error)}`)

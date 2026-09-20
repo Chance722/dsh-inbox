@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { captureText } from '../src/host/capture.js'
 import { pushOnce } from '../src/host/remote/push.js'
+import { attachmentObjectName } from '../src/host/remote/push.js'
 import { Vault } from '../src/host/vault/vault.js'
 
 /** An attachment store that can hand back the bytes it was told about. */
@@ -136,10 +137,28 @@ describe('pushOnce', () => {
     const result = await pushOnce(vault, fakeAttachments(files), write, 'inbox/sync')
 
     expect(result).toMatchObject({ status: 'ok', pushed: 2, attachments: 1 })
-    expect(written.get(`inbox/sync/attachments/${attachment.id}`)?.bytes).toEqual(
-      new TextEncoder().encode('PNG!'),
-    )
-    expect(written.get(`inbox/sync/attachments/${attachment.id}`)?.contentType).toBe('image/png')
+    // The bytes are named so that anything reading the bucket can tell what
+    // they are — an extension-less object was the whole reason the user asked
+    // "where are my pictures, all I see is json?".
+    const object = written.get(`inbox/sync/attachments/${attachment.id}.png`)
+    expect(object?.bytes).toEqual(new TextEncoder().encode('PNG!'))
+    expect(object?.contentType).toBe('image/png')
+
+    // …and the row travels beside them, so another device can rebuild it.
+    const meta = JSON.parse(
+      new TextDecoder().decode(written.get(`inbox/sync/attachments/${attachment.id}.meta.json`)?.bytes),
+    ) as { format: string; attachment: { id: string; mime: string; filename?: string } }
+    expect(meta.format).toBe('dsh-inbox-attachment/1')
+    expect(meta.attachment).toMatchObject({ id: attachment.id, mime: 'image/png', filename: 'shot.png' })
+  })
+
+  it('names objects by media type, with a fallback that still opens', () => {
+    expect(attachmentObjectName('id-1', 'image/jpeg')).toBe('id-1.jpg')
+    expect(attachmentObjectName('id-1', 'image/png')).toBe('id-1.png')
+    expect(attachmentObjectName('id-1', 'video/mp4')).toBe('id-1.mp4')
+    expect(attachmentObjectName('id-1', 'application/pdf')).toBe('id-1.pdf')
+    // Something exotic keeps a name that says "unknown", not a name that lies.
+    expect(attachmentObjectName('id-1', 'application/x-rar-compressed')).toBe('id-1.bin')
   })
 
   it('keeps going when one write fails, and says which one', async () => {
