@@ -32,13 +32,22 @@ dsh 自带 `@deepseek-ai/dsh-client-locale`（0.1.5-rc.2 实测存在，证据�
 - 断言具体句子的测试要**显式钉语言**：`test/helpers/locale.ts` 提供 `installLanguage('zh')`，否则测试会跟着
   跑测试那台机器的 locale 走（本机是 zh-CN，CI 上多半不是）。
 
-## 还没做完的两块（2026-09-20）
+## 做完了什么（2026-09-20 收尾）
 
-1. **句内片段**：`src/client/index.tsx` 里还有约 45 处、`dock.tsx` 4 处是**句子中间的 JSX 文本片段**
-   （例如设置页那句「目录那一栏同时是 … 的前缀（默认 …）」）。它们要整段重构成**一个 key + 参数**才能译，
-   逐片建 key 会把英文拼成病句。
-2. **`src/client/manual.tsx` 整页**：约 30 段散文。干净的译法是"整页两套 JSX / 一段 `en` 手册"，
-   不是逐片建 key；这也是 `test/i18n.test.ts` 里那个例外存在的原因。
+- **客户端半边零中文字面量**：`src/client/**`（`messages.ts` 除外）里再没有中文字符串字面量，也没有中文的 JSX 文本节点
+  ——`test/i18n.test.ts` 里的那个扫描就是这么钉住的，它现在是**没有例外**的。
+- **句内片段**当时是最麻烦的一类：它们本来是「目录那一栏同时是 <code>/inbox</code>，会转成 …」这种
+  **一句话被 JSX 元素切开**的形状。做法是把整句收进**一个 key**、把 `<code>` 留在中间，或者用 `{reason}`
+  这类占位符把变体收进参数（`detail.titleMissed`、`settings.dirS3.*`）。**不要**给句子碎片各建一个 key：
+  英文会被拼成病句。
+- **使用手册整页**（`manual.tsx`，约 30 段）走同一套：`Section`/`Line` 的标题与正文都成了 key，
+  两处类目/来源列表改用 `categoryLabel()` / `sourceLabel()`（面板的本地化标签，不是宿主那份中文常量）。
+  `test/manual.test.ts` 也改成**读词典**来断言（它原本读 .tsx 源码找字面量，改完就没得找了）。
 
-另外，安装器（`src/cli.ts`）的输出仍是中文：它跑在终端里，不归浏览器 locale 管，要双语得走
-`--lang` / 环境变量那条路。
+## 还没做的两块
+
+1. **宿主发到面板的句子**：自检结论（`src/shared/panel-wire.ts` 的 title/hint）、同步与错误句子（`src/host/rpc.ts`）
+   仍是中文。正确做法是宿主只回**代码 + 参数**、面板翻译（`linkTitleError` + `titleMissReason()` 已经是这个形状，
+   照着做即可）；代价是要改 panel-wire 的类型、host 的几处拼句子、以及相应测试。
+2. **安装器**（`src/cli.ts`）的输出仍是中文：它跑在终端里，不归浏览器 locale 管，要双语得走
+   `--lang` / 环境变量那条路。

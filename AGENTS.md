@@ -51,6 +51,7 @@ docs/
 10. **持久化只走 `ctx.storageDomain`**：不自己开文件、SQLite 或别的存储；域 spec 的 schema 演进见 `docs/help/vault-data-model.md`。
 11. **客户端半边不许引入宿主依赖**：`src/client/**` 只能 import React、平台静态模块表里的包，以及 `src/shared/` 下的纯常量（不许 zod、不许 `node:*`、不许 `@deepseek-ai/dsh-*`），否则浏览器产物会在加载期炸。
 12. **面板跟随宿主主题，别写死**：配色方案从宿主读（`<html>` 的 `color-scheme`，读不到再按继承来的文字色亮度判），实现在 `src/client/scheme.ts`，判定与三个坑见 `docs/help/panel-theme.md`。**禁止**再出现硬编码的 `color-scheme`，也别读面板自己的（那是自我回声）。
+13. **客户端文案必须走词典，别写死在组件里**：面板 / dock / 对话卡片的文案一律进 `src/client/messages.ts`（`zh` 与 `en` 同键集），经 `t()` 渲染；面板要跟随 dsh 的语言（接官方 `ctx.locale`，服务缺席时退到 `<html lang>`），**别自造语言开关**。宿主发给模型的文字是另一层（`src/shared/vocabulary.ts` 等保持中文），两者别混。`test/i18n.test.ts` 会拦下客户端里的中文字面量；机制、边界与"为什么句内碎片要整句成 key"见 `docs/help/panel-i18n.md`。
 
 ## 常用命令
 

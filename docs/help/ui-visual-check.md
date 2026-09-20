@@ -34,7 +34,7 @@ $args = @('--headless=new','--disable-gpu','--no-sandbox','--no-first-run',
           "--user-data-dir=$env:TEMP\ui-check",'--virtual-time-budget=5000',
           '--window-size=1400,880',
           "--screenshot=$env:TEMP\ui.png",
-          'file:///C:/Duoyu/dsh-inbox/.research/ui-check/index.html?report=0')
+          'file:///<仓库路径>/.research/ui-check/index.html?report=0')
 Start-Process -FilePath $chrome -ArgumentList $args -Wait -NoNewWindow
 ```
 
@@ -61,7 +61,7 @@ $args = @('--headless=new','--disable-gpu','--no-sandbox','--no-first-run',
           '--allow-file-access-from-files',          # file:// 下加载本地 ES 模块，少了这句脚本静默不跑
           "--user-data-dir=$env:TEMP\ui-check-scheme",'--virtual-time-budget=5000',
           '--window-size=820,900',"--screenshot=$png","--dump-dom",
-          'file:///D:/Workspace/dsh-inbox/.research/ui-check/scheme-check.html')
+          'file:///<仓库路径>/.research/ui-check/scheme-check.html')
 ```
 
 那个页面 import 的是 `./scheme.js`——由 `npx --no-install esbuild src/client/scheme.ts --format=esm --outfile=.research/ui-check/scheme.js`

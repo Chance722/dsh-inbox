@@ -95,7 +95,7 @@
 
 #### 端到端验证（2026-09-19 完成，聊天路径）
 
-用户手加了工作区（`C:\Duoyu\dsh-inbox`）之后，在真实 web UI 里逐条跑通：
+用户手加了工作区（`<仓库路径>`）之后，在真实 web UI 里逐条跑通：
 
 | 用例 | 结果 |
 |---|---|
@@ -969,7 +969,7 @@ Mozilla/5.0 (compatible; dsh-inbox/0.1; +https://github.com/Chance722/dsh-inbox)
 
 **真机验收（就在这台机器上按 README 走）**：
 
-- `node lib/cli.js init --profile inbox --package D:\Workspace\dsh-inbox` → ① 插件 `Already up to date` ② 复制 preset 到 `~/.dsh/.agent-presets/inbox/`、追加插件行 ③ `agent-presets.default: inbox`
+- `node lib/cli.js init --profile inbox --package <仓库路径>` → ① 插件 `Already up to date` ② 复制 preset 到 `~/.dsh/.agent-presets/inbox/`、追加插件行 ③ `agent-presets.default: inbox`
 - 产物核对：preset 的 `agent.cordis.yml` 末尾有我们的两行、`preset.yml` 改名成「收件箱（带 dsh-inbox）」、`settings.yaml` 末尾多出 `agent-presets:\n  default: inbox`（其他键原样）
 - **幂等**：再跑一次 → 「preset 已存在，只补缺失的插件行」「已经有这个插件，跳过」「默认 preset 已经是它，没改」，**没有新增备份、没有改写设置**
 - **未验证**（如实记）：没有真的开一个带 preset 的会话去让模型调工具（那要模型调用；面板与助手是两条入口）。**用户重启 dsh、开新会话问一句「我的收件箱里有哪些还没看的链接」即可确认**；这也是 M8 剩下的最后一步：在干净环境里从一个新会话跑通工具。

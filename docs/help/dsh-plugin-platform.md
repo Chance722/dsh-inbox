@@ -1,7 +1,7 @@
 # dsh 插件平台实测事实
 
 本机 dsh 版本：`@deepseek-ai/dsh@0.1.5-rc.2`（2026-09-19 实测）。
-证据分两处：`C:\Users\hands\.dsh\profiles\` 下是**实际安装**的包；`.research/dsh-api/` 是从 npm 拉取的官方分发副本（已 gitignore，用完即删）。
+证据分两处：`%DSH_HOME%\profiles\` 下是**实际安装**的包；`.research/dsh-api/` 是从 npm 拉取的官方分发副本（已 gitignore，用完即删）。
 **rc 阶段 API 会变**：与代码冲突时以 `.research/` 里的官方源码为准，并回改本文档。
 
 ## 命令与装配

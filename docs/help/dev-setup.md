@@ -2,26 +2,26 @@
 
 `@chance722/dsh-inbox` 是 dsh 插件，**必须装进一个 dsh profile 才能跑**。
 
-## 当前这台机器（2026-09-20 实测，取代旧的 `C:\Users\hands\...` 记录）
+## 当前这台机器（2026-09-20 实测）
 
 | 项 | 值 |
 |---|---|
-| 仓库 | `D:\Workspace\dsh-inbox` |
+| 仓库 | `<仓库路径>`（自己那个 checkout 落在哪就是哪） |
 | `DSH_HOME` | `%DSH_HOME%`（profiles / storages / sessions 都在这里） |
-| Node | `v22.22.2`，即 `C:\nvm4w\nodejs\node.exe`（机器级 `NVM_SYMLINK=C:\nvm4w\nodejs`） |
-| dsh CLI | `0.1.5-rc.2`，npm 全局装在 `C:\nvm4w\nodejs\node_modules\@deepseek-ai\dsh`；`dsh` / `dsh.cmd` / `dsh.ps1` 落在 `C:\nvm4w\nodejs` ⇒ **已经在 PATH 上**，直接敲 `dsh` |
-| PATH 没配好时 | `node C:\nvm4w\nodejs\node_modules\@deepseek-ai\dsh\lib\bin.js <参数>` |
+| Node | `v22.22.x` 以上，用 `node -v` 自己确认一次 |
+| dsh CLI | `0.1.5-rc.2`，npm 全局装好之后 `dsh` 就在 PATH 上，直接敲 |
+| PATH 没配好时 | `node <全局 node_modules>\@deepseek-ai\dsh\lib\bin.js <参数>`（全局 root 问 `npm root -g`） |
 
 ## 命令
 
 ```powershell
-cd D:\Workspace\dsh-inbox
+cd <仓库路径>
 pnpm build          # esbuild → lib/index.js + lib/client.js
 pnpm typecheck      # tsc --noEmit
 pnpm test           # vitest
 ```
 
-> 旧记录里 `C:\Users\hands\.dsh\...`、`C:\Duoyu\dsh-inbox` 是上一台开发机的路径，与当前机器无关。
+> 文档里的 `<仓库路径>` / `%DSH_HOME%` 是占位：读的时候按自己机器上的实际位置替换。
 
 ## 隔离开发 profile
 
@@ -30,7 +30,7 @@ pnpm test           # vitest
 dsh --profile inbox --from-default-profile web --dump-config
 
 # 挂载本仓库（link 安装，改完重新 build 即可生效）
-dsh plugin --profile inbox add D:\Workspace\dsh-inbox
+dsh plugin --profile inbox add <仓库路径>
 
 # 起服务（换端口避免和日常使用的 3080 冲突）
 dsh --profile inbox --no-open --port 3102
@@ -65,7 +65,7 @@ dsh --profile inbox --no-open --port 3102
 
 ```powershell
 dsh --profile inbox-check --from-default-profile headless --dump-config   # 派生一个 headless profile
-dsh plugin --profile inbox-check add D:\Workspace\dsh-inbox              # ① profile 那半边
+dsh plugin --profile inbox-check add <仓库路径>              # ① profile 那半边
 # ② 会话那半边：用户级默认 preset 已经是收件箱 preset（init 写过 agent-presets.default），无需额外操作
 dsh --profile inbox-check "调用 inbox_status 工具，把它的原始结果原样贴给我。"
 # 期望：dsh-inbox v0.1.0: vault open, 7 record(s).
