@@ -61,10 +61,9 @@ export function ManualDialog({ onClose }: { onClose: () => void }): React.ReactE
         zIndex: 45,
         background: 'color-mix(in srgb, #000 55%, transparent)',
         display: 'flex',
-        alignItems: 'flex-start',
+        alignItems: 'center',
         justifyContent: 'center',
-        padding: '5vh 16px',
-        overflow: 'auto',
+        padding: '4vh 16px',
       }}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose()
@@ -72,19 +71,36 @@ export function ManualDialog({ onClose }: { onClose: () => void }): React.ReactE
     >
       <div
         style={{
-          width: 'min(600px, 100%)',
+          /*
+            A fixed width and a bounded height, with the *sections* scrolling.
+            The first version let the card grow as tall as its content and put
+            the scroll on the backdrop instead — which on a laptop meant the
+            manual ran off the bottom of the screen with no visible frame.
+          */
+          width: 'min(560px, 100%)',
+          maxHeight: '92vh',
+          // Border inside the width and the cap: without it the card is 2px
+          // wider than the number and 2px taller than the overlay's room.
+          boxSizing: 'border-box',
           background: 'Canvas',
           color: 'CanvasText',
           border: '1px solid color-mix(in srgb, currentColor 18%, transparent)',
           borderRadius: 12,
-          padding: 18,
           display: 'flex',
           flexDirection: 'column',
-          gap: 14,
           boxShadow: '0 18px 40px #0007',
+          overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: 8,
+            padding: '14px 18px 12px',
+            borderBottom: '1px solid color-mix(in srgb, currentColor 12%, transparent)',
+          }}
+        >
           <strong style={{ fontSize: 16 }}>dsh-inbox 怎么用</strong>
           <span style={{ opacity: 0.6, fontSize: 12 }}>三分钟看完</span>
           <button
@@ -105,6 +121,17 @@ export function ManualDialog({ onClose }: { onClose: () => void }): React.ReactE
           </button>
         </div>
 
+        {/* The scrolling part: everything below the title line. */}
+        <div
+          style={{
+            padding: 18,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 14,
+            overflowY: 'auto',
+            minHeight: 0,
+          }}
+        >
         <Section title="1. 往里存">
           <Line label="面板">
             粘贴文字/链接、拖进图片文件，或点「选择文件…」，然后「存入仓库」（Ctrl+Enter 也行）。
@@ -122,7 +149,7 @@ export function ManualDialog({ onClose }: { onClose: () => void }): React.ReactE
             左侧「全部 / 待看 / 回收站」与类目、标签互斥；「待看」是你自己打的标记，新记录不带任何标记。
           </Line>
           <Line label="列表">
-            两种密度（{`两列`} / 紧凑）随手切，会记住；上面搜索框搜标题、正文、链接、备注。
+            两种密度（两列 / 紧凑）随手切，会记住；上面搜索框搜标题、正文、链接、备注。
           </Line>
           <Line label="详情">
             右边一栏可以改名称、类目、备注、标签，也能标待看、删除、恢复。
@@ -161,10 +188,6 @@ export function ManualDialog({ onClose }: { onClose: () => void }): React.ReactE
           <Line label="手动">
             右上角「刷新」= 一次完整同步：先推本机改动，再拉别人的，然后重读列表。
           </Line>
-          <Line label="云端长什么样">
-            `items/&lt;id&gt;.json`（机器读）、`items/&lt;id&gt;.txt`（你读，能直接打开）、
-            `attachments/&lt;id&gt;.&lt;扩展名&gt;`（图片/视频/PDF 直接能开）。0 字节的目录项是云盘自己建的。
-          </Line>
           <Line label="删除">
             面板里的删除是软删（进回收站，墓碑会同步）；清空回收站会连云端一起删。
           </Line>
@@ -175,13 +198,19 @@ export function ManualDialog({ onClose }: { onClose: () => void }): React.ReactE
 
         <Section title="6. 在对话里取回来">
           <Line label="查">
-            让 Codex 用 <code>inbox_search</code> 按关键词/类目/标签/待看/类型找，最多 10 条 + 还有几条。
+            在对话里直接问助手「仓库里有哪些没看的链接」——它调用 <code>inbox_search</code>
+            ，按关键词/类目/标签/待看/类型找，最多列 10 条并告诉你还剩几条。
           </Line>
           <Line label="取">
-            <code>inbox_get</code> 按 id 打开一条：正文最多 1000 字、链接、备注、标签、附件信息。
+            说「打开第 3 条」即可，助手用 <code>inbox_get</code> 按 id 取：
+            正文最多 1000 字，外加链接、备注、标签、附件信息。
           </Line>
           <Line label="两条硬拒绝">
             账密永不回明文；图片只回 <code>[attachment:id]</code> 标记，字节不进对话，由界面在本机渲染。
+          </Line>
+          <Line label="助手看不到这两个工具">
+            这两个工具要在 dsh 的 agent preset 里挂上插件才对助手可见（M8 的 <code>init</code>
+            会自动做这一步）；挂上后重启 dsh 生效。
           </Line>
         </Section>
 
@@ -195,10 +224,8 @@ export function ManualDialog({ onClose }: { onClose: () => void }): React.ReactE
           <Line label="同步不对">
             设置里点「自检」：会告诉你通道通不通、哪种签名可用；认证被拒通常是「客户端标识」与 AccessKey 绑定的应用不一致。
           </Line>
-          <Line label="想全量重传">
-            找 Codex「帮我全量重传一次同步」（接口支持 push 加 all: true）；日常不用它。
-          </Line>
         </Section>
+        </div>
       </div>
     </div>
   )

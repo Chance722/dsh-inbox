@@ -953,7 +953,7 @@ function InboxPanel(): React.ReactElement {
             style={{ ...buttonStyle, marginLeft: 'auto' }}
             onClick={() => setManualOpen(true)}
           >
-            ? 使用手册
+            使用手册
           </button>
           <button
             type="button"
