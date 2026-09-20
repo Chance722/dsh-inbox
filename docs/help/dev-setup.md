@@ -75,4 +75,13 @@ dsh --profile inbox-m0 "Call the inbox_status tool and paste its raw result."
 ## 环境上的坑
 
 - **构建**：早先的记录写着"esbuild spawn 子进程，沙箱里必 `EPERM`，要提权"。2026-09-20 在这台机器上**沙箱内直接 `pnpm build` 就过了**（`pnpm install` 也过，pnpm 把 store 落在仓库内 `.pnpm-store/`，未跟踪、未 gitignore）。所以先按普通方式跑，真报 `EPERM` 再提权。
-- **改完客户端代码要重新 build**：`dsh plugin add` 用的是 link 依赖，但浏览器加载的是 `lib/client.js`，源码改了不构建等于没改。构建后重载页面即可（HMR 也会跟进，但重启一次最干净）。
+- **改完代码怎么生效**（2026-09-20 实测，不是猜的）：
+
+  | 改了什么 | 要做什么 |
+  |---|---|
+  | `src/client/**`（含 `shared/`） | `pnpm build` 就行，**不用重启**：`dsh-client-hmr` 在 watch 插件的 `lib/client.js`，会调 `clientModules.rebuilt(id)` 并走 SSE 让页面自己重载 |
+  | `src/host/**` | `pnpm build` + **重启服务**（宿主半边在启动时装载） |
+
+  验证方式（可复现）：改一句会进 bundle 的字符串 → `pnpm build` → 等约 5 秒 → 请求带 token 的首页，看预加载 combo URL 里的 `&rev=` 变没变（内容哈希，12 位）。实测：改 → `86ac2681f7eb` 变 `216cdfc827d9`；改回 → 变回 `86ac2681f7eb`。
+
+  **坑**：只给某个模块**加一个没人用的导出**再 build，`rev` 不会变——esbuild 的 tree-shaking 把它删了，bundle 字节没变。要探就用会进产物的字符串（这也是 `rg 中文` 搜不到 `lib/client.js` 的原因，中文被转义成 `\uXXXX`）。
