@@ -60,7 +60,15 @@
 
 ## 安装
 
-前置：Node ≥ 22、一个能用的 `dsh`（`@deepseek-ai/dsh`），以及 **pnpm**——dsh 的 `plugin add` 是转发给 pnpm 的；没有就先 `npm i -g pnpm`（`init` 会明确告诉你并**在动手之前**停下）。
+前置三样：**Node ≥ 22**、一个能用的 **`dsh`**（`@deepseek-ai/dsh`），以及 **pnpm**。
+
+pnpm 是 **dsh 的要求，不是本插件的**：`dsh plugin add` 是个薄薄的 pnpm 转发器（它自己的帮助文本原话是 "forwarding the remaining arguments to pnpm"），所以**任何 dsh 插件没有 pnpm 都装不上，npm 替不了**。没有的话：
+
+```powershell
+npm i -g pnpm                 # 或者：corepack enable pnpm（Node 自带 corepack 的话）
+```
+
+`init` 会在动任何文件之前先检查 pnpm，缺了就告诉你这句话。
 
 **平台**：目前只在 **Windows** 上做过完整验收；macOS / Linux **尚未验证**（代码里没有平台特定依赖，欢迎试用后反馈）。
 

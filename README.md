@@ -60,7 +60,15 @@ Two questions in the same conversation, on a real machine:
 
 ## Install
 
-Requires Node ≥ 22, a working `dsh` (`@deepseek-ai/dsh`), and **pnpm** — `dsh plugin add` forwards to it, so `npm i -g pnpm` first if you do not have it (the installer says so and stops before touching anything).
+Needs three things: **Node ≥ 22**, a working **`dsh`** (`@deepseek-ai/dsh`), and **pnpm**.
+
+pnpm is dsh's requirement, not this plugin's: `dsh plugin add` is a thin forwarder to pnpm (its own help text says "forwarding the remaining arguments to pnpm"), so **no dsh plugin installs without it — npm cannot stand in**. If you do not have it:
+
+```powershell
+npm i -g pnpm                 # or: corepack enable pnpm, when your Node ships corepack
+```
+
+`init` checks for pnpm before touching anything, and says this if it is missing.
 
 **Platform**: fully accepted on **Windows** only so far; macOS and Linux are **not verified yet** (no platform-specific dependency in the code — try it and tell me how it goes).
 
