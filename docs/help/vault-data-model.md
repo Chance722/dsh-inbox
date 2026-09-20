@@ -26,18 +26,25 @@ M1 定下来的东西。改这个模型 = 改领域版本号 + 写迁移，别�
 |---|---|---|
 | `kind` | `text` / `link` / `image` / `file` | 这条东西**物理上**是什么 |
 | `category` | `idea` / `article` / `media` / `image` / `document` / `secret` / `other` | 我们**怎么归类**它 |
-| `status` | `unread` / `read` | 两档；"稍后看"用标签实现，不占状态 |
+| 标记 | `watchLater?: boolean` | 唯一的进度标记「待看」，用户自己打；**域 v3 起 `status: unread/read` 作废**（它声称知道软件不可能知道的事） |
 | `source` | `panel` / `chat` / `webdav` / `import` | 从哪个口进来的 |
 
 `kind` 和 `category` 分开是刻意的：一张粘进来的图，`kind` 永远是 `image`，但 `category` 可能是 `image` 也可能是 `document`（证件）。链接同理：`kind=link`，`category` 是 `article` / `media` / `other`。平台（bilibili/wechat/zhihu/…）和来源是**标签与字段**，不是类目。
 
 ## 记录结构
 
-`items`：`id` / `kind` / `category` / `status` / `source` / `createdAt` / `updatedAt` / 可选 `title` / `text` / `url` / `platform` / `note` / `deletedAt` / `tags[]` / `attachmentIds[]`。
+`items`：`id` / `kind` / `category` / `source` / `createdAt` / `updatedAt` / 可选 `title` / `linkTitle` / `text` / `url` / `platform` / `note` / `watchLater` / `categorySource` / `deletedAt` / `tags[]` / `attachmentIds[]`。
 
-域版本 **2**（`compatibleVersions: [1]`）只为加一个可选字段 `categorySource`：记录类目是谁定的。优先级 **user > model > rule** —— 用户改过类目就标 `user`，谁也覆盖不了；规则命中的标 `rule`；将来模型兜底成功的标 `model`。版本 1 的记录缺这个字段，仍然通过校验（这正是 `compatibleVersions` 担保的东西）。
+版本演进（每次都只加可选字段，所以老记录永远还能通过校验，这正是 `compatibleVersions` 担保的东西）：
 
-- `note` 是**用户追加的描述**——按产品决策，它一旦存在就是权威分类来源，模型不许覆盖。
+| 版本 | 加了什么 | 为什么 |
+|---|---|---|
+| 2 | `categorySource` | 记录类目是谁定的。优先级 **user > model > rule**——用户改过就标 `user`，谁也覆盖不了 |
+| 3 | `watchLater` | 取代 `status: unread/read`；`待看` 标签在迁移里被摘掉 |
+| 4 | `linkTitle` | 抓来的页面标题（`<title>`）。**与 `title` 分开**：`title` 只能是用户的字（AGENTS.md 3 那条不变式），自动抓取的东西放自己的字段，两者不会互相冒充 |
+
+- `note` 是**用户追加的备注**——按产品决策，它一旦存在就是权威分类来源，模型不许覆盖；列表标题只在记录没有别的名字时才用它兜底。
+- `title`（用户命名）> `linkTitle`（抓来的页面标题）> URL / 正文 / 文件名 / 备注：这是界面取名字的顺序，规则只写在 `src/client/heading.ts`。
 - 正文和图片**不进域**，域里只放元数据 + `attachmentIds` 引用；大内容按内容哈希存文件（M2 落地）。
 
 `attachments`：`id`（我们自己生成的 UUID，**记录 key 必须路径安全**）/ `storeId`（dsh 的附件 id，形如 `sha256:<hex>`，带冒号所以不能当 key）/ `mime` / `bytes` / `createdAt` / 可选 `filename` / `width` / `height` / `sha256`（通用文件才有）。
