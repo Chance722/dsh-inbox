@@ -825,3 +825,29 @@ Mozilla/5.0 (compatible; dsh-inbox/0.1; +https://github.com/Chance722/dsh-inbox)
 **验证**：`pnpm typecheck` 干净、**18 文件 214 条**测试全绿（+13：`push.test.ts` 6 条钉住"只推变过的 / 附件只传一遍 / 一处失败不拖累其余 / 拿不到字节只报该附件 / 墓碑随记录上"；WebDAV 侧新增 5 条：PUT 的 URL·方法·认证·标识、拒绝带上服务器原话、**sync/ 守卫**、失败要带名字；S3 侧 3 条：载荷签名随字节变化、PUT 的哈希与长度、拒绝转可读错误）、`pnpm build` 通过。
 
 **还没做（下一步）**：① **拉取合并**——把别的设备推到 `sync/items` 的记录按 `id` + `updatedAt` 并进本机（现在只是跳过，不会合并，所以多设备还看不到彼此的记录）；② **远端删除**——清空回收站时删掉远端那份（现在只删本地，远端文件会留着；在①做完前不会造成复活，因为①还没接上）；③ 上次推送时间显示在设置里。另记一个已知小缺口：拉取失败的那一条会因为游标前进而**不会自动重试**，等做①时一并改成"游标只推进到最新成功条目"。
+
+#### M7 第二十五步 — 推上去的文件全是 0 字节（同日，用户发现）
+
+用户登录云盘一看：`inbox/sync/items`、`inbox/sync/attachments` 都在，**里面的文件全是 0b**，而推送一直报成功。
+
+**根因**：`src/host/webdav/run.ts` 里的 `s3Fetch` 适配器写的是 `fetch(url, { method, headers })`——**把 `init.body` 丢了**。WebDAV 那个适配器带了 body（字符串），S3 这个没有；而 `putObject` 的签名与长度头是对的，网关对"空 body 的 PUT"也返回 200，于是每个对象都被创建成 0 字节，链路上没有任何一处报错。
+
+**为什么测试没抓到**：`putObject` 的测试把 `deps.fetch` 换成了假实现，断言的是"客户端把 body 交给了 fetch"——**假的 fetch 忠实地收下了 body，问题出在假 fetch 与真 fetch 之间的那一层**。这类"适配器吞字段"的 bug，只有 stub 全局 `fetch` 才看得见。
+
+**修法与证据**：
+
+- 适配器转发 body（`Uint8Array` 在 TS 里不是结构化的 `BodyInit`，加了一次带注释的 cast——只有类型差异，运行期本来就是合法的）。
+- 新增 `test/adapters.test.ts`（3 条）：stub 全局 `fetch`，断言 S3 适配器**把字节原样送出去**、WebDAV 适配器同样、以及"写进去再读回来"的往返一致。
+- 顺手加了 **「全部重传」**（`POST /api/inbox/push {all:true}`，忽略推送游标）：正是因为这种事故——"远端的内容是错的，我知道"，需要一个不必手删同步状态的答案。
+- 自检的响应摘录 120 → 400 字符：**"key 都在、对象全是空的"正是 120 字符看不出来的东西**。
+
+**真机复验（同一只桶）**：全部重传后再列一次——
+
+```
+50085  inbox/sync/attachments/1365ff85-…
+80095  inbox/sync/attachments/6ddbeb56-…
+  337  inbox/sync/items/f1d04207-….json   …其余 6 个 277–689 字节
+    0  inbox/、inbox/sync/、inbox/sync/items/   ← 云盘自己建的目录占位对象，不是我们的
+```
+
+**验证**：`pnpm typecheck` 干净、**19 文件 217 条**测试全绿、`pnpm build` 通过。

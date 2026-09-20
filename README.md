@@ -44,7 +44,7 @@ It is created on the first write. Nothing in it is ever sent anywhere by this pl
 - **Classify** — rules first (platform and media type from the URL, secrets by pattern, images by local heuristics), with a model as fallback. Your own description always wins.
 - **Browse** — a sidebar switch that swaps the session list for your vault: categories, tags, watch-later flags, soft delete.
 - **Retrieve** — ask in conversation and get the original content back (text inline, images as thumbnails, links as title cards).
-- **Sync** — both directions as of 2026-09-20. **Push** writes this machine's records and attachments as `inbox/sync/items/<id>.json` and `inbox/sync/attachments/<id>` (the settings form has 立即同步 = push, then pull); **pull** still reads whatever you drop into the drop folder (at startup, and on demand). Pushes are incremental — only what changed since the last one — and attachments are content-addressed, so the same bytes go up once. **Only credential bodies travel encrypted**; see the privacy rules below.
+- **Sync** — both directions as of 2026-09-20. **Push** writes this machine's records and attachments as `inbox/sync/items/<id>.json` and `inbox/sync/attachments/<id>` (the settings form has 立即同步 = push, then pull, and 全部重传 = ignore the "already pushed" cursor and send everything again, for when the remote content is wrong); **pull** still reads whatever you drop into the drop folder (at startup, and on demand). Pushes are incremental — only what changed since the last one — and attachments are content-addressed, so the same bytes go up once. **Only credential bodies travel encrypted**; see the privacy rules below.
 
 ## Privacy rules this project holds itself to
 
