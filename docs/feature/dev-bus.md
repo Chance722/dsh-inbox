@@ -1,6 +1,7 @@
 # 开发总线
 
-项目：`@duoyu/dsh-inbox`
+项目：`@chance722/dsh-inbox`（2026-09-20 从 `@duoyu/dsh-inbox` 改名：npm 用户名是 `chance722`，
+`@duoyu` 那个 scope 不是我们的。**本文件与 `docs/help/index.md` 里更早的条目仍写着旧名，那是当时的事实**）
 原则：**一次只推进一个模块，每个模块有可验证的验收标准，验收记录留在本文件末尾。每个模块收尾必须同步更新 README（中英双份）的「安装 / 卸载 / 开发 / 当前可用功能」四节**——用户看的是 README，不是本文件。
 
 状态图例：`未开始` / `进行中` / `待验收` / `已验收` / `阻塞`
@@ -1129,3 +1130,27 @@ keyed `tool.call.toolview` 是**替换普通行**、以及"一轮多次调用默
 为了能测解析，`src/cli.ts` 末尾加了**"只在作为程序运行时才执行 `main`"**的守卫——否则单测一 import 就会真的去改 `~/.dsh`（这条比测试本身更重要）。
 
 **验证**：`pnpm typecheck` 干净、**28 文件 271 条**测试全绿（+5）、`pnpm build` 通过、`--help` 文案已更新、README 中英的安装段改成 A/B 两种走法。
+
+#### M8 第九步 — 包名换成 `@chance722/dsh-inbox`（同日）
+
+用户的 npm 用户名是 `chance722`，而 `@duoyu` 不是他的 scope（只读核对：`@duoyu/dsh-inbox` 未发布、`scope:duoyu` 下没有任何公开包；
+但 scope 归属只能由账号本人确认）。所以包名改成**用户名 scope** `@chance722/dsh-inbox`——用户名 scope 自动归本人，不用去建组织。
+
+**改到的地方**：`package.json`、`cordis.patch.yml`、`src/cli.ts`、`src/shared/constants.ts`（它也决定 dock tab 的 id）、`test/cli.test.ts`、
+README 中英、`AGENTS.md`、`docs/help/dev-setup.md`、`product-decisions.md`。`docs/feature/dev-bus.md` 与 `docs/help/index.md` 里**更早的条目保留旧名**
+（那是当时的事实），本文件头部加了一句说明。
+
+**顺手修掉一个"改名必踩"的坑**：`init` 原来**按包名**判断 preset 里有没有我们那行（`body.includes(PACKAGE_NAME)`）。改名之后旧名字还躺在 preset 里 ⇒
+判断成"没有" ⇒ **追加第二行**，指向一个已经解析不到的包——preset 里会同时有一行能用的和一行坏掉的（而坏的那行会让 preset 挂载失败）。
+现在改成**按 id（`dsh-inbox`）认行**：名字不一样就**改写那一行**。抽成纯函数 `ensurePresetRow()`（返回 `added` / `unchanged` / `renamed`），
+`test/cli.test.ts` 加 4 条钉住：没行→追加、同名→不动、旧名→改写且**全文仍只有一行**、以及 YAML 引号风格的容忍。
+
+**真机（本机）**：
+
+- 两个 profile 的依赖与 `dsh.profile.bundles` 都换成新名（`dsh plugin --profile <p> add <仓库>` → `remove @duoyu/dsh-inbox`；pnpm 留下的两个旧 junction 也清掉了，只删链接不碰仓库）
+- `init --profile inbox` 输出「preset 里那一行的来源从 @duoyu/dsh-inbox 改成 @chance722/dsh-inbox」；`init --profile web` 输出「已经有这个插件，跳过」（幂等）
+- preset 第 259 行现在是 `name: '@chance722/dsh-inbox'`，**只有一行**
+- 服务重启后：首页 200、客户端产物里是 `@chance722/dsh-inbox/client.js`（无旧名残留）、`/api/inbox/list` 仍返回 7 条
+- `dsh --profile inbox --dump-config` 里出现 `# == @chance722/dsh-inbox` ⇒ bundle 正常解析（不用花模型调用就能验这一层）
+
+**验证**：`pnpm typecheck` 干净、**28 文件 275 条**测试全绿（+4）。

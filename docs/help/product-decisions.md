@@ -4,12 +4,12 @@
 
 ## 定位
 
-- 公开插件：`@duoyu/dsh-inbox`，别人能像装社区插件一样安装；仓库要拿得出手（README、架构图、demo）。
+- 公开插件：`@chance722/dsh-inbox`，别人能像装社区插件一样安装；仓库要拿得出手（README、架构图、demo）。
 - v1 闭环：**粘贴 → 分类 → 侧栏列表 → 对话里取回原内容**。预览类（视频内嵌等）不做。
 
 ## 平台与装配
 
-**安装形态（2026-08-… 起的目标，2026-09-20 落地一半）**：用户侧只该记住**一条命令**——`npx @duoyu/dsh-inbox init`。它做三件事：把包装进他们的 profile、**复制** dsh 自带的 `standard` preset 到 `~/.dsh/.agent-presets/inbox/` 并把插件追加进组合（工具能进模型的唯一路径）、把**用户级默认 preset** 指过去。改用户的 `settings.yaml` 前必须**先备份**，值没变就不写。`init` 重复运行必须安全（不覆盖用户改过的 preset 文件，只补齐缺的）。
+**安装形态（2026-08-… 起的目标，2026-09-20 落地一半）**：用户侧只该记住**一条命令**——`npx @chance722/dsh-inbox init`。它做三件事：把包装进他们的 profile、**复制** dsh 自带的 `standard` preset 到 `~/.dsh/.agent-presets/inbox/` 并把插件追加进组合（工具能进模型的唯一路径）、把**用户级默认 preset** 指过去。改用户的 `settings.yaml` 前必须**先备份**，值没变就不写。`init` 重复运行必须安全（不覆盖用户改过的 preset 文件，只补齐缺的）。
 
 - 代码跨平台；**v1 只在这台 Windows 验收**，README 明写 mac/Linux 未验证。
 - 安装要自动化：装包 + 建 agent preset + 指默认，一条 `init` 完成。

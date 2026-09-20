@@ -67,18 +67,18 @@
 一条命令装好：
 
 ```powershell
-npx @duoyu/dsh-inbox init
+npx @chance722/dsh-inbox init
 ```
 
 **全新机器**（还没有 `inbox` 这个 profile）两种走法，选一个：
 
 ```powershell
 # A. 让 init 顺手建（用 dsh 自带的 web 模板）
-npx @duoyu/dsh-inbox init --create-profile
+npx @chance722/dsh-inbox init --create-profile
 
 # B. 自己建再装（--dump-config 让它创建完就退出，不启动）
 dsh --profile inbox --from-default-profile web --dump-config
-npx @duoyu/dsh-inbox init
+npx @chance722/dsh-inbox init
 ```
 
 它做三件事，重复运行是安全的：
@@ -98,11 +98,11 @@ dsh --profile inbox --no-open --port 3102
 常用选项：
 
 ```powershell
-npx @duoyu/dsh-inbox init                      # 装进 inbox profile（默认，不存在则报错）
-npx @duoyu/dsh-inbox init --create-profile     # profile 不存在就顺手建一个
-npx @duoyu/dsh-inbox init --profile web        # 装进你日常用的那个 profile
-npx @duoyu/dsh-inbox init --no-default         # 只装，不动默认 preset
-npx @duoyu/dsh-inbox init --help               # 全部选项
+npx @chance722/dsh-inbox init                      # 装进 inbox profile（默认，不存在则报错）
+npx @chance722/dsh-inbox init --create-profile     # profile 不存在就顺手建一个
+npx @chance722/dsh-inbox init --profile web        # 装进你日常用的那个 profile
+npx @chance722/dsh-inbox init --no-default         # 只装，不动默认 preset
+npx @chance722/dsh-inbox init --help               # 全部选项
 ```
 
 装进哪个 profile 只决定**面板跑在哪儿**；agent preset 全局共享（`~/.dsh/.agent-presets/inbox/`），所以装第二个 profile 时只会补上缺的那行，不会另建一份。
@@ -119,7 +119,7 @@ node lib/cli.js init --package <本仓库的绝对路径>
 
 ```powershell
 # 1. 从 profile 里摘掉（同时会从 dsh.profile.bundles 移除）
-dsh plugin --profile inbox remove @duoyu/dsh-inbox
+dsh plugin --profile inbox remove @chance722/dsh-inbox
 
 # 2. 删掉 init 建的东西
 rm -r ~/.dsh/.agent-presets/inbox      # 那个 preset 副本

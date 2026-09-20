@@ -1,6 +1,6 @@
 # 本地开发与验收流程
 
-`@duoyu/dsh-inbox` 是 dsh 插件，**必须装进一个 dsh profile 才能跑**。
+`@chance722/dsh-inbox` 是 dsh 插件，**必须装进一个 dsh profile 才能跑**。
 
 ## 当前这台机器（2026-09-20 实测，取代旧的 `C:\Users\hands\...` 记录）
 
@@ -40,7 +40,7 @@ dsh --profile inbox --no-open --port 3102
 
 **为什么第一步不能省**：`dsh plugin --profile <name>` 在 profile 还不存在时会**自动初始化**它，用的却是 `DEFAULT_PROFILE_BUNDLES = ["@deepseek-ai/dsh-base"]`——只有 base，**没有 web 应用**，起来就不是浏览器 UI。所以"先派生 web 模板、再 add 插件"这个顺序是必需的（`--from-default-profile` 遇到已存在的 profile 会直接报错，不会覆盖）。
 
-**插件是怎么挂上去的**：一个 profile 就是 `%DSH_HOME%\profiles\<name>\` 下的一个小包——`package.json` 的 `dsh.profile.bundles` 决定这个 profile 装哪些 bundle，`cordis.patch.yml` 是用户层。`plugin add` 在那个目录里把参数转发给 pnpm，把本仓库作为 **link 依赖**装进去，再把 `@duoyu/dsh-inbox` 追加进 `dsh.profile.bundles`。插件自己声明了两个半边：`dsh.bundle.patch`（宿主侧 Cordis patch，工具/存储/HTTP 路由都在这边）和 `dsh.client`（浏览器侧，`platform: web`，产物 `lib/client.js`，侧栏那个 Inbox 图标就是它长出来的）。卸载：`dsh plugin --profile inbox remove @duoyu/dsh-inbox`。
+**插件是怎么挂上去的**：一个 profile 就是 `%DSH_HOME%\profiles\<name>\` 下的一个小包——`package.json` 的 `dsh.profile.bundles` 决定这个 profile 装哪些 bundle，`cordis.patch.yml` 是用户层。`plugin add` 在那个目录里把参数转发给 pnpm，把本仓库作为 **link 依赖**装进去，再把 `@chance722/dsh-inbox` 追加进 `dsh.profile.bundles`。插件自己声明了两个半边：`dsh.bundle.patch`（宿主侧 Cordis patch，工具/存储/HTTP 路由都在这边）和 `dsh.client`（浏览器侧，`platform: web`，产物 `lib/client.js`，侧栏那个 Inbox 图标就是它长出来的）。卸载：`dsh plugin --profile inbox remove @chance722/dsh-inbox`。
 
 ## 起服务前后常踩的三件事
 
@@ -85,7 +85,7 @@ dsh --profile inbox-check "调用 inbox_status 工具，把它的原始结果原
 
 ```yaml
 - id: dsh-inbox
-  name: '@duoyu/dsh-inbox'
+  name: '@chance722/dsh-inbox'
 ```
 
 加完 preset 要**重启 dsh**（preset 在启动时扫描）。会话只有为空时才能切 preset。
@@ -104,5 +104,5 @@ dsh --profile inbox-check "调用 inbox_status 工具，把它的原始结果原
 
   **坑**：只给某个模块**加一个没人用的导出**再 build，`rev` 不会变——esbuild 的 tree-shaking 把它删了，bundle 字节没变。要探就用会进产物的字符串（这也是 `rg 中文` 搜不到 `lib/client.js` 的原因，中文被转义成 `\uXXXX`）。
 
-- **开发期间不需要重装插件**：profile 里的 `node_modules/@duoyu/dsh-inbox` 是指回仓库的 **junction**（`dsh plugin add <仓库路径>` 装的就是这个链接，实测 `Get-FileHash` 两边一致），
+- **开发期间不需要重装插件**：profile 里的 `node_modules/@chance722/dsh-inbox` 是指回仓库的 **junction**（`dsh plugin add <仓库路径>` 装的就是这个链接，实测 `Get-FileHash` 两边一致），
   `pnpm build` 改的就是它读的那份产物。只有换机器、换 profile、或改了 `package.json` 里的 `dsh.bundle` / `dsh.client` 声明时才需要再跑一次 `node lib/cli.js init --package <仓库路径>`（可重复运行）。

@@ -67,18 +67,18 @@ Requires Node ≥ 22 and a working `dsh` (`@deepseek-ai/dsh`).
 One command installs it:
 
 ```powershell
-npx @duoyu/dsh-inbox init
+npx @chance722/dsh-inbox init
 ```
 
 **On a fresh machine** (no `inbox` profile yet) either of these works:
 
 ```powershell
 # A. let init create it, using dsh's own web template
-npx @duoyu/dsh-inbox init --create-profile
+npx @chance722/dsh-inbox init --create-profile
 
 # B. create it yourself, then install (--dump-config creates and exits)
 dsh --profile inbox --from-default-profile web --dump-config
-npx @duoyu/dsh-inbox init
+npx @chance722/dsh-inbox init
 ```
 
 It does three things, and running it twice is safe:
@@ -98,11 +98,11 @@ Open the printed URL (it carries a token). The Inbox panel is in the left rail; 
 Useful flags:
 
 ```powershell
-npx @duoyu/dsh-inbox init                      # into the inbox profile (default; refuses if it is missing)
-npx @duoyu/dsh-inbox init --create-profile     # create that profile when it is missing
-npx @duoyu/dsh-inbox init --profile web        # into the profile you already use
-npx @duoyu/dsh-inbox init --no-default         # install only, leave the default preset alone
-npx @duoyu/dsh-inbox init --help               # every flag
+npx @chance722/dsh-inbox init                      # into the inbox profile (default; refuses if it is missing)
+npx @chance722/dsh-inbox init --create-profile     # create that profile when it is missing
+npx @chance722/dsh-inbox init --profile web        # into the profile you already use
+npx @chance722/dsh-inbox init --no-default         # install only, leave the default preset alone
+npx @chance722/dsh-inbox init --help               # every flag
 ```
 
 Which profile you install into only decides **where the panel runs**. The agent preset is shared by every profile (`~/.dsh/.agent-presets/inbox/`), so installing into a second profile just fills in the missing row.
@@ -119,7 +119,7 @@ node lib/cli.js init --package <absolute path to this repo>
 
 ```powershell
 # 1. remove the package from the profile (also drops it from dsh.profile.bundles)
-dsh plugin --profile inbox remove @duoyu/dsh-inbox
+dsh plugin --profile inbox remove @chance722/dsh-inbox
 
 # 2. delete what init created
 rm -r ~/.dsh/.agent-presets/inbox      # the preset copy
