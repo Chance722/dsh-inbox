@@ -13,8 +13,9 @@ A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/de
 | ✅ Sidebar entry | An **Inbox** row appears under *Global panels*; clicking it swaps the main area to the plugin's page |
 | ✅ Tool reaches the model | `inbox_status` reports whether the vault is open and how many records it holds |
 | ✅ Two ways to capture | `/inbox <text or link>` in the composer (attach images to carry them along), or paste/drop/pick inside the panel |
-| ✅ Browse and manage | Filter by watch-later / category / tag, search across title, text, url and note, switch the list between two densities (two columns / compact), open a record's detail with image thumbnails, edit its category, description and tags, flag it watch-later |
+| ✅ Browse and manage | Filter by watch-later / category / tag, search across title, text, url and note, switch the list between two densities (two columns / compact), open a record's detail with image thumbnails, edit its **name**, category, description and tags, flag it watch-later |
 | ✅ Recycle bin | Delete is a soft delete; restore from the bin, or empty it to remove the records for good. Filing the same thing again also brings it back out |
+| ✅ Everything has a name | A photo or a file is named by the **file name it arrived with** (`IMG_20260918.jpg`), and with your description that reads `IMG_20260918.jpg（身份证正面）`. Rename it in the detail pane; emptying the field hands the heading back to the file name |
 | ✅ Storage and merging | Records persist through dsh's own storage stack; a repeat paste merges into the record you already have |
 | ✅ Ask in conversation | `inbox_search` finds records by words, category, tag, watch-later flag or kind; `inbox_get` opens one by id (text up to 1000 characters, links, notes, tags, attachment facts) |
 | 🔒 What never happens | A credential record never returns its text, and image bytes never enter the **conversation** — images come back as markers the UI renders locally. (Classification may send a picture to the model; that is a deliberate, capped choice — see below.) |

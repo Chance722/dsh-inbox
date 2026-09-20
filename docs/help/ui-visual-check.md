@@ -85,3 +85,10 @@ Start-Process -FilePath $chrome -ArgumentList $args -Wait -NoNewWindow
 | toast | `top:50%` + `translate(-50%,-50%)`，距视口中心 X/Y**都是 0**；`pointer-events: none` |
 | 列表标题 | 一行装得下：`flex / center / space-between / gap 8` 的行里「图片 · 待看」量到 70.5px（这是文案改动，量它只为证明窄列里不会折行） |
 | 一次性镜像页 | `.research/ui-check/index.html`（含 `?clean=1` 隐藏报告行，方便出图）；本轮样式值逐条抄自当轮 `src/client/index.tsx` |
+
+## 2026-09-20（M7.17）新增基线
+
+| 项 | 实测 |
+|---|---|
+| 详情表单 | 名称 / 类目 / 描述三个控件**都是 354px**（380 − 2×12 内边距 − 2×1 边框），名称输入框高 **34.39**，与工具栏控件同高（同一个 `calc(1.6em + 12px)`） |
+| 镜像页 | 加了 `#pane-card`（380px 卡片 + 三个控件）与 `detailForm` 量测项，专门盯"新字段有没有和别的控件对齐" |
