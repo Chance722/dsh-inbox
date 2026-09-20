@@ -396,6 +396,17 @@ function main(argv: readonly string[]): number {
   const profile = choice.profile
   const chosen = choice.label.length === 0 ? '' : `（${choice.label}）`
   const profileDir = join(home, 'profiles', profile)
+
+  /*
+    Refuse before touching anything, rather than after ⓪ has already made a
+    profile: a machine without pnpm cannot get any further, and the raw
+    "'pnpm' 不是内部或外部命令" that dsh forwards upward reads like our bug.
+  */
+  if (!hasPnpm()) {
+    process.stderr.write(missingPnpmMessage(profile, options.source))
+    return 1
+  }
+
   if (!existsSync(join(profileDir, 'package.json'))) {
     /*
       A missing profile is the one thing that turns "one command" into two, and
@@ -518,6 +529,43 @@ export function profileCreationAttempts(profile: string): readonly (readonly str
     ['--profile', profile, '--from-default-profile', 'web', '--dump-config'],
     ['--profile', profile, '--dump-config'],
   ]
+}
+
+/**
+ * Whether `pnpm` can be run at all.
+ *
+ * `dsh plugin add` forwards to pnpm — dsh's choice, not ours — so a machine
+ * without pnpm cannot install a plugin, full stop. Measured 2026-09-20 on a
+ * machine that publishes with npm: the failure surfaced as cmd's
+ * `'pnpm' 不是内部或外部命令,也不是可运行的程序` *after* ⓪ had already created the
+ * profile, which reads like the installer itself is broken. Ask first instead.
+ *
+ * @returns true when `pnpm --version` answers.
+ */
+function hasPnpm(): boolean {
+  const probe = spawnSync('pnpm', ['--version'], {
+    shell: process.platform === 'win32',
+    stdio: 'ignore',
+  })
+  return probe.error === undefined && probe.status === 0
+}
+
+/**
+ * What to say when there is no pnpm to hand.
+ *
+ * Exported because the wording is the whole value here: the point is that the
+ * reader can act on it without knowing which part of the chain wanted pnpm.
+ *
+ * @param profile - the profile that was about to receive the plugin.
+ * @param source - the package (or path) that was about to be installed.
+ * @returns the message, ending in the command to run by hand.
+ */
+export function missingPnpmMessage(profile: string, source: string): string {
+  return (
+    '装插件需要 pnpm：dsh 的 `plugin add` 是转发给 pnpm 的（不是本命令的选择）。\n' +
+    '先装一个再重跑：npm i -g pnpm    （或者：corepack enable pnpm）\n' +
+    `手动等价命令：dsh plugin --profile ${profile} add ${source}\n`
+  )
 }
 
 /** Create a missing profile, telling dsh to initialise the profile and exit. */

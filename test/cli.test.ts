@@ -21,6 +21,7 @@ import {
   ensurePresetRow,
   isEntryPoint,
   listProfiles,
+  missingPnpmMessage,
   parse,
   profileCreationAttempts,
 } from '../src/cli.js'
@@ -174,6 +175,18 @@ describe('creating a missing profile', () => {
       'web',
       '--dump-config',
     ])
+  })
+})
+
+describe('a machine without pnpm', () => {
+  it('says what is missing, why, and how to fix it', () => {
+    // dsh's `plugin add` forwards to pnpm, so the raw failure is cmd's
+    // "'pnpm' is not recognized" arriving after the profile was made. The
+    // message has to stand on its own: what, why, and the command to run.
+    const message = missingPnpmMessage('web', '@chance722/dsh-inbox')
+    expect(message).toContain('pnpm')
+    expect(message).toContain('npm i -g pnpm')
+    expect(message).toContain('dsh plugin --profile web add @chance722/dsh-inbox')
   })
 })
 

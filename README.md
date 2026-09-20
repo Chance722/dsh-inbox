@@ -60,7 +60,7 @@ Two questions in the same conversation, on a real machine:
 
 ## Install
 
-Requires Node ≥ 22 and a working `dsh` (`@deepseek-ai/dsh`).
+Requires Node ≥ 22, a working `dsh` (`@deepseek-ai/dsh`), and **pnpm** — `dsh plugin add` forwards to it, so `npm i -g pnpm` first if you do not have it (the installer says so and stops before touching anything).
 
 **Platform**: fully accepted on **Windows** only so far; macOS and Linux are **not verified yet** (no platform-specific dependency in the code — try it and tell me how it goes).
 

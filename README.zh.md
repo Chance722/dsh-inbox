@@ -60,7 +60,7 @@
 
 ## 安装
 
-前置：Node ≥ 22，以及一个能用的 `dsh`（`@deepseek-ai/dsh`）。
+前置：Node ≥ 22、一个能用的 `dsh`（`@deepseek-ai/dsh`），以及 **pnpm**——dsh 的 `plugin add` 是转发给 pnpm 的；没有就先 `npm i -g pnpm`（`init` 会明确告诉你并**在动手之前**停下）。
 
 **平台**：目前只在 **Windows** 上做过完整验收；macOS / Linux **尚未验证**（代码里没有平台特定依赖，欢迎试用后反馈）。
 

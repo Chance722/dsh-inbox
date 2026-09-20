@@ -101,6 +101,10 @@ dsh --profile inbox-check "调用 inbox_status 工具，把它的原始结果原
   验证刚发的版本时**把版本号写死**：`dsh plugin add @chance722/dsh-inbox@<版本>`、`npx @chance722/dsh-inbox@<版本> …`。
 - **一个"新用户"演练的标准姿势**：`$env:DSH_HOME` 指到一个空目录（profiles / presets / settings 全空，等价于新机器），**不碰日常 home**；
   起服务时换端口（`dsh web --no-open --port 3103`）；web UI 建会话要先有工作区（临时 home 是空的，添加工作区会弹原生目录框，得手点一次）。
+- **`dsh plugin add` 需要 PATH 上有 pnpm**（2026-09-20 用户实测）：它在 dsh 内部转发给 pnpm，没装 pnpm 的机器会以 cmd 原文报
+  `'pnpm' 不是内部或外部命令,也不是可运行的程序`——看着像插件的问题，其实是环境缺件。装 `npm i -g pnpm`（或 `corepack enable pnpm`）即可；
+  0.2.2 起 `init` 会**先检查再动手**，并给出这句话。注意 Codex 自己的运行时里那份 pnpm（`.cache\codex-runtimes\...`）**不在用户 PATH 上**，
+  所以在沙箱里"跑得通"不代表用户机器上跑得通。
 
 - **构建**：早先的记录写着"esbuild spawn 子进程，沙箱里必 `EPERM`，要提权"。2026-09-20 在这台机器上**沙箱内直接 `pnpm build` 就过了**（`pnpm install` 也过，pnpm 把 store 落在仓库内 `.pnpm-store/`，未跟踪、未 gitignore）。所以先按普通方式跑，真报 `EPERM` 再提权。
 - **改完代码怎么生效**（2026-09-20 实测，不是猜的）：
