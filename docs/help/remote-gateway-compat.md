@@ -17,7 +17,7 @@
    - **匹配是"包含 + 不分大小写"**：`Zotero`、`Zotero/7.0.11`、`zotero/7.0.11`、`Mozilla/5.0 … Zotero/7.0.11` 全部通过，`Obsidian/1.8.7` 全部被拒。填"应用名"最省事，带版本号也行。
 2. **必须 path-style，且 `x-amz-content-sha256` 要在签名头里**。region 网关似乎不校验：`us-east-1` / `cn-north-1` / `cn-northwest-1` 都能 200；但**只签 `host` + `x-amz-date` 的"精简 v4"一定 401**，而 `UNSIGNED-PAYLOAD` 可以。
 3. **不支持 SigV2**：v2 请求得到 **500** `{"msg":"未知运行时异常","code":500}`（网关内部炸了，不是规规矩矩的 S3 错误）。
-4. **S3 桶 == WebDAV 根**：`PROPFIND /dav/` 列出的就是 bucket 根下的对象（`/dav/duoyu-inbox/` 反而 404）；同一份存储两个门都能进。**WebDAV 门的用户名/密码就是 AccessKey ID / Secret**（控制台里另设的 WebDAV 账号在实测中一律 403）。
+4. **S3 桶 == WebDAV 根**：`PROPFIND /dav/` 列出的就是 bucket 根下的对象（`/dav/<我的桶>/` 反而 404）；同一份存储两个门都能进。**WebDAV 门的用户名/密码就是 AccessKey ID / Secret**（控制台里另设的 WebDAV 账号在实测中一律 403）。
 
 ## 标识跟着凭证走（2026-09-19 追加实测）
 
@@ -67,7 +67,7 @@ npm install @aws-sdk/client-s3 @smithy/signature-v4 @smithy/protocol-http @aws-c
 
 | 请求 | 结果 |
 |---|---|
-| `GET https://s3.cstcloud.cn/duoyu-inbox?list-type=2`，**匿名** | 401，空 body |
+| `GET https://s3.cstcloud.cn/<我的桶>?list-type=2`，**匿名** | 401，空 body |
 | 同上，伪造 `Authorization`（假 AK + 假签名） | 401，空 body |
 | 同上，完整 v4（自带实现），us-east-1 | 401 |
 | 同上，完整 v4，cn-north-1 / cn-northwest-1 | 401 |
@@ -75,11 +75,11 @@ npm install @aws-sdk/client-s3 @smithy/signature-v4 @smithy/protocol-http @aws-c
 | 同上，v2 | 500 `{"msg":"未知运行时异常","code":500}` |
 | 同上，官方 SDK v3（`us-east-1`、`forcePathStyle`） | 401 |
 | 同上，官方签名 + `User-Agent: aws-sdk-js/3.1135.0` | 401 |
-| 同上，官方签名 + `User-Agent: Obsidian/1.8.7` | **200** + `ListBucketResult`（1 个对象 `IMG_9270.jpg`） |
-| `PROPFIND /dav/`，Basic = `chance722:<密码>`，任意 UA | 403 `Client type mismatch.` |
+| 同上，官方签名 + `User-Agent: Obsidian/1.8.7` | **200** + `ListBucketResult`（1 个对象 `IMG_0001.jpg`） |
+| `PROPFIND /dav/`，Basic = `<账号>:<密码>`，任意 UA | 403 `Client type mismatch.` |
 | `PROPFIND /dav/`，Basic = `<AccessKeyID>:<Secret>`，UA `curl/8.x` | 403 `Client type mismatch.` |
-| `PROPFIND /dav/`，Basic = `<AccessKeyID>:<Secret>`，UA `Obsidian/1.8.7` | **207** + 列目录（同一张 `IMG_9270.jpg`） |
-| `PROPFIND /dav/duoyu-inbox/`，同上凭证 | 404（桶名不在 WebDAV 路径里） |
+| `PROPFIND /dav/`，Basic = `<AccessKeyID>:<Secret>`，UA `Obsidian/1.8.7` | **207** + 列目录（同一张 `IMG_0001.jpg`） |
+| `PROPFIND /dav/<我的桶>/`，同上凭证 | 404（桶名不在 WebDAV 路径里） |
 | 用户自己的 WebDAV 账号（绑 `Zotero`）+ UA 含 `Zotero` | **207**，同一份目录 |
 | 用户自己的 WebDAV 账号 + UA 含 `Obsidian` | 403 `Client type mismatch.` |
 

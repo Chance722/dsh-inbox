@@ -1,0 +1,17 @@
+// Declarations for the published package.
+//
+// The main tsconfig has `noEmit` and includes the tests; this one compiles only
+// `src`, flattens the output into `lib/types/` (so `./lib/types/host/index.d.ts`
+// is the host entry's declaration), and exists because `package.json` promises
+// types that the plain build never produced.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": ["src"]
+}

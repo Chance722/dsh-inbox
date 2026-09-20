@@ -230,7 +230,7 @@ describe('pushOnce', () => {
         bytes: 50085,
         width: 3024,
         height: 4032,
-        filename: 'IMG_9270.jpg',
+        filename: 'IMG_0001.jpg',
       })
       const filed = await vault.create({
         kind: 'image',
@@ -256,7 +256,7 @@ describe('pushOnce', () => {
       expect(text).toContain('类型：图片')
       expect(text).toContain('待看：是')
       expect(text).toContain(`attachments/${attachment.id}.jpg`)
-      expect(text).toContain('原名 IMG_9270.jpg')
+      expect(text).toContain('原名 IMG_0001.jpg')
       // Readable means readable: no JSON envelope in the file a person opens.
       expect(text).not.toContain('dsh-inbox-item/1')
     })

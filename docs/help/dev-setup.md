@@ -7,7 +7,7 @@
 | 项 | 值 |
 |---|---|
 | 仓库 | `D:\Workspace\dsh-inbox` |
-| `DSH_HOME` | `C:\Users\chengjialong\.dsh`（profiles / storages / sessions 都在这里） |
+| `DSH_HOME` | `%DSH_HOME%`（profiles / storages / sessions 都在这里） |
 | Node | `v22.22.2`，即 `C:\nvm4w\nodejs\node.exe`（机器级 `NVM_SYMLINK=C:\nvm4w\nodejs`） |
 | dsh CLI | `0.1.5-rc.2`，npm 全局装在 `C:\nvm4w\nodejs\node_modules\@deepseek-ai\dsh`；`dsh` / `dsh.cmd` / `dsh.ps1` 落在 `C:\nvm4w\nodejs` ⇒ **已经在 PATH 上**，直接敲 `dsh` |
 | PATH 没配好时 | `node C:\nvm4w\nodejs\node_modules\@deepseek-ai\dsh\lib\bin.js <参数>` |
@@ -70,7 +70,7 @@ dsh --profile inbox-m0 "Call the inbox_status tool and paste its raw result."
 
 ## 在 web 里验证需要 agent preset
 
-用户级 preset 根：`C:\Users\chengjialong\.dsh\.agent-presets\<preset-id>\`（**当前这台机器上这个目录还不存在**，要自己建），两个文件：
+用户级 preset 根：`%DSH_HOME%\.agent-presets\<preset-id>\`（**当前这台机器上这个目录还不存在**，要自己建），两个文件：
 
 - `preset.yml` —— `name` / `description` / `order`
 - `agent.cordis.yml` —— 组合；把 `profiles\node_modules\@deepseek-ai\dsh-agent-presets\presets\standard\` 整个复制过来，再追加自己的行：

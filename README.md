@@ -2,11 +2,11 @@
 
 English | [中文](README.zh.md)
 
-> **Status: pre-alpha — M0–M6 done, M7 (UI) in progress.** File things two ways, browse and manage them in the panel, ask for them in conversation, **arrive already classified** (rules first, a capped `deepseek-flash` pass for the rest), and **let another device drop things in over WebDAV or S3**. M7 puts the vault in the right-hand dock as well and rebuilds the main management page (pagination included); packaging and one-command install move to M8. Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
+> **Status: pre-alpha — M0–M7 done, M8 (packaging and one-command install) in progress.** File things two ways, browse and manage them in the panel, ask for them in conversation, have them arrive already classified (rules first, a capped `deepseek-flash` pass for the rest), **credentials encrypted at rest**, and **two-way sync with a cloud drive** (push, pull, merge and delete all work). Progress and acceptance records live in the [development bus](docs/feature/dev-bus.md).
 
 A personal inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`): paste links, images, text and credentials into one local vault, get them classified, browse them from the sidebar, and pull them back through conversation.
 
-## What works today (M6)
+## What works today
 
 | | |
 |---|---|

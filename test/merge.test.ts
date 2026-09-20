@@ -156,7 +156,7 @@ describe('mergeOnce', () => {
           id: attachmentId,
           mime: 'image/jpeg',
           bytes: 3,
-          filename: 'IMG_9270.jpg',
+          filename: 'IMG_0001.jpg',
           width: 3024,
           height: 4032,
           createdAt: '2026-09-20T04:00:00.000Z',
@@ -169,7 +169,7 @@ describe('mergeOnce', () => {
 
     expect(outcome).toMatchObject({ merged: 1, attachments: 1 })
     const row = vault.getAttachment(attachmentId)
-    expect(row).toMatchObject({ mime: 'image/jpeg', filename: 'IMG_9270.jpg', width: 3024, height: 4032 })
+    expect(row).toMatchObject({ mime: 'image/jpeg', filename: 'IMG_0001.jpg', width: 3024, height: 4032 })
     // The store id is this machine's, the row id is the one the record points at.
     expect(row?.storeId).toBe('sha256:image/jpeg:3')
   })

@@ -278,8 +278,8 @@ const PLATFORM = {
 
 let RECORDS = [
   { id: 'r1', kind: 'link', category: 'media', catSource: 'rule', platform: 'bilibili', title: '十分钟讲清 HTTP/3 与 QUIC', url: 'https://www.bilibili.com/video/BV1yy411c7mE', status: 'unread', source: 'panel', tags: ['待看'], at: '2026-09-19 17:00', note: '先看这个，比书里讲得清楚', duration: '12:41' },
-  { id: 'r2', kind: 'image', category: 'document', catSource: 'rule', title: '', status: 'unread', source: 'webdav', tags: ['疑似证件'], at: '2026-09-19 16:41', att: 'IMG_9270.jpg · 1280×1708 · 278 KB', shot: true, note: '模型说像证件，我确认一下' },
-  { id: 'r3', kind: 'text', category: 'secret', catSource: 'rule', title: '', text: 'secretId=AKIAXWOIMIATPKRL5MXQ\nsecretKey=M********YE', status: 'unread', source: 'panel', tags: [], at: '2026-09-19 16:22', note: '数据胶囊 Obsidian 那把钥匙' },
+  { id: 'r2', kind: 'image', category: 'document', catSource: 'rule', title: '', status: 'unread', source: 'webdav', tags: ['疑似证件'], at: '2026-09-19 16:41', att: 'IMG_0001.jpg · 1280×1708 · 278 KB', shot: true, note: '模型说像证件，我确认一下' },
+  { id: 'r3', kind: 'text', category: 'secret', catSource: 'rule', title: '', text: 'secretId=AKIDEXAMPLEEXAMPLE\nsecretKey=M********YE', status: 'unread', source: 'panel', tags: [], at: '2026-09-19 16:22', note: '数据胶囊 Obsidian 那把钥匙' },
   { id: 'r4', kind: 'link', category: 'article', catSource: 'rule', platform: 'wechat', title: '为什么你的缓存策略总是出错', url: 'https://mp.weixin.qq.com/s/abc123', status: 'unread', source: 'chat', tags: ['缓存'], at: '2026-09-19 14:43' },
   { id: 'r5', kind: 'text', category: 'idea', catSource: 'rule', title: '', text: '记得下个月把域名续费，顺便看看有没有更便宜的方案', status: 'unread', source: 'panel', tags: [], at: '2026-09-19 14:45' },
   { id: 'r6', kind: 'text', category: 'idea', catSource: 'user', title: '', text: '下周三之前把上个月的发票报销掉，别忘了带抬头', status: 'unread', source: 'panel', tags: [], at: '2026-09-19 14:42' },
@@ -549,17 +549,17 @@ function settingsHTML() {
         ${row('客户端标识', state.protocol === 's3' ? 'Obsidian' : 'Zotero', 'text', '留空即 dsh-inbox；有些网关按它认人')}
         ${state.protocol === 's3'
           ? `${row('接入点', 's3.cstcloud.cn', 'text', '不写协议默认 https')}
-             ${row('Bucket', 'duoyu-inbox')}
+             ${row('Bucket', '<我的桶>')}
              <div class="fld"><span>签名</span>
                <select><option>v4</option><option>v2</option></select>
                <input value="us-east-1" style="flex:0 1 130px" />
              </div>
-             ${row('AccessKey ID', 'AKIAXWOIMIATPKRL5MXQ')}
+             ${row('AccessKey ID', 'AKIDEXAMPLEEXAMPLE')}
              ${row('Secret', '', 'password', '已存（留空则不改）')}
              <div class="note">目录一栏同时是 S3 的 key 前缀（默认 /inbox）。</div>`
           : `${row('地址', 'https://data.cstcloud.cn/dav')}
              ${row('目录', '/')}
-             ${row('用户名', 'chance722')}
+             ${row('用户名', '<账号>')}
              ${row('密码', '', 'password', '已存（留空则不改）')}`}
         <div class="note">${icon('lock', 12)} 密码与密钥进 dsh 的凭证库，不写进配置；客户端标识按协议各存一份。</div>
       </div>

@@ -58,7 +58,7 @@ describe('removeWith', () => {
 
     await removeWith(writer, 'inbox/sync', {
       itemIds: [],
-      attachments: [attachment({ filename: 'IMG_9270.jpg' })],
+      attachments: [attachment({ filename: 'IMG_0001.jpg' })],
     })
 
     expect(writer.gone.sort()).toEqual([

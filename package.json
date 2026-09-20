@@ -3,13 +3,32 @@
   "version": "0.1.0",
   "private": false,
   "description": "Personal paste inbox for DeepSeek Harness (dsh): capture, classify, browse and retrieve.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "inbox",
+    "clipboard",
+    "vault"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chance722/dsh-inbox.git"
+  },
+  "homepage": "https://github.com/Chance722/dsh-inbox#readme",
+  "bugs": {
+    "url": "https://github.com/Chance722/dsh-inbox/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "license": "MIT",
   "main": "lib/index.js",
-  "types": "lib/types/index.d.ts",
+  "types": "lib/types/host/index.d.ts",
   "exports": {
     ".": {
-      "types": "./lib/types/index.d.ts",
+      "types": "./lib/types/host/index.d.ts",
       "default": "./lib/index.js"
     },
     "./client": {
@@ -42,7 +61,7 @@
     }
   },
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "build": "node scripts/build.mjs && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
