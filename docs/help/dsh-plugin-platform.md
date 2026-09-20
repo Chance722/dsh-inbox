@@ -268,3 +268,33 @@ const rev  = info.tab.navigation.revision // 每次导航 +1，参数没变也�
 但 dsh 默认把**一轮里的多次调用折叠成一行「N 次工具调用」**，用户不展开就看不到卡片，更看不到卡片里的按钮。
 2026-09-20 用户就是照这个报的「返回里没有可点入口」。查过 `ui-conversation` 的产物，**没有**"默认展开工具调用"的偏好项，
 所以这条只能写进使用手册（第 6 节「点开看」）与 README，而不是做成设置。
+
+## 客户端本地化：官方已经有 locale 服务，别自己造开关（2026-09-20 实读官方包）
+
+**结论：接 `@deepseek-ai/dsh-client-locale`，不要自己写「中/EN」切换。**
+证据：`~/.dsh/profiles/node_modules/@deepseek-ai/dsh-client-locale`（junction 指向 nvm 下的 dsh 安装目录）
+的 `package.json` / `README.md` / `README.zh.md`（版本 `0.1.5-rc.2`，与我们的 peer 区间一致）。
+
+- **用户侧**：语言在 **设置 → 常规** 里切换，内置 `English` / `中文` 两种；loopback 页面把选择持久化到
+  `$DSH_HOME/settings.yaml`，非 loopback 页面只在当前进程有效。没有显式偏好时按 `navigator.languages`
+  （先整标签、再主子标签）匹配已注册语言，**兜底 English**，切换立即生效。
+- **宿主会写 `<html lang>`**（指向生效 locale 的文档标签）⇒ 插件读它就能跟宿主走——和 `src/client/scheme.ts`
+  读 `color-scheme` 是同一个套路，可以放在同一个 effect 里。
+- **插件侧**：客户端半边 `export const inject = ['locale']`；词典按**类型化命名空间**注册
+  `ctx.locale.register(ns, { zh, en })`（官方编译器要求两个内置 locale 键齐全），消费方用 `ctx.locale.bind(ns)`
+  或 slot 渲染时注入的 `t` 席位。**经 slot 渲染的文案随切换实时更新**（不用重挂载）；注册期捕获的文案
+  （例如命令注册表里的描述）会冻在注册时的语言。
+- **外力语言包**：`ctx.locale.addLanguage({ id, label, fallback })` + 逐 locale 的 `register(ns, lang, {...})`，
+  要作为 owned effect 注册；id 必须是非空 ASCII BCP 47 风格标签，fallback 链必须终止于 `en`。
+- **官方有自己的门禁**：仓库里有 `verify-client-ui-i18n`，要求客户端 UI 文案只能来自这些词典或已本地化的
+  primitive prop——也就是说"客户端里手写中文字面量"在官方那边是会被拦下来的写法。
+- **语言包不负责的东西**：复数规则、RTL 布局。这两样要语言包自己解决。
+- **我们的现状（2026-09-20）**：`src/client/**` 全是硬编码中文（`index.tsx` 里 184 行含中日韩字符，
+  `dock.tsx` + `manual.tsx` + `vocabulary.ts` 另 97 行），**没接 locale** ⇒ 把 dsh 切成英文的用户看到的是
+  "英文的 dsh + 中文的收件箱面板"。
+- **两层语言要分开想**：工具描述与工具返回值进的是**模型上下文**，不归 locale 管（现在是"描述英文、返回值中文"）；
+  面板文案是浏览器 UI，归 locale 管。改的时候别混成一个决定。
+
+**接之前先做小 spike**（rc 期 API 会变）：我们的客户端 bundle 能否 require 到它（`package.json` 的
+`dsh.client.inject` 要加这一条，和现有的 connection/ui-layout/ui-sidebar 并列）、`t` 席位在我们自己的
+slot 注册里是否可用、以及 `ctx.effect` 的释放是否按官方样例走。
