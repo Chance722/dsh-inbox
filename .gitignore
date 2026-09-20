@@ -14,3 +14,7 @@ coverage/
 *.log
 .DS_Store
 Thumbs.db
+
+# Anything holding a registry token: `.npmrc` is a credential file, and this
+# repository is public.
+.npmrc
