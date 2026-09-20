@@ -99,6 +99,21 @@ window.__ModuleLoader__.load({
 - `web_search`：代价是每次搜索等于一次完整模型请求。
 - `present`：把文件声明为交付物，出回合尾卡片（`dsh-tool-present`）。
 
+## 工作区指令是自动注入的，写 AGENTS.md 就会进这台机器上的每一个会话（2026-09-20）
+
+`@deepseek-ai/dsh-agent-instructions` 在 `dsh-base` 里**默认启用**（预算 65536 字节），它在**第一次请求**时注入一条持久基线消息：
+先用户全局 `$DSH_HOME/AGENTS.md`，再按"从宽泛到具体"注入**项目指令链**——从项目根（`.git` 标记）到**会话工作目录**的每一层里
+现存的 `AGENTS.md` / `CLAUDE.md`（内容相同只渲染一次），外加 `AGENTS.local.md` / `CLAUDE.local.md` overlay；
+会话里成功 `read`/`write` 到更深目录后，下一次请求会带上新适用的文件。证据：`dsh/node_modules/@deepseek-ai/dsh-agent-instructions/README.zh.md`。
+
+**为什么值得记**：这等于"仓库里的 AGENTS.md 会出现在**任何人**用 dsh 打开这个目录时的会话里"，包括**日常使用**而不是开发——
+实测：用户在自己的 inbox 会话里问「有哪些没看的链接」，助手查完数据后主动附上了本仓库 AGENTS.md 要求的
+「本轮参考了哪些 docs」声明，还为此在推理里纠结了一轮"这算不算任务执行类回复"。
+
+所以写规则时要把适用面说清楚（现在 AGENTS.md 那条已改成"只在动过本仓库的回合"），别指望模型自己判断"这是开发还是使用"。
+要彻底不注入，三条路：**换个不是 git 仓库的工作目录开会话**、在该 profile 里给这一行调 `instructionFileCandidates`、
+或按 profile 禁用这个插件行。
+
 ## M0 实测补充（2026-09-19，骨架 spike 亲测）
 
 以下每一条都是踩过之后写下来的，不是读文档推断的。
