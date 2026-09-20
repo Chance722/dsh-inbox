@@ -83,27 +83,43 @@ For the details — what each name means, why a record lands twice, the encrypti
 
 ## Install
 
-> Not on npm yet — that lands in M7 (`npx @duoyu/dsh-inbox init`). Until then, install from a local checkout.
+Prerequisites: Node ≥ 22, and a working `dsh` (`@deepseek-ai/dsh`).
+
+**One command installs it** (package, agent preset and default, all of it):
 
 ```powershell
-# 1. build the plugin
-git clone <this repo> dsh-inbox ; cd dsh-inbox
-pnpm install
-pnpm build
+npx @duoyu/dsh-inbox init
+```
 
-# 2. create an isolated profile (skip if it already exists)
-dsh --profile inbox --from-default-profile web
+It does three things, and running it twice is safe:
 
-# 3. mount the plugin — this also appends it to the profile's dsh.profile.bundles
-dsh plugin --profile inbox add <absolute path to this repo>
+1. installs the plugin into a profile (`inbox` by default; if that profile does not exist it tells you how to create one)
+2. copies dsh's shipped `standard` preset into `~/.dsh/.agent-presets/inbox/` and appends this plugin to its composition — **this is the step that decides whether the assistant can see the inbox tools**
+3. points the user-level default preset at it (backing up `~/.dsh/settings.yaml` first)
 
-# 4. run it
+Then restart dsh and open a new session:
+
+```powershell
 dsh --profile inbox --no-open --port 3102
 ```
 
-Open the printed URL (it carries a token). Your daily `dsh web` profile is not touched.
+Open the printed URL (it carries a token). The Inbox panel is in the left rail; in a new session, ask "what links in my inbox haven't I read yet?" and the assistant will look it up. **Your daily `dsh web` profile is not touched** — the plugin lives in `inbox`; only the default preset changes (standard + this plugin; see Uninstall to put it back).
 
-`dsh` may not be on `PATH`; the full command with explicit Node and bin paths is in [docs/help/dev-setup.md](docs/help/dev-setup.md).
+Useful flags:
+
+```powershell
+npx @duoyu/dsh-inbox init --profile inbox      # which profile to install into
+npx @duoyu/dsh-inbox init --no-default         # install only, leave the default preset alone
+npx @duoyu/dsh-inbox init --help               # every flag
+```
+
+**From a local checkout** (development: rebuild with `pnpm build` after editing):
+
+```powershell
+git clone <this repo> dsh-inbox ; cd dsh-inbox
+pnpm install ; pnpm build
+node lib/cli.js init --package <absolute path to this repo>
+```
 
 ### Uninstall
 
@@ -111,9 +127,14 @@ Open the printed URL (it carries a token). Your daily `dsh web` profile is not t
 # 1. remove the package from the profile (also drops it from dsh.profile.bundles)
 dsh plugin --profile inbox remove @duoyu/dsh-inbox
 
-# 2. delete anything the plugin no longer needs
-rm -r ~/.dsh/profiles/inbox        # the isolated profile
-rm -r ~/.dsh/.agent-presets/inbox-m0   # only if you created the test preset
+# 2. delete what init created
+rm -r ~/.dsh/.agent-presets/inbox      # the preset copy
+# default preset: delete agent-presets.default in ~/.dsh/settings.yaml (falls back to
+# the deployment default) or set it to standard; every init left a settings.yaml.bak-*
+# backup you can restore from instead
+
+# 3. and the isolated profile, if you want it gone
+rm -r ~/.dsh/profiles/inbox
 ```
 
 **Uninstalling does not delete your vault.** If you also want the records gone:
@@ -121,6 +142,17 @@ rm -r ~/.dsh/.agent-presets/inbox-m0   # only if you created the test preset
 ```powershell
 rm -r ~/.dsh/storages/dsh_inbox
 ```
+
+### Development
+
+```powershell
+pnpm install
+pnpm build        # lib/index.js (host) + lib/client.js (panel) + lib/cli.js (init)
+pnpm typecheck
+pnpm test         # vitest
+```
+
+Client-side changes need `pnpm build` and a page reload (dsh's client-hmr reloads it for you); host-side changes need a restart. Build and acceptance details live in [docs/help/dev-setup.md](docs/help/dev-setup.md).
 
 Nothing is installed into `dsh` itself and no global state is touched, so removing the profile directory is a complete uninstall of the plugin.
 

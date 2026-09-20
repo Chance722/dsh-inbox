@@ -948,3 +948,29 @@ Mozilla/5.0 (compatible; dsh-inbox/0.1; +https://github.com/Chance722/dsh-inbox)
 **顺带查实**：这台机器上 `~/.dsh/.agent-presets` 不存在，内置 standard preset 里也没有本插件 ⇒ **用户会话里的助手目前看不到 `inbox_search` / `inbox_get`**（这正是用户问"我咋不知道这个用法"的原因）。挂 preset 属于 M8 的 `init`，要不要现在就先给他挂上，已在回复里问。
 
 **验证**：`pnpm typecheck` 干净、**23 文件 244 条**测试全绿（+3）、`pnpm build` 通过、服务 HTTP 200。
+
+#### M7 第三十三步 — M8 开了：一条命令装好（`dsh-inbox init`）（同日）
+
+用户拍板：**先做 M8**（手册文案回头再改）。M8 的验收标准是"npm 包可发布 + `init` 完成装配（装包/建 preset/指默认）+ 中英 README + 干净环境走一遍"。
+
+**这一轮做到**：
+
+- **`src/cli.ts` → `lib/cli.js`**（`bin: dsh-inbox`，`npx @duoyu/dsh-inbox init`）。三件事，**重复运行安全**：
+  1. `dsh plugin --profile <profile> add <来源>`（pnpm 幂等；profile 不存在时报错并给出创建命令）
+  2. 把 dsh 自带的 `standard` preset **复制**到 `<DSH_HOME>/.agent-presets/<id>/`，改写 `preset.yml` 的 name/description，并**追加**插件的行（`- id: dsh-inbox / name: '@duoyu/dsh-inbox'`）——这就是 AGENTS 第 2 条那条"工具必须挂进 preset"的自动化
+  3. 把**用户级默认 preset** 指过去：`settings.yaml` 里写 `agent-presets: { default: <id> }`；**动手前先备份** `settings.yaml.bak-<时间戳>`，且**内容没变就不写、不备份**（第二版才修掉"每次跑都多一个备份"）
+  - preset 来源用 `createRequire(profile/package.json).resolve('@deepseek-ai/dsh-agent-presets/package.json')` 找，带两条目录兜底（dsh 把依赖嵌套在自己 node_modules 里时也能找到）
+  - `--profile / --preset / --package / --no-default / --help`；`--package` 默认包名，本地开发传仓库路径
+- **package.json 可发布**：`private: false`、版本 `0.1.0`、`bin`、`files` 加上 `lib/cli.js`。
+- **README 中英重写「安装/卸载/开发」**：一条命令装好、那三件事逐条说明、"助手看不看得见工具取决于 preset"、本地开发路径、卸载（含"默认 preset 删掉/改回 standard、init 留的备份可以还原"）、开发命令与"客户端改动只需 build"。
+
+**真机验收（就在这台机器上按 README 走）**：
+
+- `node lib/cli.js init --profile inbox --package D:\Workspace\dsh-inbox` → ① 插件 `Already up to date` ② 复制 preset 到 `~/.dsh/.agent-presets/inbox/`、追加插件行 ③ `agent-presets.default: inbox`
+- 产物核对：preset 的 `agent.cordis.yml` 末尾有我们的两行、`preset.yml` 改名成「收件箱（带 dsh-inbox）」、`settings.yaml` 末尾多出 `agent-presets:\n  default: inbox`（其他键原样）
+- **幂等**：再跑一次 → 「preset 已存在，只补缺失的插件行」「已经有这个插件，跳过」「默认 preset 已经是它，没改」，**没有新增备份、没有改写设置**
+- **未验证**（如实记）：没有真的开一个带 preset 的会话去让模型调工具（那要模型调用；面板与助手是两条入口）。**用户重启 dsh、开新会话问一句「我的收件箱里有哪些还没看的链接」即可确认**；这也是 M8 剩下的最后一步：在干净环境里从一个新会话跑通工具。
+
+**同时按用户意见改了手册文案**：删掉「云端长什么样」与「想全量重传」两行；第 6 节不再点名 Codex/skill、不提 M8 与 `init`，改成"在对话里直接问"+"说明这个会话没带上收件箱插件，新开一个会话再问一次"；删除那条不再用「墓碑」这种词（改成"别的设备也会知道它被删了，不会又被拉回来"）。`manual.test.ts` 相应升级：不得出现 Codex/skill/M8/init，必须用大白话说清 preset 那件事。
+
+**验证**：`pnpm typecheck` 干净、**23 文件 244 条**测试全绿（+3）、`pnpm build`（三份产物）、服务 HTTP 200。

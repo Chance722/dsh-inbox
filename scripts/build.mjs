@@ -71,4 +71,18 @@ const wrapped = [
 
 await writeFile(resolve(root, 'lib/client.js'), wrapped, 'utf8')
 
-console.log(`built lib/index.js and lib/client.js for ${pkg.name}`)
+// ── the CLI ─────────────────────────────────────────────────────────────────
+// `dsh-inbox init`: a plain Node script anyone can run with npx. Nothing from
+// the profile is needed, so everything is bundled except the platform itself.
+await build({
+  entryPoints: [resolve(root, 'src/cli.ts')],
+  outfile: resolve(root, 'lib/cli.js'),
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'node22',
+  external: ['node:*'],
+  logLevel: 'warning',
+})
+
+console.log(`built lib/index.js, lib/client.js and lib/cli.js for ${pkg.name}`)

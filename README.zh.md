@@ -83,27 +83,43 @@
 
 ## 安装
 
-> 还没发到 npm（M7 做 `npx @duoyu/dsh-inbox init`）。在那之前从本地仓库装。
+前置：Node ≥ 22，以及一个能用的 `dsh`（`@deepseek-ai/dsh`，已发布版为 0.1.5-rc）。
+
+**一条命令装好**（装包 + 建 agent preset + 指默认，都在这条命令里）：
 
 ```powershell
-# 1. 构建插件
-git clone <本仓库> dsh-inbox ; cd dsh-inbox
-pnpm install
-pnpm build
+npx @duoyu/dsh-inbox init
+```
 
-# 2. 建一个隔离 profile（已存在就跳过）
-dsh --profile inbox --from-default-profile web
+它做三件事，重复运行是安全的：
 
-# 3. 挂载插件——这步会自动把包名写进 profile 的 dsh.profile.bundles
-dsh plugin --profile inbox add <本仓库的绝对路径>
+1. 把插件装进 profile（默认 `inbox`；profile 不存在会告诉你先建一个）
+2. 复制 dsh 自带的 `standard` preset 到 `~/.dsh/.agent-presets/inbox/`，并把本插件追加进它的组合——**这一步决定了助手能不能看到收件箱工具**
+3. 把用户级默认 preset 指向它（会先备份 `~/.dsh/settings.yaml`）
 
-# 4. 跑起来
+然后重启 dsh、开一个新会话：
+
+```powershell
 dsh --profile inbox --no-open --port 3102
 ```
 
-打开打印出来的地址（带 token）。你日常的 `dsh web` profile 完全不受影响。
+打开它打印的地址（带 token）。左栏出现 Inbox；新会话里直接问「我的收件箱里有哪些还没看的链接」，助手就会去查。**你日常的 `dsh web` profile 不受影响**——插件装在 `inbox` 里，只是默认 preset 换了（标准模式 + 本插件，想改回去见下）。
 
-`dsh` 可能不在 `PATH` 上；带 Node 与 bin 完整路径的命令在 [docs/help/dev-setup.md](docs/help/dev-setup.md)。
+常用选项：
+
+```powershell
+npx @duoyu/dsh-inbox init --profile inbox      # 装进哪个 profile
+npx @duoyu/dsh-inbox init --no-default         # 只装，不动默认 preset
+npx @duoyu/dsh-inbox init --help               # 全部选项
+```
+
+**从本地仓库装**（开发用，改完源码跑一遍 `pnpm build` 即可）：
+
+```powershell
+git clone <本仓库> dsh-inbox ; cd dsh-inbox
+pnpm install ; pnpm build
+node lib/cli.js init --package <本仓库的绝对路径>
+```
 
 ### 卸载
 
@@ -111,9 +127,13 @@ dsh --profile inbox --no-open --port 3102
 # 1. 从 profile 里摘掉（同时会从 dsh.profile.bundles 移除）
 dsh plugin --profile inbox remove @duoyu/dsh-inbox
 
-# 2. 删掉插件不再需要的东西
-rm -r ~/.dsh/profiles/inbox          # 隔离 profile
-rm -r ~/.dsh/.agent-presets/inbox-m0 # 只在你建过测试 preset 时才有
+# 2. 删掉 init 建的东西
+rm -r ~/.dsh/.agent-presets/inbox      # 那个 preset 副本
+# 默认 preset：把 ~/.dsh/settings.yaml 里 agent-presets.default 删掉（继承部署默认），
+# 或者改成 standard；init 每次都留了 settings.yaml.bak-* 备份，也可以直接还原
+
+# 3. 想连隔离 profile 一起删
+rm -r ~/.dsh/profiles/inbox
 ```
 
 **卸载不会删掉你的仓库数据。** 如果连记录也要删：
@@ -121,6 +141,17 @@ rm -r ~/.dsh/.agent-presets/inbox-m0 # 只在你建过测试 preset 时才有
 ```powershell
 rm -r ~/.dsh/storages/dsh_inbox
 ```
+
+### 开发
+
+```powershell
+pnpm install
+pnpm build        # lib/index.js（宿主）+ lib/client.js（面板）+ lib/cli.js（init）
+pnpm typecheck
+pnpm test         # vitest
+```
+
+改客户端代码：`pnpm build` 后刷新页面即可（dsh 的 client-hmr 会自己重载）；改宿主代码要重启服务。构建与验收细节见 [docs/help/dev-setup.md](docs/help/dev-setup.md)。
 
 插件没有装进 `dsh` 本体，也没碰任何全局状态，所以删掉 profile 目录就是彻底卸载。
 

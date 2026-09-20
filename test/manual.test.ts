@@ -27,11 +27,15 @@ describe('the panel manual', () => {
 
   it('says how the conversation tools actually become visible', async () => {
     const source = await text()
-    // The rule that bites: the tools are in the plugin, but the *assistant* only
-    // sees them once the plugin is in the session's agent preset.
-    expect(source).toContain('agent preset')
-    expect(source).toContain('inbox_search')
-    expect(source).toContain('inbox_get')
+    // The rule that bites: the panel works as soon as the plugin is installed,
+    // but the *assistant* only sees the tools in a session that carries the
+    // plugin — and that has to be said in the user's words, not in preset jargon.
+    expect(source).toContain('没带上收件箱插件')
+    expect(source).toContain('新开一个会话')
+    // No internal milestones or tool names the reader never typed: the manual
+    // says "ask your assistant", not "call inbox_search".
+    expect(source).not.toMatch(/M\d/)
+    expect(source).not.toContain('init')
   })
 
   it('carries no markdown that JSX would print literally', async () => {

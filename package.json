@@ -1,7 +1,7 @@
 {
   "name": "@duoyu/dsh-inbox",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "private": false,
   "description": "Personal paste inbox for DeepSeek Harness (dsh): capture, classify, browse and retrieve.",
   "type": "module",
   "license": "MIT",
@@ -21,9 +21,13 @@
   "files": [
     "lib/index.js",
     "lib/client.js",
+    "lib/cli.js",
     "cordis.patch.yml",
     "lib/types/**/*.d.ts"
   ],
+  "bin": {
+    "dsh-inbox": "./lib/cli.js"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
