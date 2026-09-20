@@ -23,6 +23,7 @@ import {
   joinUrl,
   parseListing,
   userAgentHeaders,
+  writeFile,
   type FetchLike,
 } from '../src/host/webdav/client.js'
 import { pullRemote } from '../src/host/remote/pull.js'
@@ -298,5 +299,45 @@ describe('pulling', () => {
     })
     expect(fake.userAgentSeen.length).toBeGreaterThan(0)
     expect(fake.userAgentSeen.every((seen) => seen === 'Obsidian/1.8.7')).toBe(true)
+  })
+})
+
+describe('writing one file', () => {
+  it('PUTs to the joined path with auth, identity and the bytes', async () => {
+    const seen: { url: string; init: { method: string; headers: Record<string, string>; body?: string } }[] = []
+    const fetch: FetchLike = async (url, init) => {
+      seen.push({ url, init: init as { method: string; headers: Record<string, string>; body?: string } })
+      return { ok: true, status: 201, text: async () => '', arrayBuffer: async () => new ArrayBuffer(0) }
+    }
+
+    await writeFile(
+      'https://dav.example.com/base/',
+      '/inbox/sync/items/a.json',
+      new TextEncoder().encode('{"id":"a"}'),
+      { fetch, auth: { username: 'u', password: 'p' }, userAgent: 'dsh-inbox/测试' },
+      'application/json',
+    )
+
+    expect(seen[0]?.url).toBe('https://dav.example.com/base/inbox/sync/items/a.json')
+    expect(seen[0]?.init.method).toBe('PUT')
+    expect(seen[0]?.init.body).toBe('{"id":"a"}')
+    expect(seen[0]?.init.headers['content-type']).toBe('application/json')
+    expect(seen[0]?.init.headers.authorization).toBe(
+      `Basic ${Buffer.from('u:p').toString('base64')}`,
+    )
+    expect(seen[0]?.init.headers['user-agent']).toBe('dsh-inbox/测试')
+  })
+
+  it('reports a refusal with the server\u2019s own words', async () => {
+    const fetch: FetchLike = async () => ({
+      ok: false,
+      status: 403,
+      text: async () => 'Forbidden: read-only share',
+      arrayBuffer: async () => new ArrayBuffer(0),
+    })
+
+    await expect(
+      writeFile('https://dav.example.com', 'inbox/sync/items/a.json', new Uint8Array(), { fetch }),
+    ).rejects.toThrow(/403.*read-only share/s)
   })
 })

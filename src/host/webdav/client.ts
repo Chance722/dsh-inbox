@@ -78,6 +78,42 @@ export function joinUrl(base: string, part: string): string {
   return `${left}/${right}`
 }
 
+/**
+ * Write one file.
+ *
+ * WebDAV needs none of the S3 ceremony — a `PUT` with the bytes and the auth
+ * header is the whole protocol — which is exactly why the push path can share
+ * one interface with the S3 client (`remote/write.ts`).
+ *
+ * @param baseUrl - the configured base.
+ * @param path - the file's path under it.
+ * @param bytes - what to store.
+ * @param deps - fetch, credentials and the identity to present.
+ * @param contentType - what the bytes are.
+ */
+export async function writeFile(
+  baseUrl: string,
+  path: string,
+  bytes: Uint8Array,
+  deps: WebdavDeps,
+  contentType = 'application/octet-stream',
+): Promise<void> {
+  const response = await deps.fetch(joinUrl(baseUrl, path), {
+    method: 'PUT',
+    headers: {
+      ...authHeaders(deps.auth),
+      ...userAgentHeaders(deps),
+      'content-type': contentType,
+      'content-length': String(bytes.byteLength),
+    },
+    body: new TextDecoder().decode(bytes),
+  })
+  if (response.status >= 400) {
+    const detail = (await response.text().catch(() => '')).trim().slice(0, 200)
+    throw new Error(`写远端失败：HTTP ${String(response.status)}${detail.length === 0 ? '' : ` · ${detail}`}`)
+  }
+}
+
 const RESPONSE_BLOCK = /<[a-z0-9]*:?response\b[\s\S]*?<\/[a-z0-9]*:?response>/gi
 const HREF = /<[a-z0-9]*:?href[^>]*>([\s\S]*?)<\/[a-z0-9]*:?href>/i
 const LAST_MODIFIED = /<[a-z0-9]*:?getlastmodified[^>]*>([\s\S]*?)<\/[a-z0-9]*:?getlastmodified>/i

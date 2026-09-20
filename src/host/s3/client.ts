@@ -66,7 +66,7 @@ export interface S3ResponseLike {
 
 export type S3FetchLike = (
   url: string,
-  init: { method: string; headers: Record<string, string> },
+  init: { method: string; headers: Record<string, string>; body?: Uint8Array },
 ) => Promise<S3ResponseLike>
 
 /**
@@ -223,6 +223,14 @@ export function signRequest(
   method: string,
   key: string,
   query: Record<string, string> = {},
+  /**
+   * The bytes a write is about to send.
+   *
+   * SigV4 signs the *payload*: a PUT signed as if it were empty is refused by
+   * every strict gateway, which is why reads (no body) and writes (a body) must
+   * go through the same function with the difference made explicit.
+   */
+  body?: Uint8Array,
 ): SignedRequest {
   const now = deps.now ?? new Date()
   const stamp = amzDate(now)
@@ -238,7 +246,7 @@ export function signRequest(
     .sort()
     .join('&')
 
-  const payloadHash = sha256Hex('')
+  const payloadHash = sha256Hex(body ?? '')
   const host = new URL(base).host
   const signedHeaders = 'host;x-amz-content-sha256;x-amz-date'
   const canonicalHeaders =
@@ -523,6 +531,41 @@ export async function readObject(
 }
 
 /**
+ * Write one object.
+ *
+ * The payload goes into the signature (see {@link signRequest}), which is the
+ * one thing that makes a write different from every read this client has done
+ * until now: a gateway that checks the payload hash refuses a PUT signed as if
+ * it had no body. `content-length` and `content-type` ride along unsigned —
+ * they are not part of `signedHeaders`, and servers accept exactly that.
+ *
+ * @param config - endpoint, bucket, region, signature version.
+ * @param key - object key.
+ * @param body - the bytes to store.
+ * @param deps - credentials, fetch, clock.
+ * @param contentType - what the bytes are, when the caller knows.
+ */
+export async function putObject(
+  config: S3Config,
+  key: string,
+  body: Uint8Array,
+  deps: S3Deps,
+  contentType = 'application/octet-stream',
+): Promise<void> {
+  const signed = signer(config)(config, deps, 'PUT', key, {}, body)
+  const response = await deps.fetch(signed.url, {
+    method: 'PUT',
+    headers: {
+      ...signed.headers,
+      'content-type': contentType,
+      'content-length': String(body.byteLength),
+    },
+    body,
+  })
+  if (!response.ok) throw await refused(response, '写对象')
+}
+
+/**
  * Pick the signer for a configuration.
  *
  * @param config - endpoint, bucket, region, signatureVersion.
@@ -530,6 +573,13 @@ export async function readObject(
  */
 export function signer(
   config: S3Config,
-): (config: S3Config, deps: S3Deps, method: string, key: string, query?: Record<string, string>) => SignedRequest {
+): (
+  config: S3Config,
+  deps: S3Deps,
+  method: string,
+  key: string,
+  query?: Record<string, string>,
+  body?: Uint8Array,
+) => SignedRequest {
   return config.signatureVersion?.toLowerCase() === 'v2' ? signRequestV2 : signRequest
 }

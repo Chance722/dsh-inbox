@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { createHash } from 'node:crypto'
 
 import {
   amzDate,
@@ -19,6 +20,7 @@ import {
   signRequest,
   signRequestV4Minimal,
   signer,
+  putObject,
   userAgentOf,
   type S3Deps,
   type S3FetchLike,
@@ -284,5 +286,51 @@ describe('listing', () => {
     })))
     expect(new TextDecoder().decode(result.bytes)).toBe('hello')
     expect(result.contentType).toBe('text/plain')
+  })
+})
+
+describe('writing', () => {
+  it('signs the bytes it is about to send, not an empty payload', () => {
+    const body = new TextEncoder().encode('{"hello":"world"}')
+    const read = signRequest(CONFIG, deps(), 'GET', 'inbox/sync/items/a.json')
+    const write = signRequest(CONFIG, deps(), 'PUT', 'inbox/sync/items/a.json', {}, body)
+    const digest = createHash('sha256').update(body).digest('hex')
+
+    expect(write.headers['x-amz-content-sha256']).toBe(digest)
+    expect(read.headers['x-amz-content-sha256']).not.toBe(digest)
+    expect(write.signature).not.toBe(read.signature)
+    // Signing is still a function of its inputs: same body, same signature.
+    expect(signRequest(CONFIG, deps(), 'PUT', 'inbox/sync/items/a.json', {}, body).signature).toBe(
+      write.signature,
+    )
+  })
+
+  it('PUTs the bytes with the payload hash and length the server will check', async () => {
+    const calls: { url: string; method: string; headers: Record<string, string>; body?: Uint8Array }[] = []
+    const body = new TextEncoder().encode('附件字节')
+
+    await putObject(CONFIG, 'inbox/sync/attachments/abc', body, deps(async (url, init) => {
+      calls.push({ url, ...init })
+      return { ok: true, status: 200, text: async () => '', arrayBuffer: async () => new ArrayBuffer(0) }
+    }), 'application/octet-stream')
+
+    expect(calls[0]?.method).toBe('PUT')
+    expect(calls[0]?.url).toBe('https://data.cstcloud.cn/my-bucket/inbox/sync/attachments/abc')
+    expect(calls[0]?.body).toEqual(body)
+    expect(calls[0]?.headers['content-length']).toBe(String(body.byteLength))
+    expect(calls[0]?.headers['x-amz-content-sha256']).toBe(
+      createHash('sha256').update(body).digest('hex'),
+    )
+  })
+
+  it('turns a refused write into the gateway\u2019s own explanation', async () => {
+    await expect(
+      putObject(CONFIG, 'inbox/sync/items/a.json', new Uint8Array(), deps(async () => ({
+        ok: false,
+        status: 403,
+        text: async () => '<Error><Code>AccessDenied</Code></Error>',
+        arrayBuffer: async () => new ArrayBuffer(0),
+      }))),
+    ).rejects.toThrow(/AccessDenied/)
   })
 })
