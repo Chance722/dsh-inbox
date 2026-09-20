@@ -14,7 +14,7 @@ import { join } from 'node:path'
 
 import { beforeAll, describe, expect, it } from 'vitest'
 
-import { MESSAGES, zh } from '../src/client/messages.js'
+import { MESSAGES, zh, type Dictionary } from '../src/client/messages.js'
 import { resolveLanguage, titleMissReason } from '../src/client/i18n.js'
 import { installLanguage } from './helpers/locale.js'
 
@@ -24,9 +24,6 @@ function clientUiFiles(): string[] {
   return readdirSync(root)
     .filter((name) => /\.(ts|tsx)$/.test(name))
     .filter((name) => name !== 'messages.ts')
-    // 例外：使用手册整页仍是中文。它是三十来段散文，干净的译法是"整页两套
-    // JSX"，不是逐片拼接，所以留作单独一步（见 docs/help/panel-i18n.md）。
-    .filter((name) => name !== 'manual.tsx')
     .map((name) => join(root, name))
     .sort()
 }
@@ -84,8 +81,10 @@ describe('the dictionaries', () => {
 
   it('leave no placeholder unfilled in either language', () => {
     const placeholders = (text: string): string[] => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1] ?? '')
-    for (const key of Object.keys(zh)) {
-      expect(placeholders(MESSAGES.en[key] ?? ''), key).toEqual(placeholders(zh[key] ?? ''))
+    const chinese: Dictionary = zh
+    const english: Dictionary = MESSAGES.en
+    for (const key of Object.keys(chinese)) {
+      expect(placeholders(english[key] ?? ''), key).toEqual(placeholders(chinese[key] ?? ''))
     }
   })
 })

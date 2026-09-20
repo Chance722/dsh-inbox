@@ -389,9 +389,7 @@ function DockRecord({ id, revision }: { id: string; revision: number }): React.R
             </pre>
           )}
 
-          <p style={{ opacity: 0.6, marginTop: 10 }}>
-            改类目、改备注、删除都在左侧「Inbox」面板里。
-          </p>
+          <p style={{ opacity: 0.6, marginTop: 10 }}>{t('dock.editHint', { panel: 'Inbox' })}</p>
         </div>
       )}
     </div>

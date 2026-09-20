@@ -710,7 +710,7 @@ function InboxPanel(): React.ReactElement {
       await refresh()
       const total = list?.matched
       setNotice(
-        `${pushLine}${suffix}${total === undefined ? '' : ` · 本页 ${String(total)} 条`}`,
+      `${pushLine}${suffix}${total === undefined ? '' : t('sync.thisPage', { count: total })}`,
       )
     } finally {
       setBusy(false)
@@ -1029,7 +1029,7 @@ function InboxPanel(): React.ReactElement {
             aria-expanded={settingsOpen}
             onClick={() => setSettingsOpen((open) => !open)}
           >
-            <Settings2 size={14} /> 设置
+            <Settings2 size={14} /> {t('app.settings')}
           </button>
         </div>
       </header>
@@ -1132,10 +1132,8 @@ function InboxPanel(): React.ReactElement {
                 alignItems: 'flex-start',
               }}
             >
-              <strong>这条是外站的内容</strong>
-              <span style={{ opacity: 0.75 }}>
-                面板不内嵌别人的播放器，所以在浏览器里打开——那里才是大屏。
-              </span>
+              <strong>{t('detail.foreign')}</strong>
+              <span style={{ opacity: 0.75 }}>{t('detail.foreignBody')}</span>
               {zoom.href !== undefined && (
                 <a
                   href={zoom.href}
@@ -1143,7 +1141,7 @@ function InboxPanel(): React.ReactElement {
                   rel="noreferrer"
                   style={{ ...primaryStyle, textDecoration: 'none' }}
                 >
-                  <ExternalLink size={14} /> 在浏览器里播放
+                  <ExternalLink size={14} /> {t('detail.playInBrowser')}
                 </a>
               )}
             </div>
@@ -1157,7 +1155,7 @@ function InboxPanel(): React.ReactElement {
                 rel="noreferrer"
                 style={{ color: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}
               >
-                <ExternalLink size={13} /> 在浏览器打开
+                <ExternalLink size={13} /> {t('detail.openInBrowser')}
               </a>
             )}
             <button type="button" style={buttonStyle} onClick={() => setZoom(undefined)}>
@@ -1608,9 +1606,7 @@ function InboxPanel(): React.ReactElement {
                 fontSize: 12,
               }}
             >
-              <span>
-                第 {String(page + 1)} / {String(pageCount)} 页
-              </span>
+              <span>{t('pager.of', { page: page + 1, pages: pageCount })}</span>
               <span style={{ marginLeft: 'auto' }} />
               {page > 0 && (
                 <button
@@ -1843,9 +1839,7 @@ function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
                 : t('settings.noPassword')}
         </span>
       </div>
-      <p style={{ margin: '0 0 8px', opacity: 0.7, fontSize: 12 }}>
-        账密正文以密文写盘；主密码和密钥都不落盘，**重启后要重新解锁**。密码忘了就解不开，没有找回。
-      </p>
+      <p style={{ margin: '0 0 8px', opacity: 0.7, fontSize: 12 }}>{t('settings.secretsBody')}</p>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <input
           type="password"
@@ -1863,7 +1857,7 @@ function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
           disabled={busy || password.length === 0}
           onClick={() => void send('set')}
         >
-          设置 / {t('settings.change')}
+          {t('settings.setOrChange')}
         </button>
         <button
           type="button"
@@ -2031,9 +2025,7 @@ function WebdavSettings({
       </div>
 
       {status !== undefined && !status.settingsAvailable && (
-        <p style={{ margin: 0, opacity: 0.75 }}>
-          这个组合里没有设置服务，地址改不了——你多半在用 headless 形态开发。
-        </p>
+        <p style={{ margin: 0, opacity: 0.75 }}>{t('settings.noServiceBody')}</p>
       )}
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -2048,7 +2040,7 @@ function WebdavSettings({
           // Leaving the field is not the same as saving it; save applies it.
           onChange={(next) => setProtocol(next === 's3' ? 's3' : 'webdav')}
         />
-        <span style={{ opacity: 0.6 }}>换协议后记得点保存</span>
+        <span style={{ opacity: 0.6 }}>{t('settings.protocolHint')}</span>
       </label>
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -2088,7 +2080,7 @@ function WebdavSettings({
           placeholder="/inbox"
           style={{ ...inputStyle, flex: 1 }}
         />
-        <span style={{ opacity: 0.6 }}>别的设备往这里扔东西</span>
+        <span style={{ opacity: 0.6 }}>{t('settings.bucketHint')}</span>
       </label>
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -2180,7 +2172,11 @@ function WebdavSettings({
           </label>
 
           <p style={{ margin: 0, opacity: 0.6 }}>
-            目录那一栏同时是 S3 的 key 前缀（默认 <code>/inbox</code>，会转成 <code>inbox/</code>）。
+            {t('settings.dirS3.lead')}
+            <code>/inbox</code>
+            {t('settings.dirS3.mid')}
+            <code>inbox/</code>
+            {t('settings.dirS3.tail')}
           </p>
         </>
       )}
@@ -2225,7 +2221,7 @@ function WebdavSettings({
           {probe.length > 1 && (
             <details>
               <summary style={{ cursor: 'pointer', opacity: 0.7, fontSize: 12 }}>
-                详情（{probe.length} 次请求）
+                {t('settings.details', { count: probe.length })}
               </summary>
               <pre
                 style={{
@@ -2249,9 +2245,7 @@ function WebdavSettings({
         </div>
       )}
 
-      <p style={{ margin: 0, opacity: 0.6 }}>
-        只做单向：远端往里扔，本机拉下来入库。密码走 dsh 的凭证库，不写进配置。
-      </p>
+      <p style={{ margin: 0, opacity: 0.6 }}>{t('settings.ingestOnly')}</p>
     </section>
   )
 }
@@ -2840,9 +2834,7 @@ function EntryPane({
         encryption model puts you in after every restart, on purpose.
       */}
       {detail.text === undefined && detail.category === 'secret' && (
-        <p style={{ ...paneRowStyle, margin: 0, opacity: 0.75 }}>
-          这条账密的正文是密文，现在解不开。到「设置 → 账密加密」解锁（或先设一个主密码）就能看到。
-        </p>
+        <p style={{ ...paneRowStyle, margin: 0, opacity: 0.75 }}>{t('detail.sealedNote')}</p>
       )}
 
       {detail.attachments.length > 0 && (
@@ -2975,8 +2967,7 @@ function EntryPane({
         detail.linkTitleError !== undefined &&
         detail.kind === 'link' && (
           <p style={{ ...paneRowStyle, margin: 0, fontSize: 12, opacity: 0.6 }}>
-            没抓到页面标题：{titleFailureText(detail.linkTitleError)}
-            。可以自己起个名字。
+            {t('detail.titleMissed', { reason: titleFailureText(detail.linkTitleError) })}
           </p>
         )}
 

@@ -54,14 +54,14 @@ describe('dsh-inbox init arguments', () => {
         '--preset',
         'mine',
         '--package',
-        'D:\\Workspace\\dsh-inbox',
+        'C:\\repo\\dsh-inbox',
         '--no-default',
         '--create-profile',
       ]),
     ).toEqual({
       profile: 'web',
       preset: 'mine',
-      source: 'D:\\Workspace\\dsh-inbox',
+      source: 'C:\\repo\\dsh-inbox',
       defaultPreset: false,
       createProfile: true,
     })
