@@ -50,6 +50,18 @@ function parenthesised(heading: string, note: string): string {
 }
 
 /**
+ * What a credential's parentheses carry: the user's own words.
+ *
+ * The name they typed wins, the description is the fallback, and with neither
+ * the row is just 「密钥 / 账密」. Both fields are the user's own words — the same
+ * ones `inbox_search` already shows the model — and neither is the secret: the
+ * record's text is refused before this module is ever reached.
+ */
+function credentialDetail(entry: EntrySummary, noteChars: number): string {
+  return noteLine(firstFilled(entry.title), noteChars) || noteLine(entry.note, noteChars)
+}
+
+/**
  * The one-line heading, with the description clamped to `noteChars`.
  *
  * Two records reach the fallback half of this: a credential, and a record whose
@@ -58,7 +70,7 @@ function parenthesised(heading: string, note: string): string {
  * them apart.
  */
 function build(entry: EntrySummary, noteChars: number): string {
-  if (isSecret(entry)) return parenthesised('密钥 / 账密', noteLine(entry.note, noteChars))
+  if (isSecret(entry)) return parenthesised('密钥 / 账密', credentialDetail(entry, noteChars))
   // A name the record can produce itself: what the user typed, then the link,
   // then its own text.
   const own = firstFilled(entry.title, entry.url, entry.preview)
@@ -74,10 +86,12 @@ function build(entry: EntrySummary, noteChars: number): string {
  * The one-line heading a card or a dock row shows.
  *
  * A credential's heading says nothing on its own, and three 「密钥 / 账密」 rows are
- * three rows you cannot tell apart. The user's own description is not the secret
- * (it is the same field `inbox_search` already shows the model), so it becomes
- * the parenthetical: 密钥 / 账密（公司邮箱）. Records that may show their text do not
- * need it — their heading already is their name.
+ * three rows you cannot tell apart, so the name the user gave it — or the
+ * description, when there is no name — becomes the parenthetical:
+ * 密钥 / 账密（公司邮箱）. The fixed prefix stays: a row should still say what it
+ * is, and for this category the record's own text must never be its name.
+ * Records that may show their text do not need the prefix — their heading
+ * already is their name.
  *
  * The same shape covers a picture or a file, which has no text to be named by:
  * its file name takes the name slot and the description the parentheses —

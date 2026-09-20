@@ -121,9 +121,25 @@ describe('record headings', () => {
       expect(headingTooltipOf(image)).toBe(`IMG_1.jpg（${note}）`)
     })
 
-    it('never lets a file name name a credential', () => {
-      const secret = entry({ category: 'secret', attachmentName: 'password.txt', note: '测试环境' })
-      expect(headingOf(secret)).toBe('密钥 / 账密（测试环境）')
-    })
+  it('never lets a file name name a credential', () => {
+    const secret = entry({ category: 'secret', attachmentName: 'password.txt', note: '测试环境' })
+    expect(headingOf(secret)).toBe('密钥 / 账密（测试环境）')
+  })
+
+  it('shows the name the user gave a credential', () => {
+    // Reported: renaming a 密钥 / 账密 record changed nothing in the list —
+    // the credential branch returned the fixed label plus the description and
+    // never looked at the name at all.
+    const secret = entry({ category: 'secret', title: '公司邮箱', note: '腾讯云测试环境' })
+    expect(headingOf(secret)).toBe('密钥 / 账密（公司邮箱）')
+    expect(headingTooltipOf(secret)).toBe('密钥 / 账密（公司邮箱）')
+
+    // The prefix stays: a row must still say what it is, and the parentheses
+    // carry the user's own words only.
+    expect(headingOf(entry({ category: 'secret', title: '公司邮箱' }))).toBe('密钥 / 账密（公司邮箱）')
+    expect(headingOf(entry({ category: 'secret', title: '  ' , note: '备注顶上来' }))).toBe(
+      '密钥 / 账密（备注顶上来）',
+    )
+  })
   })
 })
