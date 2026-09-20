@@ -242,3 +242,29 @@ const vault = await Vault.open(ctx)
 注意 `@deepseek-ai/dsh-storage` 是**默认导出**（Service 类），另外两个是带 `apply` 的插件对象——传错形状 TypeScript 会当场报 `Plugin` 不匹配。
 
 宿主半边的构建要把 `zod` 也设为 external：它是我们自己的运行时依赖，打两份 zod 进产物既浪费又可能出现两个实例。
+
+## M8 实测补充（2026-09-20）：右侧 dock 的 tab 体怎么拿参数、聊天里的卡片在哪一层
+
+**tab 体的 props 是「会话 slot share」，不是 `hooks`**（这是"点了「打开 ↗」只打开列表、不定位那条"的真因）：
+
+```ts
+// 实测：一个 sidebar.right.pane.tab 组件的 props 键（2026-09-20，跑起来的 web 应用里打印出来的）
+['usePanelInfo','useSessions','useSessionPendingInteraction','useWorkspaces','useResource','sessionId',
+ 'inputActions','useSession','useConversation','useInput','useTrajectory','useChat','useProjection','useTabInfo']
+
+// 正确的读法（hook 就在 share 上）
+const info = props.useTabInfo()          // { sidebar, panel, tab }
+const id   = info.tab.navigation.params?.id
+const rev  = info.tab.navigation.revision // 每次导航 +1，参数没变也会变
+// 地址形如 'sidebar://inbox-vault'；params 是开具方给的 JSON，运行时**不做校验**
+```
+
+老代码读的是 `props.hooks.tabInfo`（那是 `SlotMap` 里 `hookContext` 的工厂名，**不会**以 `hooks.tabInfo` 的形式出现在 props 上），
+于是 `params?.id` 永远是 `undefined`，dock 永远显示列表——**静默**，因为组件自己有一条"没参数就显示列表"的兜底。
+教训：第三方 tab 体想知道"我是被谁、为什么打开的"，只能从 `useTabInfo()` 读；读不到时要往日志里说，而不是静默降级。
+
+**聊天里的工具卡片在哪一层**：`tool.call.toolview` 的 keyed 命中会**替换普通行**（`ui-tool` 的 `ToolCallTree` 里
+`renderSlot('tool.call.toolview', owner, { entryKey: toolName, fallback: GenericToolCard })`），所以我们的卡片本身没问题；
+但 dsh 默认把**一轮里的多次调用折叠成一行「N 次工具调用」**，用户不展开就看不到卡片，更看不到卡片里的按钮。
+2026-09-20 用户就是照这个报的「返回里没有可点入口」。查过 `ui-conversation` 的产物，**没有**"默认展开工具调用"的偏好项，
+所以这条只能写进使用手册（第 6 节「点开看」）与 README，而不是做成设置。

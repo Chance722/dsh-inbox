@@ -1080,3 +1080,34 @@ Mozilla/5.0 (compatible; dsh-inbox/0.1; +https://github.com/Chance722/dsh-inbox)
 
 **验证**：`pnpm typecheck` 干净、**26 文件 262 条**测试全绿（+6 租约）、`pnpm build` 通过、3102 服务已重启、
 临时 `inbox-check` profile 用完已删。**新知识**进 `docs/help/dsh-plugin-platform.md`（双加载 + 进程级单例这条硬规则）。
+
+#### M8 第七步 — 「打开 ↗」原来只打开列表；入口到底在哪也得写清楚（同日）
+
+用户报："在对话里索取存储的内容，返回里没有可以点击跳到 Inbox 详情的入口"（贴了两段助手回答）。
+
+**先复核现场**（这次真机 UI 是直接看的：用内置浏览器打开 3102 实例、在真会话里问了一句、展开工具调用）：
+
+- 卡片在、按钮也在，**只是 dsh 默认把一轮里的多次调用折叠成一行「N 次工具调用」**；用户读的是助手的回答，
+  回答本身是纯文本（模型复述的内容不是证据——M4 已经记过这条，这次是同一个坑的第二次）。
+- 但顺手点下去，**逮到一个真 bug**：dock 打开了，却停在列表上。
+
+**根因**：tab 体的 props 是**会话 slot share**，实测键为
+`usePanelInfo, useSessions, …, useProjection, useTabInfo`——里面**没有** `hooks.tabInfo`（那是 `SlotMap` 里
+`hookContext` 的工厂名，不会以 `hooks.tabInfo` 出现在 props 上）。老代码读 `props.hooks.tabInfo` ⇒ `params?.id`
+恒为 `undefined` ⇒ 组件自己的"没参数就显示列表"兜底生效 ⇒ **静默**。参数其实一直在：
+`info.tab.navigation.params = { id: … }`、`address: 'sidebar://inbox-vault'`、`revision: 1`。
+
+**修法**：读 `props.useTabInfo()`（保留 `hooks.tabInfo` 作为未见过形状的兜底），并把解析抽成纯函数
+`dockFocusOf()` 以便单测。新增 `test/dock.test.ts`（4 条：拿到 id、没人指定时退回列表、空/非字符串 id 拒绝、
+revision 非数字归零）。
+
+**真机验收**（内置浏览器 + 3102 + 真会话）：展开「3 次工具调用」→ 点第一条「打开 ↗」→ 右侧出现「仓库」tab 并停在那条
+（标题、类目、待看、时间、可点链接、「返回最近」）；第二条按钮同样。修复前的同一操作只有列表。
+
+**入口可见性**：查过 `ui-conversation` 的产物，**没有**"默认展开工具调用"的偏好项，所以只能把路径写给人看——
+使用手册第 6 节新增一条「点开看」（展开「N 次工具调用」→ 记录后面的「打开 ↗」→ 右侧停在那一条），README 中英同步。
+
+**平台事实进 `docs/help/dsh-plugin-platform.md`**：tab 体 props 的真实形状与 `useTabInfo` 的正确读法、
+keyed `tool.call.toolview` 是**替换普通行**、以及"一轮多次调用默认折叠"这条 UX 事实。
+
+**验证**：`pnpm typecheck` 干净、**27 文件 266 条**测试全绿（+4）、`pnpm build` 通过；调试用的 `console.log` 全部删除。
