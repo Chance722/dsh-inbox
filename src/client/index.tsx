@@ -83,13 +83,18 @@ import { registerToolCards } from './card.js'
 import { registerInboxDock } from './dock.js'
 import { headingOf, headingTooltipOf, isSecret } from './heading.js'
 import { ManualDialog } from './manual.jsx'
+import {
+  categoryLabel,
+  installLocale,
+  kindLabel,
+  sourceHint,
+  sourceLabel,
+  t,
+  useLocaleRevision,
+} from './i18n.js'
 import { schemeOf } from './scheme.js'
 import {
   CATEGORIES,
-  CATEGORY_LABELS,
-  CATEGORY_SOURCE_HINTS,
-  CATEGORY_SOURCE_LABELS,
-  KIND_LABELS,
   type Category,
   type CategorySource,
 } from '../shared/vocabulary.js'
@@ -120,6 +125,8 @@ interface PanelIconProps {
 export function apply(ctx: Context): void {
   const slots = ctx.get('slots')
   if (slots === undefined) return
+
+  installLocale(ctx)
 
   slots.inject('sidebar.panellist', () =>
     slots.register(
@@ -293,12 +300,12 @@ const CONTROL_HEIGHT = 'calc(1.6em + 12px)'
  */
 function titleFailureText(code: string): string {
   if (code === 'no-title') {
-    return '那个页面里没有标题（有些站点对非浏览器的请求只回空壳页，比如微信）'
+    return t('link.noTitle')
   }
-  if (code.startsWith('http:')) return `对方返回 HTTP ${code.slice('http:'.length)}`
-  if (code.startsWith('not-html:')) return '那个地址不是网页'
-  if (code.startsWith('network:')) return '请求没成功（网络不通或对方拒绝）'
-  return '原因不明'
+  if (code.startsWith('http:')) return t('link.http', { status: code.slice('http:'.length) })
+  if (code.startsWith('not-html:')) return t('link.notHtml')
+  if (code.startsWith('network:')) return t('link.unreachable')
+  return t('link.unknown')
 }
 
 /**
@@ -446,6 +453,9 @@ const inputStyle: React.CSSProperties = {
 
 /** The panel body: capture, then filter, list and detail. */
 function InboxPanel(): React.ReactElement {
+  // A language switch re-renders the whole panel: `t()` reads the active
+  // language at call time, so nothing has to be threaded through props.
+  useLocaleRevision()
   const [text, setText] = React.useState('')
   const [staged, setStaged] = React.useState<Staged[]>([])
   const [notice, setNotice] = React.useState<string>()
@@ -548,7 +558,7 @@ function InboxPanel(): React.ReactElement {
             ok: false,
             error: {
               code: 'inbox/malformed-answer',
-              message: `宿主返回了看不懂的响应（HTTP ${String(response.status)}）`,
+              message: t('notice.responseUnreadable', { status: response.status }),
               details: {},
             },
           }
@@ -580,7 +590,7 @@ function InboxPanel(): React.ReactElement {
         offset: page * PAGE_SIZE,
       })
       if (!result.ok) {
-        setNotice(`读取列表失败：${result.error.message}`)
+        setNotice(t('notice.listFailed', { reason: result.error.message }))
         return
       }
       const next = result.value as ListResult
@@ -588,7 +598,7 @@ function InboxPanel(): React.ReactElement {
       // `.map`, and one undefined there takes the whole panel down to a blank
       // screen (the old list is a much better outcome than no list).
       if (!Array.isArray(next.entries)) {
-        setNotice('读取列表失败：宿主返回的内容看不懂')
+        setNotice(t('notice.listUnreadable'))
         return
       }
       setList(next)
@@ -683,19 +693,19 @@ function InboxPanel(): React.ReactElement {
    */
   const refreshAll = React.useCallback(async (): Promise<void> => {
     setBusy(true)
-    setNotice('同步中…')
+    setNotice(t('notice.syncing'))
     try {
       const pushed = await call(INBOX_ENDPOINT_PUSH, {})
       const pushLine = pushed.ok
         ? describePush(pushed.value as PushResult)
-        : `推送失败：${pushed.error.message}`
+        : t('notice.pushFailed', { reason: pushed.error.message })
       const pulled = await call(INBOX_ENDPOINT_PULL, {})
       let suffix = ''
       if (pulled.ok) {
         const result = pulled.value as PullResult
         suffix = ` · ${describePull(result)}`
       } else {
-        suffix = ` · 拉取失败：${pulled.error.message}`
+        suffix = ` · ${t('notice.pullFailed', { reason: pulled.error.message })}`
       }
       await refresh()
       const total = list?.matched
@@ -711,7 +721,7 @@ function InboxPanel(): React.ReactElement {
   const removeTagEverywhere = React.useCallback(
     async (name: string, count: number): Promise<void> => {
       if (
-        !window.confirm(`把标签「${name}」从 ${String(count)} 条记录上移除？记录本身不会被删除。`)
+        !window.confirm(t('confirm.untag', { tag: name, count }))
       )
         return
       setBusy(true)
@@ -721,12 +731,12 @@ function InboxPanel(): React.ReactElement {
           tag: name,
         } satisfies TagRequest)
         if (!result.ok) {
-          setNotice(`删标签失败：${result.error.message}`)
+          setNotice(t('notice.tagRemoveFailed', { reason: result.error.message }))
           return
         }
         setTag(undefined)
         await refresh(false)
-        setNotice(`标签「${name}」已移除`)
+        setNotice(t('notice.tagRemoved', { tag: name }))
       } finally {
         setBusy(false)
       }
@@ -745,7 +755,7 @@ function InboxPanel(): React.ReactElement {
       setSelectedId(id)
       const result = await call(INBOX_ENDPOINT_DETAIL, { id })
       if (!result.ok) {
-        setNotice(`读取详情失败：${result.error.message}`)
+        setNotice(t('notice.detailFailed', { reason: result.error.message }))
         setDetail(undefined)
         return
       }
@@ -796,18 +806,25 @@ function InboxPanel(): React.ReactElement {
     try {
       const result = await call(INBOX_ENDPOINT_PURGE, {})
       if (!result.ok) {
-        setNotice(`清空失败：${result.error.message}`)
+        setNotice(t('notice.purgeFailed', { reason: result.error.message }))
         return
       }
       const value = result.value as PurgeResult
       const remote =
         value.remoteSkipped === true
-          ? '（没配远端）'
+          ? t('notice.purgeNoRemote')
           : value.remoteRemoved === undefined
             ? ''
-            : `，云端删了 ${String(value.remoteRemoved)} 个对象`
+            : t('notice.purgeRemote', { count: value.remoteRemoved })
       setNotice(
-        `已清空 ${String(value.removed)} 条${remote}${value.reason === undefined ? '' : ` · 云端有失败：${value.reason}`}`,
+        t('notice.purgeDone', {
+          count: value.removed,
+          remote,
+          failure:
+            value.reason === undefined
+              ? ''
+              : t('notice.purgeFailedAtRemote', { reason: value.reason }),
+        }),
       )
       setSelectedId(undefined)
       setDetail(undefined)
@@ -824,7 +841,7 @@ function InboxPanel(): React.ReactElement {
       const isImage = (INBOX_IMAGE_TYPES as readonly string[]).includes(file.type)
       next.push({
         id: `${file.name}:${file.size}:${file.lastModified}:${next.length}`,
-        name: file.name.length === 0 ? '（未命名）' : file.name,
+        name: file.name.length === 0 ? t('app.unnamedFile') : file.name,
         slot: isImage ? 'image' : 'file',
         bytes: file.size,
         file,
@@ -856,7 +873,7 @@ function InboxPanel(): React.ReactElement {
     if (busy) return
     const trimmed = text.trim()
     if (trimmed.length === 0 && staged.length === 0) {
-      setNotice('还没东西可存：粘一段文字、一个链接，或者把图片拖进来')
+      setNotice(t('notice.captureEmpty'))
       return
     }
 
@@ -882,7 +899,7 @@ function InboxPanel(): React.ReactElement {
 
       const result = await call(INBOX_ENDPOINT_CAPTURE, { text: trimmed, images, files })
       if (!result.ok) {
-        setNotice(`没存进去：${result.error.message}`)
+        setNotice(t('notice.captureFailed', { reason: result.error.message }))
         return
       }
 
@@ -944,13 +961,13 @@ function InboxPanel(): React.ReactElement {
     const parts: string[] = []
     // Category and 待看 reset when you step into the bin, but a tag does not —
     // so 回收站 can still be narrowing, and the heading says so.
-    if (scope === 'bin') parts.push('回收站')
+    if (scope === 'bin') parts.push(t('filter.bin'))
     else {
-      if (category !== undefined) parts.push(CATEGORY_LABELS[category])
-      if (watchOnly) parts.push('待看')
+      if (category !== undefined) parts.push(categoryLabel(category))
+      if (watchOnly) parts.push(t('filter.watch'))
     }
     if (tag !== undefined) parts.push(`#${tag}`)
-    return parts.length === 0 ? '全部' : parts.join(' · ')
+    return parts.length === 0 ? t('filter.all') : parts.join(' · ')
   })()
 
   /** Which face the lightbox shows; a hand-off (no bytes) falls through to image. */
@@ -996,7 +1013,7 @@ function InboxPanel(): React.ReactElement {
               {PACKAGE_NAME}
               {list === undefined
                 ? ''
-                : ` · 共 ${String(list.total)} 条 · 待看 ${String(list.watchLater)} 条 · 回收站 ${String(list.deleted)} 条`}
+                : t('app.counts', { total: list.total, watch: list.watchLater, deleted: list.deleted })}
             </p>
           </div>
           <button
@@ -1004,7 +1021,7 @@ function InboxPanel(): React.ReactElement {
             style={{ ...buttonStyle, marginLeft: 'auto' }}
             onClick={() => setManualOpen(true)}
           >
-            使用手册
+            {t('app.manual')}
           </button>
           <button
             type="button"
@@ -1020,7 +1037,7 @@ function InboxPanel(): React.ReactElement {
       {settingsOpen && (
         <div
           role="dialog"
-          aria-label="设置"
+          aria-label={t('app.settings')}
           style={{
             position: 'fixed',
             inset: 0,
@@ -1049,7 +1066,7 @@ function InboxPanel(): React.ReactElement {
       {zoom !== undefined && (
         <div
           role="dialog"
-          aria-label="放大查看"
+          aria-label={t('detail.zoom')}
           style={{
             position: 'fixed',
             inset: 0,
@@ -1144,7 +1161,7 @@ function InboxPanel(): React.ReactElement {
               </a>
             )}
             <button type="button" style={buttonStyle} onClick={() => setZoom(undefined)}>
-              <X size={13} /> 关闭
+              <X size={13} /> {t('app.close')}
             </button>
           </div>
         </div>
@@ -1168,7 +1185,7 @@ function InboxPanel(): React.ReactElement {
           onChange={(event) => setText(event.target.value)}
           onPaste={onPaste}
           onKeyDown={onKeyDown}
-          placeholder="粘贴文字、链接，或把图片/文件拖到这里（Ctrl+Enter 存入）"
+          placeholder={t('capture.placeholder')}
           rows={3}
           style={{
             width: '100%',
@@ -1217,7 +1234,7 @@ function InboxPanel(): React.ReactElement {
                 </span>
                 <button
                   type="button"
-                  aria-label={`移除 ${entry.name}`}
+                  aria-label={t('app.remove', { name: entry.name })}
                   onClick={() =>
                     setStaged((current) => current.filter((item) => item.id !== entry.id))
                   }
@@ -1248,10 +1265,10 @@ function InboxPanel(): React.ReactElement {
             disabled={busy}
             onClick={() => picker.current?.click()}
           >
-            选择文件…
+            {t('app.pickFile')}…
           </button>
           <button type="button" style={buttonStyle} disabled={busy} onClick={() => void submit()}>
-            {busy ? '处理中…' : '存入仓库'}
+            {busy ? t('app.saving') : t('app.store')}
           </button>
         </div>
       </div>
@@ -1303,13 +1320,13 @@ function InboxPanel(): React.ReactElement {
             aria-expanded={railOpen}
             onClick={() => setRailOpen((open) => !open)}
           >
-            <Layers size={13} /> 筛选
+            <Layers size={13} /> {t('app.filter')}
           </button>
         )}
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="搜标题、正文、链接、备注…"
+          placeholder={t('search.placeholder')}
           style={{
             ...inputStyle,
             flex: 1,
@@ -1323,7 +1340,7 @@ function InboxPanel(): React.ReactElement {
         />
         <span
           role="group"
-          aria-label="列表模式"
+          aria-label={t('modes.label')}
           style={{
             display: 'inline-flex',
             border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
@@ -1337,7 +1354,7 @@ function InboxPanel(): React.ReactElement {
             <button
               key={mode.id}
               type="button"
-              title={`列表模式：${mode.label}`}
+              title={t('modes.titleOf', { label: mode.label })}
               aria-pressed={listMode === mode.id}
               onClick={() => chooseListMode(mode.id)}
               style={{
@@ -1366,7 +1383,7 @@ function InboxPanel(): React.ReactElement {
           disabled={busy}
           onClick={() => void refreshAll()}
         >
-          <RefreshCw size={13} /> {busy ? '刷新中…' : '刷新'}
+          <RefreshCw size={13} /> {busy ? t('app.refreshing') : t('app.refresh')}
         </button>
       </div>
 
@@ -1389,7 +1406,7 @@ function InboxPanel(): React.ReactElement {
       >
         {(!narrow || railOpen) && (
         <nav
-          aria-label="筛选"
+          aria-label={t('app.filter')}
           style={{
             ...cardStyle,
             display: 'flex',
@@ -1401,7 +1418,7 @@ function InboxPanel(): React.ReactElement {
           <RailRow
             active={scope === 'live' && !watchOnly && category === undefined}
             icon={<Inbox size={15} />}
-            label="全部"
+            label={t('filter.all')}
             {...(list === undefined ? {} : { count: list.total })}
             onClick={() => {
               setScope('live')
@@ -1412,7 +1429,7 @@ function InboxPanel(): React.ReactElement {
           <RailRow
             active={scope === 'live' && watchOnly}
             icon={<Circle size={15} />}
-            label="待看"
+            label={t('filter.watch')}
             {...(list === undefined ? {} : { count: list.watchLater })}
             onClick={() => {
               setScope('live')
@@ -1423,7 +1440,7 @@ function InboxPanel(): React.ReactElement {
           <RailRow
             active={scope === 'bin'}
             icon={<Trash2 size={15} />}
-            label="回收站"
+            label={t('filter.bin')}
             {...(list === undefined ? {} : { count: list.deleted })}
             onClick={() => {
               setScope('bin')
@@ -1433,7 +1450,7 @@ function InboxPanel(): React.ReactElement {
           />
 
           <div style={{ margin: '8px 0 4px', padding: '0 9px', fontSize: 11, opacity: 0.6 }}>
-            类目
+            {t('app.category')}
           </div>
           {/*
             Every category, always — the host only reports the ones with records
@@ -1447,7 +1464,7 @@ function InboxPanel(): React.ReactElement {
                 key={value}
                 active={category === value}
                 icon={categoryGlyph(value, 15)}
-                label={CATEGORY_LABELS[value]}
+                label={categoryLabel(value)}
                 {...(list === undefined ? {} : { count: count ?? 0 })}
                 onClick={() => {
                   // Picking a category means "show me this category" — it is not
@@ -1463,7 +1480,7 @@ function InboxPanel(): React.ReactElement {
           {list !== undefined && list.tags.length > 0 && (
             <>
               <div style={{ margin: '8px 0 4px', padding: '0 9px', fontSize: 11, opacity: 0.6 }}>
-                标签
+                {t('app.tag')}
               </div>
               {list.tags.map((facet) => (
                 <div key={facet.value} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1476,7 +1493,7 @@ function InboxPanel(): React.ReactElement {
                   />
                   <button
                     type="button"
-                    title={`把标签「${facet.value}」从所有记录上移除（记录本身不删）`}
+                    title={t('filter.untagAll', { tag: facet.value })}
                     onClick={() => void removeTagEverywhere(facet.value, facet.count)}
                     style={{ ...buttonStyle, border: 'none', padding: '4px 5px', opacity: 0.6 }}
                   >
@@ -1517,14 +1534,14 @@ function InboxPanel(): React.ReactElement {
                 onClick={() => {
                   if (
                     !window.confirm(
-                      '清空回收站会真的删掉这些记录：本机记录、以及云盘上对应的同步对象（记录 JSON/文本、只被这些记录引用的附件）。不能撤销。dsh 附件仓库里的原始字节仍然留着。继续？',
+                      t('confirm.purge'),
                     )
                   )
                     return
                   void purge()
                 }}
               >
-                <Trash2 size={13} /> 清空回收站
+                <Trash2 size={13} /> {t('filter.clearBin')}
               </button>
             )}
           </div>
@@ -1533,14 +1550,14 @@ function InboxPanel(): React.ReactElement {
               count says nothing worth a line. */}
           {(list === undefined || list.matched > 0) && (
             <div style={{ textAlign: 'right', fontSize: 12, opacity: 0.6, marginBottom: 6 }}>
-              {list === undefined ? '读取中…' : `${String(list.matched)} 条匹配`}
+              {list === undefined ? t('app.loading') : t('app.matches', { count: list.matched })}
             </div>
           )}
 
 
           {list?.entries.length === 0 && (
             <p style={{ margin: '8px 0 0', opacity: 0.7 }}>
-              {scope === 'bin' ? '回收站是空的。' : '没有匹配的记录。'}
+              {scope === 'bin' ? t('app.binEmpty') : t('app.noMatches')}
             </p>
           )}
 
@@ -1601,7 +1618,7 @@ function InboxPanel(): React.ReactElement {
                   style={pagerButtonStyle}
                   onClick={() => setPage((current) => Math.max(0, current - 1))}
                 >
-                  <ChevronLeft size={13} /> 上一页
+                  <ChevronLeft size={13} /> {t('app.prevPage')}
                 </button>
               )}
               {page + 1 < pageCount && (
@@ -1610,7 +1627,7 @@ function InboxPanel(): React.ReactElement {
                   style={pagerButtonStyle}
                   onClick={() => setPage((current) => current + 1)}
                 >
-                  下一页 <ChevronRight size={13} />
+                  {t('app.nextPage')} <ChevronRight size={13} />
                 </button>
               )}
             </div>
@@ -1627,7 +1644,7 @@ function InboxPanel(): React.ReactElement {
           detail !== undefined && (
             <div
               role="dialog"
-              aria-label="记录详情"
+              aria-label={t('app.detail')}
               style={{
                 position: 'fixed',
                 left: 12,
@@ -1657,7 +1674,7 @@ function InboxPanel(): React.ReactElement {
                     setDetail(undefined)
                   }}
                 >
-                  <X size={13} /> 关闭
+                  <X size={13} /> {t('app.close')}
                 </button>
               </div>
               <EntryPane
@@ -1694,7 +1711,7 @@ function InboxPanel(): React.ReactElement {
             }}
           >
             {detail === undefined ? (
-              <p style={{ margin: 0, opacity: 0.7 }}>选左边一条看看详情。</p>
+              <p style={{ margin: 0, opacity: 0.7 }}>{t('app.pickOne')}</p>
             ) : (
               <EntryPane
                 detail={detail}
@@ -1721,31 +1738,40 @@ type CallHost = (endpoint: string, payload: unknown) => Promise<InboxRpcResult<u
 
 /** One line describing what a push did. */
 function describePush(result: PushResult): string {
-  if (result.status === 'unconfigured') return `推送：${result.reason ?? '还没配置远端'}`
-  if (result.status === 'failed') return `推送失败：${result.reason ?? '未知原因'}`
+  if (result.status === 'unconfigured') return t('sync.pushUnconfigured')
+  if (result.status === 'failed') return t('sync.pushFailed', { reason: result.reason ?? t('sync.pushUnknown') })
   const head =
     result.pushed === 0 && result.attachments === 0
-      ? `推送：没有新内容（${String(result.skipped)} 条已是最新）`
-      : `推送：${String(result.pushed)} 条记录 / ${String(result.attachments)} 个附件`
+      ? t('sync.pushUpToDate', { count: result.skipped })
+      : t('sync.pushDone', { records: result.pushed, attachments: result.attachments })
   // `partial` always carries the reason it is only partial.
-  return result.status === 'partial' ? `${head} · 部分失败：${result.reason ?? ''}` : head
+  return result.status === 'partial' ? t('sync.pushPartial', { head, reason: result.reason ?? '' }) : head
 }
 
 /** One line describing what a pull did. */
 function describePull(result: PullResult): string {
-  if (result.status === 'unconfigured') return result.reason ?? '还没配置地址'
-  if (result.status === 'failed') return `拉取失败：${result.reason ?? '未知原因'}`
+  if (result.status === 'unconfigured') return result.reason ?? t('sync.pullNoAddress')
+  if (result.status === 'failed') return t('sync.pullFailed', { reason: result.reason ?? t('sync.pushUnknown') })
   // Two halves, one line each: the drop folder's files, and the merge's records.
   const merged = result.merged ?? 0
   const attachments = result.attachments ?? 0
   const syncPart =
     merged === 0 && attachments === 0
-      ? '云端的记录没有新的'
-      : `从云端合并 ${String(merged)} 条${attachments === 0 ? '' : ` / ${String(attachments)} 个附件`}`
+      ? t('sync.pullNothingNew')
+      : t('sync.pullMerged', {
+          count: merged,
+          attachments:
+            attachments === 0 ? '' : t('sync.pullAttachments', { count: attachments }),
+        })
   if (result.pulled === 0 && result.skipped === 0 && result.failed === 0) return syncPart
-  return `拉取完成：远端列出 ${String(result.listed)} 项，新入库 ${String(result.pulled)} 条，跳过 ${String(
-    result.skipped,
-  )} 条 · ${syncPart}${result.failed > 0 ? ` · 失败 ${String(result.failed)} 条` : ''}`
+  return t('sync.pullDone', {
+    listed: result.listed,
+    pulled: result.pulled,
+    skipped: result.skipped,
+    tail: `${syncPart}${
+      result.failed > 0 ? t('sync.pullFailedCount', { count: result.failed }) : ''
+    }`,
+  })
 }
 
 /**
@@ -1781,12 +1807,12 @@ function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
         setNotice(
           action === 'set'
             ? next.sealed === undefined || next.sealed === 0
-              ? '主密码已设置，账密从此加密落盘'
-              : `主密码已设置，另有 ${String(next.sealed)} 条旧记录已从明文改为密文`
+        ? t('settings.passwordJustSet')
+              : t('settings.passwordSealed', { count: next.sealed })
             : action === 'unlock'
-              ? '已解锁'
+              ? t('settings.unlocked')
               : action === 'lock'
-                ? '已锁定：账密正文不可读，直到再次解锁'
+                ? t('settings.lockedNote')
                 : undefined,
         )
       } finally {
@@ -1806,15 +1832,15 @@ function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
   return (
     <section style={{ ...cardStyle, marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <strong>账密加密</strong>
+        <strong>{t('settings.secrets')}</strong>
         <span style={{ opacity: 0.7, fontSize: 12 }}>
           {status === undefined
-            ? '读取中…'
+            ? t('app.loading')
             : status.unlocked
-              ? '已解锁'
+              ? t('settings.unlocked')
               : status.configured
-                ? '已锁定'
-                : '还没设主密码'}
+                ? t('settings.locked')
+                : t('settings.noPassword')}
         </span>
       </div>
       <p style={{ margin: '0 0 8px', opacity: 0.7, fontSize: 12 }}>
@@ -1827,8 +1853,8 @@ function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
           disabled={busy}
           autoComplete="new-password"
           onChange={(event) => setPassword(event.target.value)}
-          aria-label="主密码"
-          placeholder={status?.configured === true ? '输入主密码' : '设一个主密码'}
+          aria-label={t('settings.masterPassword')}
+          placeholder={status?.configured === true ? t('settings.masterPasswordSet') : t('settings.masterPasswordNew')}
           style={{ ...inputStyle, flex: 1, minWidth: 160 }}
         />
         <button
@@ -1837,7 +1863,7 @@ function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
           disabled={busy || password.length === 0}
           onClick={() => void send('set')}
         >
-          设置 / 更换
+          设置 / {t('settings.change')}
         </button>
         <button
           type="button"
@@ -1845,7 +1871,7 @@ function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
           disabled={busy || password.length === 0 || status?.configured !== true}
           onClick={() => void send('unlock')}
         >
-          解锁
+          {t('settings.unlock')}
         </button>
         <button
           type="button"
@@ -1853,7 +1879,7 @@ function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
           disabled={busy || status?.unlocked !== true}
           onClick={() => void send('lock')}
         >
-          锁定
+          {t('settings.lock')}
         </button>
       </div>
       {notice !== undefined && notice.length > 0 && (
@@ -1899,7 +1925,7 @@ function WebdavSettings({
   const read = React.useCallback(async (): Promise<void> => {
     const result = await call(INBOX_ENDPOINT_WEBDAV, { action: 'read' })
     if (!result.ok) {
-      setNotice(`读不到设置：${result.error.message}`)
+      setNotice(t('notice.settingsUnreadable', { reason: result.error.message }))
       return
     }
     const next = result.value as WebdavStatus
@@ -1953,13 +1979,13 @@ function WebdavSettings({
       }
       const result = await call(INBOX_ENDPOINT_WEBDAV, request)
       if (!result.ok) {
-        setNotice(`没存上：${result.error.message}`)
+        setNotice(t('notice.settingsFailed', { reason: result.error.message }))
         return
       }
       setStatus(result.value as WebdavStatus)
       setPassword('')
       setAccessKeySecret('')
-      setNotice('设置已保存')
+      setNotice(t('notice.settingsSaved'))
     } finally {
       setBusy(false)
     }
@@ -1972,11 +1998,11 @@ function WebdavSettings({
     try {
       const result = await call(INBOX_ENDPOINT_PROBE, {})
       if (!result.ok) {
-        setNotice(`自检失败：${result.error.message}`)
+        setNotice(t('notice.probeFailed', { reason: result.error.message }))
         return
       }
       setProbe(result.value as ProbeRow[])
-      setNotice('自检结果见下方')
+      setNotice(t('notice.probeDone'))
     } finally {
       setBusy(false)
     }
@@ -1985,16 +2011,22 @@ function WebdavSettings({
   return (
     <section style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-        <strong>远端入库</strong>
+        <strong>{t('settings.ingest')}</strong>
         <span style={{ opacity: 0.65 }}>
           {status === undefined
-            ? '读取中…'
-            : `${status.settingsAvailable ? '设置服务在' : '没有设置服务'} · ${
-                status.passwordSet ? 'WebDAV 密码已存' : '还没存 WebDAV 密码'
-              } · ${status.secretSet ? 'S3 密钥已存' : '还没存 S3 密钥'}`}
+            ? t('app.loading')
+            : t('settings.status', {
+                settings: status.settingsAvailable
+                  ? t('settings.statusOn')
+                  : t('settings.statusOff'),
+                webdav: status.passwordSet
+                  ? t('settings.statusWebdavSet')
+                  : t('settings.statusWebdavUnset'),
+                s3: status.secretSet ? t('settings.statusS3Set') : t('settings.statusS3Unset'),
+              })}
         </span>
         <button type="button" style={{ ...buttonStyle, marginLeft: 'auto' }} onClick={onClose}>
-          关闭
+          {t('app.close')}
         </button>
       </div>
 
@@ -2005,7 +2037,7 @@ function WebdavSettings({
       )}
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ opacity: 0.7, minWidth: 64 }}>协议</span>
+        <span style={{ opacity: 0.7, minWidth: 64 }}>{t('settings.protocol')}</span>
         <SelectBox
           value={protocol}
           options={[
@@ -2020,15 +2052,15 @@ function WebdavSettings({
       </label>
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ opacity: 0.7, minWidth: 64 }}>客户端标识</span>
+        <span style={{ opacity: 0.7, minWidth: 64 }}>{t('settings.clientId')}</span>
         <input
           value={userAgent}
           disabled={busy}
           onChange={(event) => setUserAgent(event.target.value)}
           placeholder={
             protocol === 's3'
-              ? '留空即 dsh-inbox；有些网关按它认人，填成这个 AccessKey 绑定的应用名'
-              : '留空即 dsh-inbox；有些网关按它认人，填成这个 WebDAV 账号绑定的应用名'
+        ? t('settings.clientIdS3')
+        : t('settings.clientIdWebdav')
           }
           style={{ ...inputStyle, flex: 1 }}
         />
@@ -2037,7 +2069,7 @@ function WebdavSettings({
       {protocol === 'webdav' ? (
         <>
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ opacity: 0.7, minWidth: 64 }}>地址</span>
+        <span style={{ opacity: 0.7, minWidth: 64 }}>{t('settings.bucketAddress')}</span>
         <input
           value={baseUrl}
           disabled={busy}
@@ -2048,7 +2080,7 @@ function WebdavSettings({
       </label>
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ opacity: 0.7, minWidth: 64 }}>目录</span>
+        <span style={{ opacity: 0.7, minWidth: 64 }}>{t('settings.bucketDir')}</span>
         <input
           value={directory}
           disabled={busy}
@@ -2060,7 +2092,7 @@ function WebdavSettings({
       </label>
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ opacity: 0.7, minWidth: 64 }}>用户名</span>
+        <span style={{ opacity: 0.7, minWidth: 64 }}>{t('settings.username')}</span>
         <input
           value={username}
           disabled={busy}
@@ -2070,13 +2102,13 @@ function WebdavSettings({
       </label>
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ opacity: 0.7, minWidth: 64 }}>密码</span>
+        <span style={{ opacity: 0.7, minWidth: 64 }}>{t('settings.password')}</span>
         <input
           type="password"
           value={password}
           disabled={busy || status?.credentialsAvailable === false}
           onChange={(event) => setPassword(event.target.value)}
-          placeholder={status?.passwordSet === true ? '已存（留空则不改）' : '存在 dsh 的凭证库里'}
+          placeholder={status?.passwordSet === true ? t('settings.passwordStored') : t('settings.passwordStore')}
           style={{ ...inputStyle, flex: 1 }}
         />
       </label>
@@ -2084,12 +2116,12 @@ function WebdavSettings({
       ) : (
         <>
           <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ opacity: 0.7, minWidth: 64 }}>接入点</span>
+            <span style={{ opacity: 0.7, minWidth: 64 }}>{t('settings.endpoint')}</span>
             <input
               value={endpoint}
               disabled={busy}
               onChange={(event) => setEndpoint(event.target.value)}
-              placeholder="s3.cstcloud.cn（不写协议默认 https）"
+              placeholder={t('settings.endpointPlaceholder')}
               style={{ ...inputStyle, flex: 1 }}
             />
           </label>
@@ -2105,17 +2137,17 @@ function WebdavSettings({
           </label>
 
           <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ opacity: 0.7, minWidth: 64 }}>签名</span>
+            <span style={{ opacity: 0.7, minWidth: 64 }}>{t('settings.signature')}</span>
             <SelectBox
               value={signatureVersion}
               options={[
                 ['v4', 'v4'],
-                ['v2', 'v2（老网关多半要这个）'],
+                ['v2', t('settings.signatureV2')],
               ]}
               disabled={busy}
               onChange={setSignatureVersion}
             />
-            <span style={{ opacity: 0.7, minWidth: 40 }}>区域</span>
+            <span style={{ opacity: 0.7, minWidth: 40 }}>{t('settings.region')}</span>
             <input
               value={region}
               disabled={busy}
@@ -2142,7 +2174,7 @@ function WebdavSettings({
               value={accessKeySecret}
               disabled={busy || status?.credentialsAvailable === false}
               onChange={(event) => setAccessKeySecret(event.target.value)}
-              placeholder={status?.secretSet === true ? '已存（留空则不改）' : '存在 dsh 的凭证库里'}
+              placeholder={status?.secretSet === true ? t('settings.passwordStored') : t('settings.passwordStore')}
               style={{ ...inputStyle, flex: 1 }}
             />
           </label>
@@ -2155,7 +2187,7 @@ function WebdavSettings({
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button type="button" style={buttonStyle} disabled={busy} onClick={() => void save()}>
-          保存
+          {t('settings.save')}
         </button>
         {/*
           Three buttons used to live here: 立即同步, 立即拉取 and 全部重传. All three
@@ -2164,7 +2196,7 @@ function WebdavSettings({
           API rather than in a form the user opens to change a bucket name.
         */}
         <button type="button" style={buttonStyle} disabled={busy} onClick={() => void selfTest()}>
-          自检
+          {t('settings.probe')}
         </button>
         {detailNotice(notice)}
       </div>
@@ -2234,8 +2266,8 @@ type ListMode = UiListMode
 
 /** The two modes, in switch order, with their labels. */
 const LIST_MODES: readonly { id: ListMode; label: string; icon: React.ReactElement }[] = [
-  { id: 'grid', label: '网格', icon: <LayoutGrid size={14} /> },
-  { id: 'compact', label: '紧凑', icon: <Layers size={14} /> },
+      { id: 'grid', label: t('modes.grid'), icon: <LayoutGrid size={14} /> },
+      { id: 'compact', label: t('modes.compact'), icon: <Layers size={14} /> },
 ]
 
 /**
@@ -2313,7 +2345,7 @@ function SourceBadge({ source }: { source: CategorySource }): React.ReactElement
   const tint = source === 'user' ? WATCH_COLOR : source === 'model' ? MODEL_COLOR : undefined
   return (
     <span
-      title={CATEGORY_SOURCE_HINTS[source]}
+      title={sourceHint(source)}
       style={{
         flex: 'none',
         display: 'inline-flex',
@@ -2339,7 +2371,7 @@ function SourceBadge({ source }: { source: CategorySource }): React.ReactElement
             }),
       }}
     >
-      {CATEGORY_SOURCE_LABELS[source]}
+      {sourceLabel(source)}
     </span>
   )
 }
@@ -2490,7 +2522,7 @@ function EntryCard({
     compact || (previewKind === undefined && !mediaLink) ? null : (
       <button
         type="button"
-        title={previewKind === undefined ? '在浏览器里播放' : '在面板里放大'}
+            title={previewKind === undefined ? t('detail.playInBrowser') : t('detail.zoomInPanel')}
         onClick={(event) => {
           // The card opens the record; the picture must not.
           event.stopPropagation()
@@ -2650,7 +2682,7 @@ function EntryCard({
                 color: WATCH_COLOR,
               }}
             >
-              <Bookmark size={11} /> 待看
+              <Bookmark size={11} /> {t('filter.watch')}
             </span>
           )}
         </span>
@@ -2682,10 +2714,10 @@ function EntryCard({
             opacity: 0.6,
           }}
         >
-          <span>{CATEGORY_LABELS[entry.category]}</span>
+          <span>{categoryLabel(entry.category)}</span>
           {entry.platform !== undefined && <span>· {entry.platform}</span>}
-          {entry.attachmentCount > 0 && <span>· {entry.attachmentCount} 附件</span>}
-          {entry.deletedAt !== undefined && <span style={{ color: 'salmon' }}>· 已删</span>}
+          {entry.attachmentCount > 0 && <span>· {entry.attachmentCount} {t('app.tag')}</span>}
+          {entry.deletedAt !== undefined && <span style={{ color: 'salmon' }}>· {t('filter.bin')}</span>}
           <span style={{ flex: 'none' }}>· {new Date(entry.createdAt).toLocaleDateString()}</span>
           {entry.tags.map((tag) => (
             <span key={tag} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -2768,8 +2800,8 @@ function EntryPane({
           flexWrap: 'wrap',
         }}
       >
-        <strong>{KIND_LABELS[detail.kind]}</strong>
-        <span style={{ opacity: 0.6 }}>{CATEGORY_LABELS[detail.category]}</span>
+        <strong>{kindLabel(detail.kind)}</strong>
+        <span style={{ opacity: 0.6 }}>{categoryLabel(detail.category)}</span>
         {detail.categorySource !== undefined && <SourceBadge source={detail.categorySource} />}
         {detail.platform !== undefined && <span style={{ opacity: 0.6 }}>{detail.platform}</span>}
       </div>
@@ -2862,7 +2894,7 @@ function EntryPane({
               >
                 <button
                   type="button"
-                  title={playable ? '播放' : '放大查看'}
+          title={playable ? t('detail.play') : t('detail.zoom')}
                   onClick={() => onZoom({ src, mime: attachment.mime, label: caption })}
                   style={{
                     padding: 0,
@@ -2926,9 +2958,9 @@ function EntryPane({
         disabled={busy}
         maxLength={MAX_TITLE_CHARS}
         onChange={(event) => setTitle(event.target.value)}
-        aria-label="名称"
-        title="列表、卡片和对话卡片显示这个名字；留空则用文件名或备注兜底"
-        placeholder="名称，如：身份证正面（留空则用文件名兜底）"
+        aria-label={t('detail.name')}
+        title={t('detail.nameTitle')}
+        placeholder={t('detail.namePlaceholder')}
         style={{ ...paneRowStyle, ...inputStyle, width: '100%', boxSizing: 'border-box' }}
       />
 
@@ -2950,9 +2982,9 @@ function EntryPane({
 
       <SelectBox
         block
-        label="类目"
+        label={t('app.category')}
         value={detail.category}
-        options={CATEGORIES.map((value) => [value, CATEGORY_LABELS[value]] as const)}
+        options={CATEGORIES.map((value) => [value, categoryLabel(value)] as const)}
         disabled={busy}
         onChange={(next) => void onUpdate({ category: next })}
       />
@@ -2962,9 +2994,9 @@ function EntryPane({
         disabled={busy}
         onChange={(event) => setNote(event.target.value)}
         rows={2}
-        aria-label="备注"
-        title="你写的永远优先于模型的判断"
-        placeholder="备注，如：身份证照 / 待看视频 / 这个 key 是测试环境的（没起名字时，它会顶上当列表里的名字）"
+        aria-label={t('detail.note')}
+        title={t('detail.noteTitle')}
+        placeholder={t('detail.notePlaceholder')}
         style={{
           ...paneRowStyle,
           ...inputStyle,
@@ -3009,7 +3041,7 @@ function EntryPane({
               #{value}
               <button
                 type="button"
-                title={`从这条记录上移除「${value}」`}
+                title={t('detail.removeTag', { tag: value })}
                 style={{ ...actionStyle, padding: '2px 6px', gap: 2 }}
                 onClick={() => void onUpdate({ tags: detail.tags.filter((tag) => tag !== value) })}
               >
@@ -3023,8 +3055,8 @@ function EntryPane({
         value={tags}
         disabled={busy}
         onChange={(event) => setTags(event.target.value)}
-        aria-label="标签"
-        placeholder="输入标签，如：前端, 报销（逗号分隔）"
+        aria-label={t('app.tag')}
+        placeholder={t('detail.tagsPlaceholder')}
         style={{ ...paneRowStyle, ...inputStyle, width: '100%', boxSizing: 'border-box' }}
       />
 
@@ -3050,7 +3082,7 @@ function EntryPane({
           }
         >
           <Check size={14} />
-          保存以上
+          {t('detail.save')}
         </button>
         <button
           type="button"
@@ -3059,7 +3091,7 @@ function EntryPane({
           onClick={() => void onUpdate({ watchLater: detail.watchLater !== true })}
         >
           <Bookmark size={14} />
-          {detail.watchLater === true ? '取消待看' : '标为待看'}
+          {detail.watchLater === true ? t('detail.unwatch') : t('detail.watch')}
         </button>
         {inBin ? (
           <button
@@ -3068,7 +3100,7 @@ function EntryPane({
             disabled={busy}
             onClick={() => void onRestore()}
           >
-            <RotateCcw size={14} /> 恢复
+            <RotateCcw size={14} /> {t('detail.restore')}
           </button>
         ) : (
           <button
@@ -3077,7 +3109,7 @@ function EntryPane({
             disabled={busy}
             onClick={() => void onDelete()}
           >
-            <Trash2 size={14} /> 删除
+            <Trash2 size={14} /> {t('detail.delete')}
           </button>
         )}
       </div>
@@ -3098,10 +3130,10 @@ function EntryPane({
           overflowWrap: 'anywhere',
         }}
       >
-        存入 {new Date(detail.createdAt).toLocaleString()}
+        {t('app.store')} {new Date(detail.createdAt).toLocaleString()}
         {detail.updatedAt === detail.createdAt
           ? ''
-          : ` · 更新 ${new Date(detail.updatedAt).toLocaleString()}`}
+          : t('detail.updated', { when: new Date(detail.updatedAt).toLocaleString() })}
       </div>
     </>
   )
@@ -3110,7 +3142,7 @@ function EntryPane({
 /** What the user reads after a successful submission. */
 function describe(summary: CaptureResult): string {
   const parts: string[] = []
-  if (summary.stored > 0) parts.push(`已存入 ${summary.stored} 条`)
+  if (summary.stored > 0) parts.push(t('notice.saved', { count: summary.stored }))
   /*
     A record pulled back out of the recycle bin is not just "a repeat": it is the
     difference between "nothing happened" and "it is back in the list", and the
@@ -3118,8 +3150,8 @@ function describe(summary: CaptureResult): string {
     plain-repeat count leaves it out rather than reporting the same record twice.
   */
   const repeats = summary.merged - summary.restored
-  if (repeats > 0) parts.push(`合并 ${repeats} 条重复项`)
-  if (summary.restored > 0) parts.push(`从回收站取回 ${summary.restored} 条`)
+  if (repeats > 0) parts.push(t('notice.merged', { count: repeats }))
+  if (summary.restored > 0) parts.push(t('notice.restored', { count: summary.restored }))
   return parts.join('，')
 }
 

@@ -2,12 +2,16 @@
  * The model fallback: one small call, only when a rule could not decide, always
  * redacted, always capped.
  *
- * Three things this file refuses to do:
- *   - it never sends an image (the only way to judge an ID document from a
- *     picture is the picture, and that is exactly what must not leave);
- *   - it never sends credential text (`redact()` runs first, and a record whose
+ * What it does and does not send:
+ *   - **an image record's bytes do go** — this is the one place the plugin hands
+ *     a picture to the model, and it is deliberate: a phone snapshot of an ID
+ *     document has a photo's aspect ratio, so only the picture can decide, and
+ *     the user authorised exactly this on 2026-09-19 (`AGENTS.md` 4). Nothing
+ *     else about the record travels with it;
+ *   - **credential text never goes** (`redact()` runs first, and a record whose
  *     rule verdict is already `secret` is never asked about at all);
- *   - it never overrides the user, or a rule that already decided.
+ *   - **the user always wins** — a verdict they set, or one a rule already
+ *     decided, is never overwritten, and the daily cap outranks a pending call.
  *
  * Spending is capped per local day and persisted in the vault's global slot, so
  * a restart cannot reset the meter.

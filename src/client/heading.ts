@@ -15,6 +15,7 @@
  */
 
 import type { EntrySummary } from '../shared/panel-wire.js'
+import { t } from './i18n.js'
 
 /**
  * How much of a credential's description rides along in its heading.
@@ -29,9 +30,6 @@ export const NOTE_IN_HEADING_CHARS = 24
 export function isSecret(entry: EntrySummary): boolean {
   return entry.category === 'secret'
 }
-
-/** What a record with nothing to show is called. */
-const UNTITLED = '（无标题）'
 
 /** The first of these that is actually a name — an empty string is not one. */
 function firstFilled(...values: readonly (string | undefined)[]): string | undefined {
@@ -74,7 +72,10 @@ function build(entry: EntrySummary, noteChars: number): string {
   if (title !== undefined) return title
   const own = ownName(entry)
   if (own !== undefined) return own
-  return noteLine(entry.note, noteChars) || (isSecret(entry) ? '密钥 / 账密' : UNTITLED)
+  return (
+    noteLine(entry.note, noteChars) ||
+    (isSecret(entry) ? t('heading.credential') : t('heading.untitled'))
+  )
 }
 
 /**
@@ -112,5 +113,5 @@ export function headingTooltipOf(entry: EntrySummary): string {
   const note = noteLine(entry.note, Number.MAX_SAFE_INTEGER)
   // When the note *is* the name (a nameless record's last resort), repeating it
   // in parentheses would just say the same thing twice.
-  return note.length === 0 || note === name ? name : `${name}（${note}）`
+  return note.length === 0 || note === name ? name : t('heading.tooltip', { name, note })
 }

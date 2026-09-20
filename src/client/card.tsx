@@ -13,6 +13,7 @@ import React from 'react'
 
 import { INBOX_API_PREFIX, INBOX_ENDPOINT_ATTACHMENT, type InboxRpcResult } from '../shared/panel-wire.js'
 import { openVaultDock } from './dock.js'
+import { t, useLocaleRevision } from './i18n.js'
 
 /** `[attachment:<uuid>]`, the marker `src/host/tools.ts` emits. */
 const MARKER = /\[attachment:([A-Za-z0-9_-]+)\]/g
@@ -74,7 +75,7 @@ function RecordLink({ id }: { id: string }): React.ReactElement | null {
   return (
     <button
       type="button"
-      title="在右侧「仓库」里打开这条"
+      title={t('card.openThis')}
       onClick={() => openVaultDock?.(id)}
       style={{
         font: 'inherit',
@@ -87,7 +88,7 @@ function RecordLink({ id }: { id: string }): React.ReactElement | null {
         cursor: 'pointer',
       }}
     >
-      打开 ↗
+      {t('card.open')} ↗
     </button>
   )
 }
@@ -189,6 +190,9 @@ function render(text: string): React.ReactNode[] {
  * @returns the card element.
  */
 export function InboxToolCard({ toolName, block }: ToolCardProps): React.ReactElement {
+  // A settled card stays on screen for the life of the conversation, so it has
+  // to follow a language switch like everything else.
+  useLocaleRevision()
   const text = resultText(block)
   const isError = block.isError === true
 
@@ -203,11 +207,11 @@ export function InboxToolCard({ toolName, block }: ToolCardProps): React.ReactEl
       }}
     >
       <div style={{ opacity: 0.65, marginBottom: 6 }}>
-        {toolName === 'inbox_search' ? '🗂 dsh-inbox · 搜索仓库' : '🗂 dsh-inbox · 打开记录'}
-        {isError ? ' · 出错' : ''}
+        {toolName === 'inbox_search' ? t('card.searchTitle') : t('card.getTitle')}
+        {isError ? t('card.error') : ''}
       </div>
       {text === undefined ? (
-        <div style={{ opacity: 0.6 }}>（这条调用还没有结果）</div>
+        <div style={{ opacity: 0.6 }}>{t('card.pending')}</div>
       ) : (
         <div style={{ whiteSpace: 'pre-wrap' }}>{render(text)}</div>
       )}

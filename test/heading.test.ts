@@ -7,10 +7,19 @@
  * apart instead.
  */
 
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 
 import { NOTE_IN_HEADING_CHARS, headingOf, headingTooltipOf, isSecret } from '../src/client/heading.js'
 import type { EntrySummary } from '../src/shared/panel-wire.js'
+import { installLanguage } from './helpers/locale.js'
+
+/**
+ * The copy these cases assert is Chinese — the panel's primary language — so the
+ * language is pinned rather than inherited from the machine's locale.
+ */
+beforeAll(() => {
+  installLanguage('zh')
+})
 
 /** The smallest record the heading rule reads. */
 function entry(fields: Partial<EntrySummary>): EntrySummary {

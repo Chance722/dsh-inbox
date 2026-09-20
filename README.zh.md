@@ -64,48 +64,36 @@
 
 **平台**：目前只在 **Windows** 上做过完整验收；macOS / Linux **尚未验证**（代码里没有平台特定依赖，欢迎试用后反馈）。
 
-一条命令装好：
+`dsh web` 就是 `dsh --profile web`，所以直接装进你日常启动的那个 profile：
 
 ```powershell
-npx @chance722/dsh-inbox init
+npx @chance722/dsh-inbox init --profile web
 ```
 
-**全新机器**（还没有 `inbox` 这个 profile）两种走法，选一个：
+然后照旧启动——`dsh web`。左栏出现 **Inbox**；新会话里问「我的收件箱里有哪些还没看的链接」，助手就会去查。
+
+全新机器（从没跑过 dsh，还没有 `web` 这个 profile）加 `--create-profile` 让它先建：
 
 ```powershell
-# A. 让 init 顺手建（用 dsh 自带的 web 模板）
-npx @chance722/dsh-inbox init --create-profile
-
-# B. 自己建再装（--dump-config 让它创建完就退出，不启动）
-dsh --profile inbox --from-default-profile web --dump-config
-npx @chance722/dsh-inbox init
+npx @chance722/dsh-inbox init --profile web --create-profile
 ```
 
-它做三件事，重复运行是安全的：
+`init` 做三件事，重复运行是安全的：
 
-1. 把插件装进 profile（默认 `inbox`；profile 不存在会告诉你先建一个）
+1. 把插件装进这个 profile——面板和宿主半边都从这里来
 2. 复制 dsh 自带的 `standard` preset 到 `~/.dsh/.agent-presets/inbox/` 并加入本插件——**这一步决定助手能不能看到收件箱工具**
-3. 把用户级默认 preset 指向它（会先备份 `~/.dsh/settings.yaml`）
+3. 把你**用户级**的默认 preset 指向它（会先备份 `~/.dsh/settings.yaml`），于是所有 profile 的新会话都带上这套工具
 
-然后重启 dsh、开一个新会话：
+有两件事跟你的设置有关，先说清楚：插件会进你点名的那个 profile；你的默认 agent preset 变成「收件箱」那份——**它是 `standard` 的副本快照，dsh 以后升级 standard 不会自动跟着变**。两件都能退（见「卸载」）。
 
-```powershell
-dsh --profile inbox --no-open --port 3102
-```
-
-打开它打印的地址（带 token）。左栏出现 Inbox；新会话里问「我的收件箱里有哪些还没看的链接」，助手就会去查。**你日常的 `dsh web` profile 不受影响**。
-
-常用选项：
+**想让日常 dsh 保持干净？** 给插件单独一个 profile 和端口：
 
 ```powershell
-npx @chance722/dsh-inbox init                      # 装进 inbox profile（默认，不存在则报错）
-npx @chance722/dsh-inbox init --create-profile     # profile 不存在就顺手建一个
-npx @chance722/dsh-inbox init --profile web        # 装进你日常用的那个 profile
-npx @chance722/dsh-inbox init --no-default         # 只装，不动默认 preset
-npx @chance722/dsh-inbox init --help               # 全部选项
+npx @chance722/dsh-inbox init --create-profile     # 建一个隔离的 inbox profile
+dsh --profile inbox --no-open --port 3102          # 在那个 profile 里起
 ```
 
-装进哪个 profile 只决定**面板跑在哪儿**；agent preset 全局共享（`~/.dsh/.agent-presets/inbox/`），所以装第二个 profile 时只会补上缺的那行，不会另建一份。
+其它选项：`--profile <名字>` 装到别处，`--no-default` 不动默认 preset，`--help` 列全。装进哪个 profile 只决定**面板跑在哪儿**——agent preset 是所有 profile 共享的（`~/.dsh/.agent-presets/inbox/`），装第二个 profile 只会补上缺的那行。
 
 ### 从本地仓库装
 
@@ -118,16 +106,16 @@ node lib/cli.js init --package <本仓库的绝对路径>
 ### 卸载
 
 ```powershell
-# 1. 从 profile 里摘掉（同时会从 dsh.profile.bundles 移除）
-dsh plugin --profile inbox remove @chance722/dsh-inbox
+# 1. 从你装进去的那个 profile 里摘掉（同时会从 dsh.profile.bundles 移除）
+dsh plugin --profile <你装的 profile> remove @chance722/dsh-inbox
 
 # 2. 删掉 init 建的东西
 rm -r ~/.dsh/.agent-presets/inbox      # 那个 preset 副本
 # 默认 preset：把 ~/.dsh/settings.yaml 里 agent-presets.default 删掉（继承部署默认），
 # 或改成 standard；init 每次都留了 settings.yaml.bak-* 备份，也可以直接还原
 
-# 3. 想连隔离 profile 一起删
-rm -r ~/.dsh/profiles/inbox
+# 3. 想连这个 profile 一起删（只为这个插件建过才需要）
+rm -r ~/.dsh/profiles/<你装的 profile>
 ```
 
 **卸载不会删掉你的仓库。** 连记录一起删：`rm -r ~/.dsh/storages/dsh_inbox`。

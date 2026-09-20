@@ -17,11 +17,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import React from 'react'
 
 import { PACKAGE_NAME } from '../shared/constants.js'
-import {
-  CATEGORY_LABELS,
-  KIND_LABELS,
-} from '../shared/vocabulary.js'
 import { headingOf } from './heading.js'
+import { categoryLabel, kindLabel, t, useLocaleRevision } from './i18n.js'
 import {
   INBOX_API_PREFIX,
   INBOX_ENDPOINT_ATTACHMENT,
@@ -147,9 +144,9 @@ export function registerInboxDock(ctx: Context): void {
       tabs.register({
         id: DOCK_TAB_ID,
         kind: DOCK_KIND,
-        title: () => '仓库',
+        title: () => t('dock.title'),
         guide: [
-          { order: 20, title: () => '仓库', description: () => '把 inbox 放在对话旁边，随手看' },
+          { order: 20, title: () => t('dock.title'), description: () => t('dock.description') },
         ],
       })
       slots.inject('sidebar.right.pane.tab', () =>
@@ -178,6 +175,9 @@ export function registerInboxDock(ctx: Context): void {
  * @returns the pane.
  */
 function InboxDock(props?: DockProps): React.ReactElement {
+  // The language can change while this tab is open, so the dock subscribes on
+  // its own: the panel's subscription lives in a different React tree.
+  useLocaleRevision()
   /*
     The tab's own address, read through the hook the slot framework injects.
 
@@ -221,9 +221,9 @@ function DockList(): React.ReactElement {
   return (
     <div style={{ padding: '10px 12px', fontSize: 13 }}>
       <div style={{ opacity: 0.6, marginBottom: 8 }}>
-        {entries === undefined ? '读取中…' : `最近 ${String(entries.length)} 条`}
+        {entries === undefined ? t('app.loading') : t('dock.recent', { count: entries.length })}
       </div>
-      {failed && <p style={{ opacity: 0.7 }}>读不到仓库，去左侧「Inbox」面板看看。</p>}
+      {failed && <p style={{ opacity: 0.7 }}>{t('dock.unavailable', { panel: 'Inbox' })}</p>}
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {entries?.map((entry) => (
           <li
@@ -244,14 +244,14 @@ function DockList(): React.ReactElement {
               {headingOf(entry)}
             </div>
             <div style={{ fontSize: 12, opacity: 0.6, marginTop: 2 }}>
-              {KIND_LABELS[entry.kind]} · {CATEGORY_LABELS[entry.category]}
-              {entry.watchLater ? ' · 待看' : ''}
+              {kindLabel(entry.kind)} · {categoryLabel(entry.category)}
+              {entry.watchLater ? t('dock.watch') : ''}
             </div>
           </li>
         ))}
       </ul>
       <p style={{ opacity: 0.6, marginTop: 10 }}>
-        这里是随手看。改类目、删记录、入库设置在左侧「Inbox」面板里。
+        {t('dock.hint', { panel: 'Inbox' })}
       </p>
     </div>
   )
@@ -302,11 +302,11 @@ function DockRecord({ id, revision }: { id: string; revision: number }): React.R
   return (
     <div style={{ padding: '10px 12px', fontSize: 13 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <strong style={{ minWidth: 0, overflowWrap: 'anywhere' }}>仓库</strong>
+        <strong style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{t('dock.title')}</strong>
         <button
           type="button"
           onClick={() => openVaultDock?.()}
-          title="回到最近记录"
+          title={t('dock.back')}
           style={{
             marginLeft: 'auto',
             font: 'inherit',
@@ -319,24 +319,27 @@ function DockRecord({ id, revision }: { id: string; revision: number }): React.R
             cursor: 'pointer',
           }}
         >
-          返回最近
+          {t('dock.backShort')}
         </button>
       </div>
 
-      {failed && <p style={{ opacity: 0.7 }}>读不到这条记录，它可能已经被删掉了。</p>}
-      {entry === undefined && !failed && <p style={{ opacity: 0.6 }}>读取中…</p>}
+      {failed && <p style={{ opacity: 0.7 }}>{t('dock.gone')}</p>}
+      {entry === undefined && !failed && <p style={{ opacity: 0.6 }}>{t('app.loading')}</p>}
 
       {entry !== undefined && (
         <div>
           <div style={{ overflowWrap: 'anywhere', fontWeight: 500 }}>{headingOf(entry)}</div>
           <div style={{ fontSize: 12, opacity: 0.6, marginTop: 2 }}>
-            {KIND_LABELS[entry.kind]} · {CATEGORY_LABELS[entry.category]}
-            {entry.watchLater ? ' · 待看' : ''}
+            {kindLabel(entry.kind)} · {categoryLabel(entry.category)}
+            {entry.watchLater ? t('dock.watch') : ''}
             {` · ${new Date(entry.createdAt).toLocaleString()}`}
           </div>
 
           {entry.note !== undefined && entry.note.length > 0 && (
-            <p style={clause}>备注：{entry.note}</p>
+            <p style={clause}>
+              {t('dock.note')}
+              {entry.note}
+            </p>
           )}
 
           {entry.url !== undefined && (

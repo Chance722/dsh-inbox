@@ -10,7 +10,9 @@
  * README that half its readers will skim past — so this does it.
  *
  * What it does, in order, and it is safe to run twice:
- *   0. with `--create-profile`, create a missing profile first (off by default:
+ *   0. decide which profile to install into — `--profile` when it was named,
+ *      otherwise the one this machine already starts (`web`, or the only one);
+ *      with `--create-profile`, create a missing profile first (off by default:
  *      a typo in a profile name should say so, not conjure a profile)
  *   1. `dsh plugin --profile <profile> add <package>` (pnpm is idempotent)
  *   2. copy the shipped `standard` preset into `<DSH_HOME>/.agent-presets/<id>`
@@ -24,12 +26,12 @@
  * `PRESET_ROW_PATTERN`).
  */
 
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createRequire } from 'node:module'
 import { spawnSync } from 'node:child_process'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 
 /** What the plugin calls itself, and the row an agent preset needs. */
 const PACKAGE_NAME = '@chance722/dsh-inbox'
@@ -76,7 +78,8 @@ export function ensurePresetRow(body: string): PresetRowOutcome {
 }
 
 export interface Options {
-  profile: string
+  /** Profile named with `--profile`; undefined asks the installer to pick one. */
+  profile: string | undefined
   preset: string
   source: string
   defaultPreset: boolean
@@ -91,7 +94,8 @@ function usage(): string {
   dsh-inbox init [选项]
 
 选项：
-  --profile <名字>   dsh profile，默认 inbox（不存在则报错并告诉你怎么建）
+  --profile <名字>   装进哪个 dsh profile；不给就自己挑：优先你已有的 web，
+                     其次这台机器上唯一的那个（挑不出来会报错并告诉你怎么说）
   --create-profile   profile 不存在时用 dsh 自带的 web 模板建一个（默认不开）
   --preset <id>      agent preset 的 id，默认 inbox
   --package <来源>   插件来源，默认 ${PACKAGE_NAME}（本地开发传仓库路径）
@@ -105,7 +109,7 @@ function usage(): string {
 
 export function parse(argv: readonly string[]): Options | undefined {
   const options: Options = {
-    profile: 'inbox',
+    profile: undefined,
     preset: '',
     source: PACKAGE_NAME,
     defaultPreset: true,
@@ -145,6 +149,103 @@ export function parse(argv: readonly string[]): Options | undefined {
     throw new Error(`preset id 只能用小写字母、数字和连字符：${options.preset}`)
   }
   return options
+}
+
+/**
+ * The profiles this machine has, in a stable order.
+ *
+ * A directory counts as a profile when it carries the `package.json` dsh writes
+ * there; `profiles/node_modules` is a package store, not a profile. A missing
+ * `profiles` directory is the fresh-machine case, not an error.
+ *
+ * @param home - `<DSH_HOME>`.
+ * @returns profile names, sorted.
+ */
+export function listProfiles(home: string): string[] {
+  const root = join(home, 'profiles')
+  let entries: string[]
+  try {
+    entries = readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+      .map((entry) => entry.name)
+  } catch {
+    return []
+  }
+  return entries.filter((name) => existsSync(join(root, name, 'package.json'))).sort()
+}
+
+/** What to do about the profile, and how to describe the choice. */
+export type ProfileChoice =
+  | { kind: 'use'; profile: string; label: string }
+  | { kind: 'refuse'; message: string }
+
+/**
+ * Pick the profile to install into when the user did not name one.
+ *
+ * `dsh web` is `dsh --profile web`, so the profile people already start is the
+ * one the plugin belongs in — naming it by hand was a step the README had to
+ * teach, and the reason a fresh machine needed a second command at all. Guessing
+ * stops at the first ambiguity: several profiles and no `web` means asking, not
+ * serving someone the wrong one.
+ *
+ * @param options - `--profile` (if given) and `--create-profile`.
+ * @param existing - what {@link listProfiles} found.
+ * @returns the profile to use, or the refusal to print.
+ */
+export function chooseProfile(
+  options: Pick<Options, 'profile' | 'createProfile'>,
+  existing: readonly string[],
+): ProfileChoice {
+  if (options.profile !== undefined && options.profile.length > 0) {
+    return { kind: 'use', profile: options.profile, label: '' }
+  }
+  if (existing.includes('web')) {
+    return { kind: 'use', profile: 'web', label: '你日常 `dsh web` 用的那个' }
+  }
+  const only = existing[0]
+  if (existing.length === 1 && only !== undefined) {
+    return { kind: 'use', profile: only, label: '这台机器上唯一的 profile' }
+  }
+  if (existing.length === 0) {
+    if (options.createProfile) {
+      return { kind: 'use', profile: 'web', label: '还没有 profile，这个用 dsh 自带的 web 模板新建' }
+    }
+    return {
+      kind: 'refuse',
+      message:
+        '这台机器上还没有任何 dsh profile。\n' +
+        '先跑一次 `dsh web`（它会建好默认 profile），或者重跑时加上 --create-profile 让这一步自己发生。\n',
+    }
+  }
+  return {
+    kind: 'refuse',
+    message:
+      `有多个 profile，但没找到 web：${existing.join('、')}。\n` +
+      '用 --profile <名字> 说明装进哪一个。\n',
+  }
+}
+
+/**
+ * Whether this module is the program being run.
+ *
+ * `import.meta.url` carries the **real** path — Node resolves symlinks — while
+ * `process.argv[1]` keeps the path the caller typed. Comparing the URLs
+ * directly therefore fails for a copy reached through a pnpm
+ * `node_modules/@chance722/dsh-inbox/...` junction or any symlink, and the
+ * failure is silent: the installer does nothing, prints nothing, exits 0.
+ * Resolve both sides first; an unresolvable path is not us.
+ *
+ * @param moduleUrl - `import.meta.url` of this module.
+ * @param entry - `process.argv[1]`, or undefined when node has no script.
+ * @returns true when `entry` is this very file.
+ */
+export function isEntryPoint(moduleUrl: string, entry: string | undefined): boolean {
+  if (entry === undefined || entry.length === 0) return false
+  try {
+    return realpathSync(fileURLToPath(moduleUrl)) === realpathSync(entry)
+  } catch {
+    return false
+  }
 }
 
 /** `<DSH_HOME>`, the directory dsh keeps profiles, settings and storages in. */
@@ -241,7 +342,14 @@ function main(argv: readonly string[]): number {
   }
 
   const home = dshHome()
-  const profileDir = join(home, 'profiles', options.profile)
+  const choice = chooseProfile(options, listProfiles(home))
+  if (choice.kind === 'refuse') {
+    process.stderr.write(choice.message)
+    return 1
+  }
+  const profile = choice.profile
+  const chosen = choice.label.length === 0 ? '' : `（${choice.label}）`
+  const profileDir = join(home, 'profiles', profile)
   if (!existsSync(join(profileDir, 'package.json'))) {
     /*
       A missing profile is the one thing that turns "one command" into two, and
@@ -251,13 +359,13 @@ function main(argv: readonly string[]): number {
       with a new profile nobody asked for.
     */
     const hint =
-      `先建一个：dsh --profile ${options.profile} --from-default-profile web --dump-config\n` +
+      `先建一个：dsh --profile ${profile} --from-default-profile web --dump-config\n` +
       `（或者重跑时加上 --create-profile，让这一步自己发生）\n`
     if (!options.createProfile) {
-      process.stderr.write(`找不到 profile 「${options.profile}」（${profileDir}）。\n${hint}`)
+      process.stderr.write(`找不到 profile 「${profile}」（${profileDir}）。\n${hint}`)
       return 1
     }
-    process.stdout.write(`⓪ profile 「${options.profile}」不存在，用 dsh 的 web 模板建一个…\n`)
+    process.stdout.write(`⓪ profile 「${profile}」不存在，用 dsh 的 web 模板建一个…\n`)
     /*
       Capture rather than inherit: `dsh --dump-config` prints the whole composed
       tree, which buries the three lines that matter. It is only interesting
@@ -265,7 +373,7 @@ function main(argv: readonly string[]): number {
     */
     const created = spawnSync(
       'dsh',
-      ['--profile', options.profile, '--from-default-profile', 'web', '--dump-config'],
+      ['--profile', profile, '--from-default-profile', 'web', '--dump-config'],
       { encoding: 'utf8', shell: process.platform === 'win32' },
     )
     if (created.error !== undefined || created.status !== 0 || !existsSync(join(profileDir, 'package.json'))) {
@@ -280,15 +388,15 @@ function main(argv: readonly string[]): number {
     process.stdout.write(`   建好了 ${profileDir}\n`)
   }
 
-  process.stdout.write(`① 把 ${options.source} 装进 profile ${options.profile}…\n`)
-  const added = spawnSync('dsh', ['plugin', '--profile', options.profile, 'add', options.source], {
+  process.stdout.write(`① 把 ${options.source} 装进 profile「${profile}」${chosen}…\n`)
+  const added = spawnSync('dsh', ['plugin', '--profile', profile, 'add', options.source], {
     stdio: 'inherit',
     shell: process.platform === 'win32',
   })
   if (added.error !== undefined || added.status !== 0) {
     process.stderr.write(
       `装插件失败${added.error === undefined ? '' : `（${added.error.message}）`}。\n` +
-        `可以在你的终端里手动跑：dsh plugin --profile ${options.profile} add ${options.source}\n`,
+        `可以在你的终端里手动跑：dsh plugin --profile ${profile} add ${options.source}\n`,
     )
     return 1
   }
@@ -341,6 +449,7 @@ function main(argv: readonly string[]): number {
   process.stdout.write(
     `\n完成。接下来：\n` +
       `  · 重启 dsh（preset 在启动时扫描）\n` +
+      `  · 用你平时那条命令启动它：${profile === 'web' ? 'dsh web' : `dsh --profile ${profile}`}\n` +
       `  · 新建一个会话，它就会带上收件箱工具；想让助手查仓库，直接问「我的收件箱里有哪些还没看的链接」\n` +
       `  · 面板（侧栏 Inbox）不需要 preset，装完就在\n`,
   )
@@ -351,8 +460,10 @@ function main(argv: readonly string[]): number {
   Run only when invoked as a program.
 
   Without this guard, importing the module to test `parse` would also run the
-  installer — a test that edits `~/.dsh` is worse than no test at all.
+  installer — a test that edits `~/.dsh` is worse than no test at all. The
+  comparison itself lives in `isEntryPoint`, which resolves symlinks: a copy
+  reached through a pnpm junction must run, not exit 0 in silence.
 */
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isEntryPoint(import.meta.url, process.argv[1])) {
   process.exitCode = main(process.argv.slice(2))
 }

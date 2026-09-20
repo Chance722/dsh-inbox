@@ -9,9 +9,14 @@
  * profile.
  */
 
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+
 import { describe, expect, it } from 'vitest'
 
-import { ensurePresetRow, parse } from '../src/cli.js'
+import { chooseProfile, ensurePresetRow, isEntryPoint, listProfiles, parse } from '../src/cli.js'
 
 /** A composition that already speaks for a couple of other plugins. */
 const COMPOSITION = [
@@ -28,16 +33,16 @@ const COMPOSITION = [
 const rows = (body: string): number => (body.match(/- id: dsh-inbox/g) ?? []).length
 
 describe('dsh-inbox init arguments', () => {
-  it('installs into the inbox profile by default', () => {
+  it('leaves the profile to be detected when one was not named', () => {
     expect(parse(['init'])).toEqual({
-      profile: 'inbox',
+      profile: undefined,
       preset: 'inbox',
       source: '@chance722/dsh-inbox',
       defaultPreset: true,
       createProfile: false,
     })
     // The command word is optional: the README shows it, `npx` may drop it.
-    expect(parse([])?.profile).toBe('inbox')
+    expect(parse([])?.profile).toBeUndefined()
   })
 
   it('reads every documented flag', () => {
@@ -81,6 +86,91 @@ describe('dsh-inbox init arguments', () => {
     // A preset id becomes a directory name under `~/.dsh/.agent-presets`.
     expect(() => parse(['--preset', 'Inbox 2'])).toThrow(/preset id/)
     expect(() => parse(['--preset', '../evil'])).toThrow(/preset id/)
+  })
+})
+
+describe('which profile to install into', () => {
+  it('uses the profile it was given, whatever else is on the machine', () => {
+    expect(chooseProfile({ profile: 'work', createProfile: false }, ['web', 'work'])).toEqual({
+      kind: 'use',
+      profile: 'work',
+      label: '',
+    })
+  })
+
+  it('prefers web — the profile `dsh web` already starts', () => {
+    const choice = chooseProfile({ profile: undefined, createProfile: false }, ['alpha', 'web'])
+    expect(choice).toMatchObject({ kind: 'use', profile: 'web' })
+  })
+
+  it('takes the only profile when there is exactly one', () => {
+    const choice = chooseProfile({ profile: undefined, createProfile: false }, ['solo'])
+    expect(choice).toMatchObject({ kind: 'use', profile: 'solo' })
+  })
+
+  it('creates web from the shipped template on a machine with no profiles', () => {
+    const choice = chooseProfile({ profile: undefined, createProfile: true }, [])
+    expect(choice).toMatchObject({ kind: 'use', profile: 'web' })
+  })
+
+  it('refuses to guess on a machine with nothing to guess from', () => {
+    const choice = chooseProfile({ profile: undefined, createProfile: false }, [])
+    expect(choice.kind).toBe('refuse')
+    // The refusal has to carry the way out, or it is just a dead end.
+    expect(choice.kind === 'refuse' ? choice.message : '').toMatch(/--create-profile/)
+  })
+
+  it('asks instead of picking when several profiles and no web exist', () => {
+    const choice = chooseProfile({ profile: undefined, createProfile: false }, ['alpha', 'beta'])
+    expect(choice.kind).toBe('refuse')
+    const message = choice.kind === 'refuse' ? choice.message : ''
+    expect(message).toContain('alpha')
+    expect(message).toContain('beta')
+    expect(message).toMatch(/--profile/)
+  })
+})
+
+describe('reading the machine', () => {
+  it('counts a directory as a profile only when the dsh package.json sits in it', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-inbox-profiles-'))
+    try {
+      for (const name of ['web', 'inbox']) {
+        mkdirSync(join(root, 'profiles', name), { recursive: true })
+        writeFileSync(join(root, 'profiles', name, 'package.json'), '{}')
+      }
+      // The store pnpm keeps next to the profiles is not one of them.
+      mkdirSync(join(root, 'profiles', 'node_modules', '@deepseek-ai'), { recursive: true })
+      expect(listProfiles(root)).toEqual(['inbox', 'web'])
+      expect(listProfiles(join(root, 'nothing-here'))).toEqual([])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('running as a program', () => {
+  it('recognises itself through a junction, which is how pnpm installs it', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-inbox-entry-'))
+    try {
+      const real = join(root, 'real')
+      mkdirSync(real, { recursive: true })
+      const file = join(real, 'cli.js')
+      writeFileSync(file, '// not the installer\n')
+      const linked = join(root, 'linked')
+      symlinkSync(real, linked, 'junction')
+
+      const moduleUrl = pathToFileURL(file).href
+      expect(isEntryPoint(moduleUrl, file)).toBe(true)
+      // The bug this pins down: `import.meta.url` is the real path while
+      // argv[1] keeps the junction path, so comparing the URLs directly said
+      // "not me" and the installer exited 0 without doing anything.
+      expect(isEntryPoint(moduleUrl, join(linked, 'cli.js'))).toBe(true)
+      expect(isEntryPoint(moduleUrl, join(real, 'something-else.js'))).toBe(false)
+      expect(isEntryPoint(moduleUrl, undefined)).toBe(false)
+      expect(isEntryPoint(moduleUrl, '/no/such/file.js')).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })
 

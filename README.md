@@ -64,48 +64,36 @@ Requires Node ≥ 22 and a working `dsh` (`@deepseek-ai/dsh`).
 
 **Platform**: fully accepted on **Windows** only so far; macOS and Linux are **not verified yet** (no platform-specific dependency in the code — try it and tell me how it goes).
 
-One command installs it:
+`dsh web` is just `dsh --profile web`, so install into the profile you already start:
 
 ```powershell
-npx @chance722/dsh-inbox init
+npx @chance722/dsh-inbox init --profile web
 ```
 
-**On a fresh machine** (no `inbox` profile yet) either of these works:
+Then start dsh the way you always do — `dsh web`. The **Inbox** entry is in the left rail, and a new session's assistant can look things up for you ("what links in my inbox haven't I read yet?").
+
+On a machine that has never run dsh there is no `web` profile yet; `--create-profile` makes it first:
 
 ```powershell
-# A. let init create it, using dsh's own web template
-npx @chance722/dsh-inbox init --create-profile
-
-# B. create it yourself, then install (--dump-config creates and exits)
-dsh --profile inbox --from-default-profile web --dump-config
-npx @chance722/dsh-inbox init
+npx @chance722/dsh-inbox init --profile web --create-profile
 ```
 
-It does three things, and running it twice is safe:
+`init` does three things, and running it twice is safe:
 
-1. installs the plugin into a profile (`inbox` by default; if that profile does not exist it tells you how to create one)
+1. installs the plugin into that profile — the panel and the host half both come from here
 2. copies dsh's shipped `standard` preset into `~/.dsh/.agent-presets/inbox/` and adds this plugin — **this is the step that decides whether the assistant can see the inbox tools**
-3. points the user-level default preset at it (backing up `~/.dsh/settings.yaml` first)
+3. points your user-level default preset at it (backing up `~/.dsh/settings.yaml` first), so new sessions in every profile get those tools
 
-Then restart dsh and open a new session:
+Two things that changes, so you know: the plugin joins the profile you named, and your default agent preset becomes the 收件箱 copy — a snapshot of `standard` that will not follow later dsh upgrades. Both are reversible (see Uninstall).
 
-```powershell
-dsh --profile inbox --no-open --port 3102
-```
-
-Open the printed URL (it carries a token). The Inbox panel is in the left rail; in a new session, ask "what links in my inbox haven't I read yet?" and the assistant will look it up. **Your daily `dsh web` profile is not touched.**
-
-Useful flags:
+**Want to keep your daily dsh clean?** Give the plugin a profile and a port of its own:
 
 ```powershell
-npx @chance722/dsh-inbox init                      # into the inbox profile (default; refuses if it is missing)
-npx @chance722/dsh-inbox init --create-profile     # create that profile when it is missing
-npx @chance722/dsh-inbox init --profile web        # into the profile you already use
-npx @chance722/dsh-inbox init --no-default         # install only, leave the default preset alone
-npx @chance722/dsh-inbox init --help               # every flag
+npx @chance722/dsh-inbox init --create-profile     # an isolated `inbox` profile
+dsh --profile inbox --no-open --port 3102          # start it there
 ```
 
-Which profile you install into only decides **where the panel runs**. The agent preset is shared by every profile (`~/.dsh/.agent-presets/inbox/`), so installing into a second profile just fills in the missing row.
+Other flags: `--profile <name>` installs elsewhere, `--no-default` leaves the default preset alone, `--help` lists everything. Which profile you install into only decides **where the panel runs** — the agent preset is shared by every profile (`~/.dsh/.agent-presets/inbox/`), so installing into a second one just fills in the missing row.
 
 ### From a local checkout
 
@@ -118,16 +106,17 @@ node lib/cli.js init --package <absolute path to this repo>
 ### Uninstall
 
 ```powershell
-# 1. remove the package from the profile (also drops it from dsh.profile.bundles)
-dsh plugin --profile inbox remove @chance722/dsh-inbox
+# 1. remove the package from the profile you installed it into
+#    (also drops it from dsh.profile.bundles)
+dsh plugin --profile <that profile> remove @chance722/dsh-inbox
 
 # 2. delete what init created
 rm -r ~/.dsh/.agent-presets/inbox      # the preset copy
 # default preset: delete agent-presets.default in ~/.dsh/settings.yaml (falls back to the
 # deployment default) or set it to standard; every init left a settings.yaml.bak-* backup
 
-# 3. and the isolated profile, if you want it gone
-rm -r ~/.dsh/profiles/inbox
+# 3. and the profile itself, if you made one just for this
+rm -r ~/.dsh/profiles/<that profile>
 ```
 
 **Uninstalling does not delete your vault.** To remove the records too: `rm -r ~/.dsh/storages/dsh_inbox`.
