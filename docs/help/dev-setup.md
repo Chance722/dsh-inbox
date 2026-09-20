@@ -47,6 +47,16 @@ dsh --profile inbox --no-open --port 3102
 - **要先有工作区**：web UI 得有工作区才能建会话，侧栏才会出现；一个工作区都没有时，「添加工作区」弹的是 Windows 原生目录框（自动化驱动不了，得手动点一次）。
 - **端口可能被占**：`EADDRINUSE` 说明上一个实例还在跑，而它的 token 只打在启动时的 stdout、不落盘（不带 token 访问是 401）。查占用：`Get-NetTCPConnection -LocalPort 3102 -State Listen | Select-Object OwningProcess`，然后 `Stop-Process -Id <pid>`，或者干脆换个端口。
 - **停服务**：就在那个终端里 `Ctrl+C`。
+- **抓不到网页标题（微信这类站点）**：先看**我们自称谁**——`dsh-web-fetch-http` 只发 `user-agent` + `accept` 两个头，默认 UA 是 `deepseek-harness/…`，微信按 UA 认客户端，会给这种请求回一个空壳页（HTTP 200、`<title></title>`、正文写着「环境异常，完成验证后即可继续访问」），连 `og:title` 都没有。UA **不能按请求设置**（`WebFetchRequest` 只有 `url`），只能改 profile 的 provider 配置——在 `%DSH_HOME%\profiles\<name>\cordis.patch.yml` 里覆盖那个条目（条目按 `id` 匹配，`config` 是**整体替换**不是深合并）：
+
+  ```yaml
+  - id: web-fetch-http
+    name: '@deepseek-ai/dsh-web-fetch-http'
+    config:
+      userAgent: 'Mozilla/5.0 (compatible; dsh-inbox/0.1; +https://github.com/Chance722/dsh-inbox)'
+  ```
+
+  实测：这条足以让微信吐真文章（真文章的 `<title>` 依然为空，标题只在 `og:title` 里，所以两件事缺一不可）。`--dump-config | Select-String web-fetch-http -Context 0,4` 可以确认 patch 生效。注意这是**整个 profile 的抓取身份**，模型自己的 web 工具也一起变了。
 
 ## 验证模型能调到工具（headless 路线）
 

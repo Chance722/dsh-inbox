@@ -700,3 +700,48 @@ CJK: 微信公众平台 | 环境异常 | 当前环境异常，完成验证后即
 - 修法三条：**(a)** 入库成功后自动离开回收站（回到「全部」，因为"刚存的东西"一定不在回收站里）；**(b)** 那个 2.5 秒的延迟刷新改走 `refreshRef`——否则它握着旧闭包，会把列表重新写回旧货架（这条如果不修，等于我上一轮亲手埋了同一颗雷）；**(c)** list 响应的形状加校验，畸形响应不再让 `entries.map` 把整个面板炸成白屏（保留上一次的列表 + 一句提示）。
 
 **验证**：`pnpm typecheck` 干净、**15 文件 182 条**测试全绿（+5）、`pnpm build` 通过；真机复验：同一条公众号链接现在记录 `linkTitleError=no-title`（详情里能看到那句提示），`example.org` 正常拿到标题，测试记录已删净（回收站清空前后都核对过），用户 6 条记录原样。
+
+> **更正（见下一节）**：这一步把微信那条写成"站点对匿名请求只回验证页"，**这个结论是错的**——用户指出他的浏览器清掉 cookie 与 localStorage 照样能看。真因是**我们自称的 User-Agent**。`og:title` 那条退路和 `linkTitleError` 的机制都留着（前者正是真因修好后真正抓到标题的那条路），但"抓不到就是站点不给"的说法不成立。
+
+#### M7 第二十一步 — 微信那条的真因：User-Agent，不是"站点不给"（同日）
+
+用户的纠正：那条公众号文章**浏览器里直接能看**，清掉该域名的 cookie 与 localStorage 依然能看 → "匿名访问被拒"说不通。
+
+于是回头查**我们到底发了什么**：`dsh-web-fetch-http` 的 `requestOnce` 只发两个头——
+
+```
+user-agent: deepseek-harness/0.0.1 (+https://github.com/deepseek-ai)
+accept: text/html,application/xhtml+xml,text/*;q=0.9,application/json;q=0.8
+```
+
+没有 `Accept-Language`、没有 `Referer`，且自称不是浏览器。用探针换成浏览器 UA 再抓同一条 URL：
+
+```
+UA      : Mozilla/5.0 (Windows NT 10.0; Win64; x64) ... Chrome/140.0.0.0 Safari/537.36
+status 200 | kind html | 真实文章
+title   : ""                                   ← 注意：真文章的 <title> 也是空的
+og:title: "用AI的这三年，想跟你分享这9条心得。"   ← 标题只在这里
+```
+
+换"诚实但浏览器兼容"的 UA 同样能过：
+
+```
+Mozilla/5.0 (compatible; dsh-inbox/0.1; +https://github.com/Chance722/dsh-inbox)
+```
+
+**结论**：微信按 UA 认客户端，`Mozilla/5.0` 前缀就是通行证；而上一步加的 `og:title` 退路**不是多余的**——微信真文章的 `<title>` 一样是空的。两件事缺一不可。
+
+**改在哪**：UA 不是每条请求的参数（`WebFetchRequest` 只有 `url`），它是 profile 里 `web-fetch-http` 这个 provider 的配置。所以写进了 **`%DSH_HOME%\profiles\inbox\cordis.patch.yml`**（用户自己的 profile，不是仓库）：
+
+```yaml
+- id: web-fetch-http
+  name: '@deepseek-ai/dsh-web-fetch-http'
+  config:
+    userAgent: 'Mozilla/5.0 (compatible; dsh-inbox/0.1; +https://github.com/Chance722/dsh-inbox)'
+```
+
+**代价写清楚了**（也在那个文件里）：这是**整个 profile 的抓取身份**，模型的 web 工具一起受影响；想去掉就删掉这一条（回到 harness 默认）。**要不要让插件替所有用户默认带上这一条（影响他们的抓取身份）留给你定**——我没有替别人做这个决定。
+
+**真机复验**：重启后重粘同一条链接（判重合并，`linkTitleError` 不阻止重试）→ 记录变成 `linkTitle=「用AI的这三年，想跟你分享这9条心得。」`、`linkTitleError` 清空。**标题自己出现在列表里了。**
+
+**验证**：`pnpm typecheck` 干净、**15 文件 182 条**测试全绿、`pnpm build` 通过；客户端把提示文案从"对匿名访问只回验证页"改成"对非浏览器的请求只回空壳页"，因为前者是错的。
