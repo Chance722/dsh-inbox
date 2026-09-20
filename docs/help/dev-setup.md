@@ -60,13 +60,21 @@ dsh --profile inbox --no-open --port 3102
 
 ## 验证模型能调到工具（headless 路线）
 
-web profile 的工具行由 agent preset 接管，最省事的验证是另开一个 headless 派生 profile——它没有 agent-presets，工具行直接对模型可见：
+**2026-09-20 起用这个配方**（它复现的正是用户真实的组合：插件既是 profile bundle、又由会话 preset 带进来，也就是那个
+"域被打开两次"的场景。少了 preset 那一半，`dsh_inbox` 只 open 一次，测试会假通过）：
 
 ```powershell
-dsh --profile inbox-m0 --from-default-profile headless --dump-config
-dsh plugin --profile inbox-m0 add D:\Workspace\dsh-inbox
-dsh --profile inbox-m0 "Call the inbox_status tool and paste its raw result."
+dsh --profile inbox-check --from-default-profile headless --dump-config   # 派生一个 headless profile
+dsh plugin --profile inbox-check add D:\Workspace\dsh-inbox              # ① profile 那半边
+# ② 会话那半边：用户级默认 preset 已经是收件箱 preset（init 写过 agent-presets.default），无需额外操作
+dsh --profile inbox-check "调用 inbox_status 工具，把它的原始结果原样贴给我。"
+# 期望：dsh-inbox v0.1.0: vault open, 7 record(s).
+# 顺带验命中：dsh --profile inbox-check "我的个人仓库里有哪些还没看的链接？"（应调用 inbox_search）
 ```
+
+跑完把临时 profile 删掉（`%DSH_HOME%\profiles\inbox-check`）。**注意** `pnpm build` 之后才会带上最新代码：headless 启动时装载 `lib/`。
+
+早期（还没有 preset 的 M0 阶段）用过 `inbox-m0` 那种"只挂 profile、工具行直接可见"的写法，现在**不足以验证**上面那条双加载场景。
 
 ## 在 web 里验证需要 agent preset
 

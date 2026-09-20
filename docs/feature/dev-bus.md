@@ -1043,3 +1043,40 @@ Mozilla/5.0 (compatible; dsh-inbox/0.1; +https://github.com/Chance722/dsh-inbox)
   旧写法对照 **1.10**。新增知识文档 **`docs/help/panel-theme.md`**；`ui-visual-check.md` 补了这个镜像页的用法与"**探针必须先挂载再量**"这个坑
   （detached 元素的 `getComputedStyle().color` 是空串，会被判成"读不懂→深色"，第一次跑就撞上了）。
 - **没验**：真机浅色模式下的人眼复验（设置弹窗、手册、详情 select、选中条在白底上的强弱），留给用户。
+
+#### M8 第六步 — 助手那边工具全坏：域名被打开了两次（同日）
+
+用户报回来的原话：面板正常、本地仓文件内容也对，但**对话里的收件箱工具全坏**——
+`inbox_status` 报 `vault NOT open — domain 'dsh_inbox' is already open`，`inbox_search` / `inbox_get` 一律
+「仓库没有打开」。
+
+**根因**：这个插件在**同一个进程里被加载两次**——profile 组合里一份（面板与宿主半边靠它），会话的 agent preset 里又一份
+（工具注册表是按会话的，只在 profile 里的插件对模型不可见）。而 `ctx.storageDomain` **按域名只允许 open 一次**
+（`DomainFacility.reserved`，证据在 `node_modules/@deepseek-ai/dsh-storage-domain`），于是第二个实例 open 失败，
+它注册的工具全是坏的——**面板用的正是先 open 成功的那一个实例**，所以一边好一边坏。
+这是第三步把插件接进 preset 之后才存在的组合（在那之前助手根本看不到工具，也就没暴露）。
+
+**修法**：新增 `src/host/vault/lease.ts` —— **进程级单例 + 引用计数**。第一个调用者 open 并成为 owner，
+后来的调用者共享同一个 `Vault`，最后一个释放时才 close；open 失败**不留在注册表里**，下次加载可以重试；
+注册表挂在 `globalThis`（同一个包被装两份也共享）。两个附带结果：面板的解锁与对话工具现在**共用一把内存钥匙**
+（以前是两个实例、两把钥匙），启动时那次拉取**每进程只跑一次**（由真正 open 的实例跑，之后靠「刷新」）。
+
+**验证**（这一条不好验，所以写清楚）：
+
+- 新增 **`test/lease.test.ts`（6 条，跑真实存储栈）**：两次租约只 open 一次且拿到的是同一个对象；
+  **裸调第二次 `open` 仍然抛 `already open`**（把这条 bug 本身钉进测试，免得以后有人"简化"掉租约）；
+  "刚打开"的回调只对 open 者跑一次；先释放的一方**不会**关掉别人正在读的域；全部释放后域关闭、
+  下次租约重新 open 且记录还在（在磁盘上，不在句柄里）；失败的 open 如实上报且不留坏槽位。
+- **真会话端到端**：`headless` 派生 profile + 插件作 profile bundle + 用户级默认 preset（= 双加载组合）
+  → `dsh-inbox v0.1.0: vault open, 7 record(s).`；修之前这个组合报的就是 `already open`。配方写进 `docs/help/dev-setup.md`。
+- 顺手把 `inbox_status` 里的**内部里程碑 `M6c` 换成版本号**：这串会被助手原样念给用户，`M6c` 对用户没有任何意义。
+  版本由构建期注入（`scripts/build.mjs` 的 esbuild `define`，值取 `package.json`），源码里不留第二份版本号；
+  `src/globals.d.ts` 声明它，读者用 `typeof` 兜底。
+- **关键词命中**（用户问"仓库 / 个人仓库 / inbox 能不能自然命中"）：三处文案补上用户自己的说法——
+  `inbox_search` 的描述写明"their 收件箱, which they also call 仓库 / 个人仓库 / inbox"，`inbox_get` 与 `inbox_status` 同样；
+  `init` 写的 preset 描述改成「…（叫它仓库 / inbox 也行）…」；面板手册第 6 节加一句。
+  真会话验：问「我的个人仓库里有哪些还没看的链接？」→ 模型自己推理出 `inbox_search(watchLater: true, kind: link)`，
+  答出那 1 条待看链接，并主动说明另一条没打待看。
+
+**验证**：`pnpm typecheck` 干净、**26 文件 262 条**测试全绿（+6 租约）、`pnpm build` 通过、3102 服务已重启、
+临时 `inbox-check` profile 用完已删。**新知识**进 `docs/help/dsh-plugin-platform.md`（双加载 + 进程级单例这条硬规则）。

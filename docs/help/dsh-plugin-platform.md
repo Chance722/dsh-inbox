@@ -47,6 +47,31 @@ window.__ModuleLoader__.load({
 - **工具只有在会话所属的 agent preset 的 `agent.cordis.yml` 里挂了才对模型可见**；web profile 里进程级工具行由 preset 接管（证据：`profiles/.../dsh-agent-presets/README.md`）。
 - 用户级 preset 根：`$DSH_HOME/.agent-presets`（`includeUserRoot` 默认 true）。官方 UI 的 preset 创建是**复制现有 preset**、不接受直接写组合文本——自动装配因此是必需项，不是锦上添花。
 
+### 同一个插件会被加载两次，宿主半边必须是进程内单例（2026-09-20 真机咬到）
+
+把插件装进 profile（`dsh plugin add`）**再接进 agent preset**（`init` 做的事）之后，同一个进程里会有**两个插件实例**：
+
+1. **profile 组合**里的那一份 —— 面板与宿主半边靠它存在（客户端 bundle 也是在这条链上注册的）；
+2. **会话的 agent preset** 里的那一份 —— 工具注册表是**按会话**的，只在 profile 里的插件对模型不可见。
+
+这是设计使然，不是装错了。但它撞上存储层的硬规则：`ctx.storageDomain` **按域名只允许一次 open**
+（`DomainFacility.reserved`，违反时抛 `DomainError: domain 'dsh_inbox' is already open`，
+证据：`node_modules/@deepseek-ai/dsh-storage-domain/lib/index.js`）。
+于是第二个实例打开失败 —— 真机现象是**面板一切正常，助手那边 `inbox_status` 报 `vault NOT open`、
+`inbox_search`/`inbox_get` 全答「仓库没有打开」**（面板正是那个先打开、持有域的实例）。
+
+修法（`src/host/vault/lease.ts`）：**进程级单例 + 引用计数**。第一个调用者 open 并成为 owner，
+后来的调用者共享同一个 `Vault` 对象，最后一个释放时才 close；失败的 open 不留在注册表里，
+下次加载可以重试。注册表挂在 `globalThis` 上（同一个包被装两份时也共享）。
+
+两条值得记住的后果：
+
+- **一把钥匙**：面板的解锁与对话里的工具现在共用同一份内存密钥（以前是两个实例、两把钥匙）。
+- **启动时的那次拉取只跑一次**（由真正 open 的那个实例跑），之后靠「刷新」再拉。
+
+**给其它插件作者的结论**：凡是在 `apply` 里 open 域，或建立别的进程级资源（端口、文件句柄、定时器、
+全局缓存）的插件，都要按「我这个 `apply` 可能在同一进程里跑两遍」来写。
+
 ## 存储
 
 - `ctx.storage` + 后端 + 域：官方定位是"不该进会话历史的应用数据"（证据：`profiles/.../dsh-storage/README.md`）。
