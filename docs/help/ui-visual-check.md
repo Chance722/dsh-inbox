@@ -47,11 +47,39 @@ Start-Process -FilePath $chrome -ArgumentList $args -Wait -NoNewWindow
   （列宽、按钮宽度、图标中心偏移、是否同一行）。比看图精确，还能被 diff。
 - `--screenshot=…png --window-size=W,H`：肉眼看的 PNG，可以贴进回复给用户确认。
 
+### 除了几何，颜色也能这么量（2026-09-20 新用）
+
+浅色/深色的 bug（`Canvas` 底 + 继承来的文字色 = 看不见内容）不是几何问题，但同一套办法能给出**数字证据**：
+`.research/ui-check/scheme-check.html` 按 dsh 的真实 DOM 形状（`<html>` 声明 `color-scheme`、`<body>` 给文字色）
+跑五个场景，报告 `schemeOf` 的返回值、弹窗/`select` 的实际 `background-color`，以及两者的**对比度**——
+"看不见"于是变成 `contrast≈1.10` 这个可 diff 的数。规则与结论见 `docs/help/panel-theme.md`。
+
+跑它要多两个参数（比几何页多）：
+
+```powershell
+$args = @('--headless=new','--disable-gpu','--no-sandbox','--no-first-run',
+          '--allow-file-access-from-files',          # file:// 下加载本地 ES 模块，少了这句脚本静默不跑
+          "--user-data-dir=$env:TEMP\ui-check-scheme",'--virtual-time-budget=5000',
+          '--window-size=820,900',"--screenshot=$png","--dump-dom",
+          'file:///D:/Workspace/dsh-inbox/.research/ui-check/scheme-check.html')
+```
+
+那个页面 import 的是 `./scheme.js`——由 `npx --no-install esbuild src/client/scheme.ts --format=esm --outfile=.research/ui-check/scheme.js`
+从**真源码**编出来的，不是手抄一份（手抄的镜像只会验自己）。
+
 ## 检查页要守的两条
 
 1. **样式值逐条从 `src/client/index.tsx` 抄**，尤其是 `font: 14px/1.6 system-ui, sans-serif`
    ——中文标签的宽度全靠它，"能不能放一行"量错就白量。
 2. **页面上写一句"样式镜像页（假数据），不是真机截图"**，截图自证来源，免得日后被当成真机证据。
+
+## 探针必须挂进文档再量（2026-09-20 踩到）
+
+镜像页第一次跑出 `app says light dark → dark`，不是插件错了，是**探针本身没挂上去**：
+`getComputedStyle(el).color` 对**不在文档里**的元素返回**空串**（Chrome 实测），
+空串解析不出亮度 → 走"读不懂就按深色"的兜底，于是场景 3/4 全落在 `dark` 上，看着像判定逻辑坏了。
+真机上面板永远是挂载状态（effect 里读），所以镜像页也必须**先 `append` 再量**。
+凡是"读数不对"的镜像结果，先怀疑探针的位置，再怀疑被测代码。
 
 镜像页**只能证几何**（这套数值在真实引擎 + 真实字体下长什么样），不能证组件逻辑正确——
 那部分仍旧靠 typecheck / 单测 / 读代码。检查页不是产品的一部分，放 `.research/ui-check/`

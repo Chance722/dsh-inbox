@@ -95,3 +95,6 @@ dsh --profile inbox-m0 "Call the inbox_status tool and paste its raw result."
   验证方式（可复现）：改一句会进 bundle 的字符串 → `pnpm build` → 等约 5 秒 → 请求带 token 的首页，看预加载 combo URL 里的 `&rev=` 变没变（内容哈希，12 位）。实测：改 → `86ac2681f7eb` 变 `216cdfc827d9`；改回 → 变回 `86ac2681f7eb`。
 
   **坑**：只给某个模块**加一个没人用的导出**再 build，`rev` 不会变——esbuild 的 tree-shaking 把它删了，bundle 字节没变。要探就用会进产物的字符串（这也是 `rg 中文` 搜不到 `lib/client.js` 的原因，中文被转义成 `\uXXXX`）。
+
+- **开发期间不需要重装插件**：profile 里的 `node_modules/@duoyu/dsh-inbox` 是指回仓库的 **junction**（`dsh plugin add <仓库路径>` 装的就是这个链接，实测 `Get-FileHash` 两边一致），
+  `pnpm build` 改的就是它读的那份产物。只有换机器、换 profile、或改了 `package.json` 里的 `dsh.bundle` / `dsh.client` 声明时才需要再跑一次 `node lib/cli.js init --package <仓库路径>`（可重复运行）。

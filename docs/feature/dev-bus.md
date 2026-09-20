@@ -989,3 +989,57 @@ Mozilla/5.0 (compatible; dsh-inbox/0.1; +https://github.com/Chance722/dsh-inbox)
 - 版本策略与发布命令写进了回复（0.x 起步、`--access public` 已进 `publishConfig`）。
 
 **未处理、需用户决定**：提交历史里的作者邮箱是真实工作邮箱（会随仓库公开）——要么保留，要么 `git filter-repo` 重写历史，要么另起一个干净仓库推。
+
+#### M8 第三步 — 邮箱换成公开邮箱、README 改成产品介绍、真截图（同日）
+
+用户拍板：工作邮箱换掉；README 重写（现在读起来像开发过程记录，不像在介绍一个产品）。
+
+- **历史重写**：140 个提交的作者与提交者全部改成公开邮箱，**tree 不变**（内容零改动），`refs/original` 与 reflog 已清。
+  后果两条，都记在这里：① 本地 `main` 与旧 `origin/main` 已无共同祖先，推送要 `git push --force-with-lease origin main`；
+  ② `docs/help/index.md` 维护记录表里**更早几行的短 id 是重写前的**，只能当历史看，`git show` 不到了（表下已注明）。
+- **README 中英重写**：删掉状态行与"半成品"口气，改成"定位 → 解决什么问题 → 主要功能 → 安装 → 存储细节 → 隐私红线"；
+  隐私边界单独一节（只加密账密正文、别用公开桶、图片默认不进对话）；补上**封面图**与**真的面板截图** `docs/assets/panel.png`
+  （之前只有占位）；加了"两种用法"（侧栏面板 / 对话里问助手）并对齐当时的实现。聊天截图的位置留了注释槽位，等用户给图。
+- **顺手**：面板头部不再印 `M6c` 这种里程碑（`inbox_status` 仍照实报）；`index.md` 维护记录表最多 5 行；隐私清理（真实 AccessKey ID、
+  桶名、账号、个人文件名、机器路径）在第二步已做，这一步复核了 README 里没有残留。
+- **`init` 的口径修正**（用户问"别人装的时候是不是更简单"时发现）：preset id **固定为 `inbox`，不再跟着 profile 名走**——
+  `~/.dsh/.agent-presets/` 是**所有 profile 共用**的目录，按 profile 命名会为同一个插件造出第二份、第三份 preset 副本。
+  真机两个 profile 各跑一次 `init`：第二次全部跳过（"已经在里面，跳过"/"没改"），**不新增备份、不改写设置**。
+
+#### M8 第四步 — 助手提到的那一条，能在右侧仓库里点开（同日）
+
+用户提的："通过 dsh 对话查出来的内容，现在没法直接点到 inbox 看那一条。"
+
+- **工具结果的 id 变成入口**：卡片把结果里的 `id: <uuid>` 认出来，渲染成「打开 ↗」，点击走
+  `sidebarRight.openTab('inbox-vault', { params: { id }, revealIfOpened: true })`；dock 半边读
+  `tabInfo().tab.navigation.params.id`，就只显示那一条（名称、类目、备注、可点的链接、图片走面板同源的附件路由、正文），顶部一个「返回最近」回到列表。
+- **面板与 dock 互斥的老结论没变**（同一时刻只有一个表面），所以这个入口只在**对话**里用。
+- **新增 `test/card.test.ts`（3 条）**：按顺序找出结果里所有 id、**忽略** `[attachment:…]` 标记与半截 id（半截 id 会点进一个不存在的记录）、
+  不要把模型自己写的散文当 id。
+- **没验**：真机上点那一下（要真会话出真结果，属于用户侧）。
+
+#### M8 第五步 — 浅色模式、选中强调色、搜索结果带图、`inbox_get` 的看图例外（同日）
+
+用户看着真机提的：**浅色模式下详情里的 select 是黑的**、**使用手册与设置页甚至看不到内容**、列表选中的高亮条想要 dsh 那种**浅蓝**（现在是灰的）；
+外加一个上轮遗留问题：**对话里取回的图片看不到**（助手上轮只能靠标题与文件名猜图里是什么）。
+
+- **浅色模式的根因**（不是新 bug，是第九步那个补丁的账）：面板根硬编码 `color-scheme: dark` 修好了"深色 app 里原生下拉白底白字"，
+  代价是浅色 app 里 `Canvas` 解析成 `rgb(18,18,18)`，而**文字色是从宿主继承的暗色** → 设置弹窗、手册、详情里的变体全是"近黑底 + 暗字"。
+  镜像页量到的对比度 **1.10**（正常要 4.5+）。
+- **改成问宿主**（`src/client/scheme.ts`）：① 读 `<html>` 的 computed `color-scheme`——**实测 dsh 的主题服务就是写在那里**
+  （`document.documentElement.style.colorScheme = scheme`，主题 token 与深色标记挂在 `body` 的行内 style/属性上），单一关键字直接采信；
+  ② `light dark`（随系统）或 `normal`（没声明）时才退回按**继承到的文字色**亮度判（阈值 140，有单测钉着）。
+  观察者只盯 `<html>` 与 `<body>` 的**属性**、不盯子树（面板自己在根上写 `color-scheme`，盯子树会自己触发自己），另加
+  `prefers-color-scheme` 的 `matchMedia` 监听覆盖"应用只写 CSS media query"的情况；select 改 `colorScheme: 'inherit'`。
+- **选中条用强调色**：`ACCENT_COLOR = '#6e9ef7'`（v2 原型的 `--accent`，也是 dsh 自己的蓝）——卡片底色 `color-mix(… 16%)`、描边 55%。
+  灰底"高亮"和 hover 分不出来，这正是用户说不清楚的那一点。
+- **搜索结果带图**：`inbox_search` 每行带上该记录**第一张图片**的 `[attachment:<id>]` 标记，卡片就地画缩略图——
+  "你说的小程序码是哪一张"这种问题只能看一眼。
+- **看图的唯一例外**：`inbox_get` 新增可选 `withImage`（默认 false）；为真时，`output.render` 在文本之外追加一个
+  `{ type: 'image', attachment }` content part。**`execute` 的文本结果形状不变**，默认路径逐字节不变（否则卡片、测试、别的调用方一起动）。
+  AGENTS 第 4 条、README 中英、面板里的使用手册同步改写：默认只回标记，**你明确让它看图时**才发那一次。
+- **验证**：`pnpm typecheck` 干净、**25 文件 256 条**测试全绿（+7：判定与阈值、搜索行带标记、`withImage` 才出图且默认不出）、`pnpm build` 通过；
+  镜像页在真引擎里五个场景一次跑通：dsh 浅色 21.0、dsh 深色 18.7（与改动前一致）、`light dark` 退回文字色→浅色、未声明+亮文字→深色、
+  旧写法对照 **1.10**。新增知识文档 **`docs/help/panel-theme.md`**；`ui-visual-check.md` 补了这个镜像页的用法与"**探针必须先挂载再量**"这个坑
+  （detached 元素的 `getComputedStyle().color` 是空串，会被判成"读不懂→深色"，第一次跑就撞上了）。
+- **没验**：真机浅色模式下的人眼复验（设置弹窗、手册、详情 select、选中条在白底上的强弱），留给用户。
