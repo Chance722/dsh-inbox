@@ -566,6 +566,28 @@ export async function putObject(
 }
 
 /**
+ * Remove one object.
+ *
+ * Idempotent on purpose: S3 answers 204 for a key that was never there, and the
+ * callers here delete objects they *believe* exist (a record's files, an
+ * attachment's bytes) — a missing one is the state they wanted, not a failure.
+ *
+ * @param config - endpoint, bucket, region, signature version.
+ * @param key - object key.
+ * @param deps - credentials, fetch, clock.
+ */
+export async function deleteObject(
+  config: S3Config,
+  key: string,
+  deps: S3Deps,
+): Promise<void> {
+  const signed = signer(config)(config, deps, 'DELETE', key)
+  const response = await deps.fetch(signed.url, { method: 'DELETE', headers: signed.headers })
+  // 404 is "already gone", which is what the caller asked for.
+  if (!response.ok && response.status !== 404) throw await refused(response, '删对象')
+}
+
+/**
  * Pick the signer for a configuration.
  *
  * @param config - endpoint, bucket, region, signatureVersion.

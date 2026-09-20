@@ -34,6 +34,8 @@ const RETIRED_TAG = '待看'
 import {
   type Attachment,
   type Item,
+  attachmentSchema,
+  itemSchema,
   vaultGlobalSchema,
   type VaultGlobal,
   type VaultSpec,
@@ -531,8 +533,18 @@ export class Vault {
    * @returns the stored record.
    */
   async import(item: Item): Promise<Item> {
-    await this.items.put(item.id, item)
-    return item
+    /*
+      Validated *here*, with the same schema the domain reads with.
+
+      A record that fails validation does not fail one read — it stops the whole
+      vault from opening ("bad records fail open" is deliberate). So an import
+      that trusts the remote's word is a way to wedge the vault from the cloud:
+      this is exactly what happened when a pushed attachment row forgot a field.
+      The parse throws, the merge reports one line, and the vault still opens.
+    */
+    const parsed = itemSchema.parse(item) as Item
+    await this.items.put(parsed.id, parsed)
+    return parsed
   }
 
   /**
@@ -546,8 +558,14 @@ export class Vault {
    * @returns the stored row.
    */
   async importAttachment(record: Attachment): Promise<Attachment> {
-    await this.attachments.put(record.id, record)
-    return record
+    // `createdAt` defaults rather than throws: a row that arrived without one is
+    // reconstructable (the bytes and their type are what matter), while a row
+    // without `mime` is not — and the schema is what tells the two apart.
+    const parsed = attachmentSchema.parse(
+      Object.assign({ createdAt: new Date().toISOString() }, record),
+    ) as Attachment
+    await this.attachments.put(parsed.id, parsed)
+    return parsed
   }
 
   /** Release the domain handle. Idempotent. */

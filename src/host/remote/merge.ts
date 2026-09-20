@@ -21,7 +21,7 @@ import { listPrefix, readObject, type S3Config, type S3Deps } from '../s3/client
 import { listFolder, readFile, type WebdavDeps } from '../webdav/client.js'
 import { activeUserAgent, readPassword, readS3Secret, readSettings, type WebdavSettings } from '../webdav/config.js'
 import { s3Fetch, webdavFetch } from '../webdav/run.js'
-import { syncRoot } from './push.js'
+import { syncRoot } from './writer.js'
 
 /** The merge's admission callbacks, named so the wiring below reads plainly. */
 type Admit = {

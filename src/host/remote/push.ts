@@ -18,12 +18,9 @@ import type { Context } from '@deepseek-ai/cordis'
 
 import type { PushResult } from '../../shared/panel-wire.js'
 import { CATEGORY_LABELS, KIND_LABELS } from '../../shared/vocabulary.js'
-import { putObject, type S3Config, type S3Deps } from '../s3/client.js'
-import { s3Fetch, webdavFetch } from '../webdav/run.js'
-import { activeUserAgent, readPassword, readS3Secret, readSettings, type WebdavSettings } from '../webdav/config.js'
-import { writeFile } from '../webdav/client.js'
 import type { Attachment, Item } from '../vault/spec.js'
 import type { Vault } from '../vault/vault.js'
+import { remoteWriter, syncRoot } from './writer.js'
 
 /** What one write to the remote looks like, whichever protocol is configured. */
 type Writer = (path: string, bytes: Uint8Array, contentType: string) => Promise<void>
@@ -143,6 +140,9 @@ function packAttachment(record: Attachment): Uint8Array {
           id: record.id,
           mime: record.mime,
           bytes: record.bytes,
+          // Part of the row, and a domain that reads without it refuses to open
+          // at all — the merge learned that the hard way.
+          createdAt: record.createdAt,
           ...(record.filename === undefined ? {} : { filename: record.filename }),
           ...(record.width === undefined ? {} : { width: record.width }),
           ...(record.height === undefined ? {} : { height: record.height }),
@@ -227,51 +227,17 @@ export async function pushRemote(
   options: { all?: boolean } = {},
 ): Promise<PushResult> {
   if (attachments === undefined) return failed('这个组合里没有附件仓库，附件没法上传')
-  const settings = readSettings(ctx)
-
-  let writer: Writer
-  let basePath: string
-  try {
-    if (settings.protocol === 's3') {
-      const secret = await readS3Secret(ctx)
-      if (settings.endpoint.trim().length === 0 || settings.bucket.trim().length === 0) {
-        return unconfigured('还没配置 S3 的 endpoint 或 bucket')
-      }
-      if (secret === undefined) return unconfigured('还没存 AccessKey Secret')
-      const config: S3Config = {
-        endpoint: settings.endpoint,
-        bucket: settings.bucket,
-        region: settings.region,
-        signatureVersion: settings.signatureVersion,
-        userAgent: activeUserAgent(settings),
-      }
-      const deps: S3Deps = {
-        fetch: s3Fetch,
-        accessKeyId: settings.accessKeyId,
-        accessKeySecret: secret,
-      }
-      writer = (path, bytes, contentType) => putObject(config, path, bytes, deps, contentType)
-      basePath = syncRoot(settings)
-    } else {
-      if (settings.baseUrl.trim().length === 0) {
-        return unconfigured('还没配置远端地址')
-      }
-      const password = await readPassword(ctx)
-      const deps = {
-        fetch: webdavFetch,
-        ...(settings.username.length === 0 || password === undefined
-          ? {}
-          : { auth: { username: settings.username, password } }),
-        userAgent: activeUserAgent(settings),
-      }
-      const base = settings.baseUrl
-      writer = (path, bytes, contentType) => writeFile(base, path, bytes, deps, contentType)
-      basePath = syncRoot(settings)
-    }
-  } catch (error) {
-    return failed(reasonOf(error))
-  }
-  return pushOnce(vault, attachments, writer, basePath, options)
+  const connection = await remoteWriter(ctx)
+  if (connection.status === 'unconfigured') return unconfigured(connection.reason)
+  if (connection.status === 'failed') return failed(connection.reason)
+  return pushOnce(
+    vault,
+    attachments,
+    connection.writer.write,
+    connection.root,
+    options,
+    connection.writer.remove,
+  )
 }
 
 /**
@@ -287,6 +253,8 @@ export async function pushRemote(
  * @param writer - one write to the remote.
  * @param basePath - the sync root inside the configured directory.
  * @param options - `all` re-sends records the cursor thinks are already up.
+ * @param remover - optional: clears the pre-extension attachment name (see the
+ *   call site), something only a real remote can answer.
  * @returns what happened.
  */
 export async function pushOnce(
@@ -295,6 +263,7 @@ export async function pushOnce(
   writer: Writer,
   basePath: string,
   options: { all?: boolean } = {},
+  remover?: (path: string) => Promise<void>,
 ): Promise<PushResult> {
   const lastPushAt = options.all === true ? undefined : vault.global.sync.lastPushAt
   const items = vault.list({ includeDeleted: true })
@@ -350,6 +319,20 @@ export async function pushOnce(
           packAttachment(record),
           'application/json',
         )
+        /*
+          And one blind DELETE of the name this attachment used to have.
+
+          Before 2026-09-20 the object was `<id>` with no extension; those two
+          files are still sitting in the user's bucket, and nothing else will
+          ever remove them (a sweep would have to guess, and guessing deletes
+          another device's objects). We know this id is ours and we know we no
+          longer write that name, so asking for it to be gone is exact.
+        */
+        try {
+          await remover?.(`${basePath}/attachments/${attachmentId}`)
+        } catch {
+          // A remote that refuses the delete is not a reason to fail the push.
+        }
         attachmentCount += 1
       } catch (error) {
         failures.push(`附件 ${attachmentId}：${reasonOf(error)}`)
@@ -386,21 +369,6 @@ export async function pushOnce(
     lastPushAt: now,
     ...(failures.length === 0 ? {} : { reason: failures.slice(0, 3).join('；') }),
   }
-}
-
-/**
- * Where the vault's own objects live inside the configured directory.
- *
- * Exported because the two halves of sync must agree on it byte for byte: the
- * push writes here, the merge reads here, and a difference of one slash would
- * look like "the other device never sent anything".
- *
- * @param settings - the remote settings.
- * @returns the path prefix, without a trailing slash.
- */
-export function syncRoot(settings: WebdavSettings): string {
-  const prefix = settings.directory.replace(/^\/+|\/+$/g, '')
-  return prefix.length === 0 ? 'sync' : `${prefix}/sync`
 }
 
 function failed(reason: string): PushResult {

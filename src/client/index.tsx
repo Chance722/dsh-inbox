@@ -733,6 +733,39 @@ function InboxPanel(): React.ReactElement {
     [call, openDetail, refresh, selectedId],
   )
 
+  /**
+   * Empty the recycle bin, here and in the cloud.
+   *
+   * Not `mutate` because the answer has two halves worth reporting: how many
+   * records went, and how many objects the remote lost. "已清空 3 条" while the
+   * cloud quietly kept copies is the confusion this exists to remove.
+   */
+  const purge = React.useCallback(async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const result = await call(INBOX_ENDPOINT_PURGE, {})
+      if (!result.ok) {
+        setNotice(`清空失败：${result.error.message}`)
+        return
+      }
+      const value = result.value as PurgeResult
+      const remote =
+        value.remoteSkipped === true
+          ? '（没配远端）'
+          : value.remoteRemoved === undefined
+            ? ''
+            : `，云端删了 ${String(value.remoteRemoved)} 个对象`
+      setNotice(
+        `已清空 ${String(value.removed)} 条${remote}${value.reason === undefined ? '' : ` · 云端有失败：${value.reason}`}`,
+      )
+      setSelectedId(undefined)
+      setDetail(undefined)
+      await refresh(false)
+    } finally {
+      setBusy(false)
+    }
+  }, [call, refresh])
+
   /** Stage files; a text part that arrived with them rides along into the box. */
   const stage = (files: FileList | File[], extraText?: string): void => {
     const next: Staged[] = []
@@ -1418,11 +1451,11 @@ function InboxPanel(): React.ReactElement {
                 onClick={() => {
                   if (
                     !window.confirm(
-                      '清空回收站会真的删掉这些记录，不能撤销。附件字节仍留在 dsh 的附件仓库里。继续？',
+                      '清空回收站会真的删掉这些记录：本机记录、以及云盘上对应的同步对象（记录 JSON/文本、只被这些记录引用的附件）。不能撤销。dsh 附件仓库里的原始字节仍然留着。继续？',
                     )
                   )
                     return
-                  void mutate(INBOX_ENDPOINT_PURGE, {}, { dropSelection: true })
+                  void purge()
                 }}
               >
                 <Trash2 size={13} /> 清空回收站

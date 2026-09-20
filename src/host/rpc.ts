@@ -82,6 +82,7 @@ import {
 } from './webdav/config.js'
 import { runPull, s3Fetch, webdavFetch } from './webdav/run.js'
 import { pushRemote } from './remote/push.js'
+import { removeRemoteRecords } from './remote/remove.js'
 import { probeS3 } from './s3/probe.js'
 import { probeWebdav } from './webdav/probe.js'
 import { readPassword, readS3Secret } from './webdav/config.js'
@@ -493,16 +494,48 @@ async function handleRestore(vault: Vault | undefined, payload: unknown): Promis
   }
 }
 
-async function handlePurge(vault: Vault | undefined): Promise<InboxRpcResult<unknown>> {
+async function handlePurge(
+  ctx: Context,
+  vault: Vault | undefined,
+): Promise<InboxRpcResult<unknown>> {
   if (vault === undefined) {
     return failure('inbox/vault-closed', 'inbox 仓库还没打开（或打开失败），稍后再试')
   }
   const bin = vault.getBin()
+  /*
+    What the cloud has to lose too, worked out *before* the rows are gone.
+
+    Attachment rows: the ones this purge leaves unreferenced — the same rule the
+    local removal uses, so a file two records share survives until the last of
+    them is emptied. And it is the row, not the id, because the object's name
+    carries an extension derived from the file's own name and media type.
+  */
+  const doomedAttachments = new Map<string, Attachment>()
+  for (const item of bin) {
+    for (const attachmentId of item.attachmentIds) {
+      const record = vault.getAttachment(attachmentId)
+      if (record !== undefined) doomedAttachments.set(attachmentId, record)
+    }
+  }
   let removed = 0
   for (const item of bin) {
     if (await vault.remove(item.id)) removed += 1
   }
-  const value: PurgeResult = { removed }
+  const stillReferenced = new Set(
+    vault.list({ includeDeleted: true }).flatMap((item) => [...item.attachmentIds]),
+  )
+  const orphans = [...doomedAttachments.values()].filter((record) => !stillReferenced.has(record.id))
+
+  const remote = await removeRemoteRecords(ctx, {
+    itemIds: bin.map((item) => item.id),
+    attachments: orphans,
+  })
+  const value: PurgeResult = {
+    removed,
+    remoteRemoved: remote.removed,
+    ...(remote.skipped === true ? { remoteSkipped: true } : {}),
+    ...(remote.failures.length === 0 ? {} : { reason: remote.failures.slice(0, 3).join('；') }),
+  }
   return { ok: true, value }
 }
 
@@ -915,7 +948,7 @@ export function registerInboxRpc(ctx: Context, vault: () => Vault | undefined): 
         serialise(() => handleRestore(vault(), payload)),
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_PURGE}`, () =>
-        serialise(() => handlePurge(vault())),
+        serialise(() => handlePurge(scoped, vault())),
       ),
       endpoint(`${INBOX_API_PREFIX}/${INBOX_ENDPOINT_WEBDAV}`, (payload) =>
         serialise(() => handleWebdav(scoped, vault(), payload)),

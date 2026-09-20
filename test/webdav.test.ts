@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import {
   authHeaders,
+  deleteFile,
   joinUrl,
   parseListing,
   userAgentHeaders,
@@ -377,5 +378,31 @@ describe('writing one file', () => {
     await expect(
       writeFile('https://dav.example.com', 'inbox/sync/items/a.json', new Uint8Array(), { fetch }),
     ).rejects.toThrow(/403.*read-only share/s)
+  })
+
+  it('deletes with the same headers, and treats 404 as done', async () => {
+    const seen: { url: string; init: { method: string; headers: Record<string, string> } }[] = []
+    const answer = (status: number): FetchLike => async (url, init) => {
+      seen.push({ url, init })
+      return { ok: status < 400, status, text: async () => '', arrayBuffer: async () => new ArrayBuffer(0) }
+    }
+
+    await deleteFile('https://dav.example.com/base', 'inbox/sync/items/a.json', {
+      fetch: answer(204),
+      auth: { username: 'u', password: 'p' },
+      userAgent: 'dsh-inbox/测试',
+    })
+    expect(seen[0]?.init.method).toBe('DELETE')
+    expect(seen[0]?.url).toBe('https://dav.example.com/base/inbox/sync/items/a.json')
+    expect(seen[0]?.init.headers.authorization).toBe(
+      `Basic ${Buffer.from('u:p').toString('base64')}`,
+    )
+
+    await expect(
+      deleteFile('https://dav.example.com', 'gone', { fetch: answer(404) }),
+    ).resolves.toBeUndefined()
+    await expect(
+      deleteFile('https://dav.example.com', 'locked', { fetch: answer(423) }),
+    ).rejects.toThrow(/423/)
   })
 })

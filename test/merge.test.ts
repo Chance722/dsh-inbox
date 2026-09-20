@@ -61,11 +61,12 @@ const admit = {
 
 describe('mergeOnce', () => {
   let root: string
+  let ctx: Context
   let vault: Vault
 
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'dsh-inbox-merge-'))
-    const ctx = new Context()
+    ctx = new Context()
     await ctx.plugin(Storage).await()
     await ctx.plugin(storageJson, { root }).await()
     await ctx.plugin(storageDomain, { backend: 'json' }).await()
@@ -220,5 +221,32 @@ describe('mergeOnce', () => {
     // Locked here, so it cannot be read — which is the point of pulling it
     // without a master password: the bytes travel, the meaning does not.
     expect(vault.secretText(imported!)).toBeUndefined()
+  })
+
+  describe('imports are validated, because one bad record closes the vault', () => {
+    it('refuses an attachment row the domain would choke on', async () => {
+      // The shape that caused this test: a pushed row without `createdAt`. The
+      // domain validates on read, so writing it made *every* later open fail
+      // with "仓库还没打开" — a cloud object could take the whole vault down.
+      await expect(
+        vault.importAttachment({ id: 'x', storeId: 'sha256:a', mime: '', bytes: 1 } as never),
+      ).rejects.toThrow()
+
+      // Nothing was written, so the vault still opens.
+      await vault.close()
+      vault = await Vault.open(ctx)
+      expect(vault.size).toBe(0)
+    })
+
+    it('fills in a missing createdAt rather than storing a row without one', async () => {
+      const stored = await vault.importAttachment({
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        storeId: 'sha256:a',
+        mime: 'image/jpeg',
+        bytes: 12,
+      } as never)
+      expect(stored.createdAt).toBeDefined()
+      expect(vault.getAttachment(stored.id)?.createdAt).toBe(stored.createdAt)
+    })
   })
 })

@@ -482,6 +482,12 @@ export interface IdResult {
 
 export interface PurgeResult {
   removed: number
+  /** Objects the same cleanup deleted from the remote, when one is configured. */
+  remoteRemoved?: number
+  /** True when there is no remote configured — nothing to clean up there. */
+  remoteSkipped?: boolean
+  /** What the remote deletion could not do. */
+  reason?: string
 }
 
 /** Carrier-neutral failure, mirroring Connection's `ConnectionRpcFailure`. */

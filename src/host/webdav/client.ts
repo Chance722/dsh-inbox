@@ -114,6 +114,33 @@ export async function writeFile(
   }
 }
 
+/**
+ * Remove one file.
+ *
+ * A 404 counts as success: the object the caller wanted gone is gone. Anything
+ * else 4xx/5xx is reported with the server's own words, because a read-only
+ * share is a real answer and "删除失败" alone would hide it.
+ *
+ * @param baseUrl - the configured base.
+ * @param path - the file's path under it.
+ * @param deps - fetch, credentials and the identity to present.
+ */
+export async function deleteFile(
+  baseUrl: string,
+  path: string,
+  deps: WebdavDeps,
+): Promise<void> {
+  const response = await deps.fetch(joinUrl(baseUrl, path), {
+    method: 'DELETE',
+    headers: { ...authHeaders(deps.auth), ...userAgentHeaders(deps) },
+  })
+  if (response.status === 404) return
+  if (response.status >= 400) {
+    const detail = (await response.text().catch(() => '')).trim().slice(0, 200)
+    throw new Error(`删远端失败：HTTP ${String(response.status)}${detail.length === 0 ? '' : ` · ${detail}`}`)
+  }
+}
+
 const RESPONSE_BLOCK = /<[a-z0-9]*:?response\b[\s\S]*?<\/[a-z0-9]*:?response>/gi
 const HREF = /<[a-z0-9]*:?href[^>]*>([\s\S]*?)<\/[a-z0-9]*:?href>/i
 const LAST_MODIFIED = /<[a-z0-9]*:?getlastmodified[^>]*>([\s\S]*?)<\/[a-z0-9]*:?getlastmodified>/i

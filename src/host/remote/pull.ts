@@ -62,6 +62,13 @@ function isSyncObject(path: string): boolean {
   return path.split('/').some((part) => part === 'sync')
 }
 
+/** The later of two optional ISO timestamps, tolerating either being absent. */
+function laterOf(current: string | undefined, candidate: string | undefined): string | undefined {
+  if (candidate === undefined) return current
+  if (current === undefined) return candidate
+  return Date.parse(candidate) > Date.parse(current) ? candidate : current
+}
+
 /** The file name out of a remote path or key. */
 function nameOf(path: string): string {
   const parts = path.split('/').filter((part) => part.length > 0)
@@ -108,6 +115,16 @@ export async function ingestFrom(
   let pulled = 0
   let failed = 0
   let skipped = 0
+  /**
+   * The newest entry that actually worked.
+   *
+   * The cursor used to jump to "now" whatever happened, which meant a file that
+   * failed once — a hiccup mid-download — was never looked at again, because it
+   * was suddenly older than the cursor. Advancing only as far as the last
+   * *success* leaves the failures newer than the cursor, so the next pull
+   * retries them (and re-ingesting a file twice is harmless: repeats merge).
+   */
+  let newestSuccess: string | undefined
   /** Why the entries that failed failed; the panel shows the first few. */
   const failures: string[] = []
 
@@ -130,11 +147,13 @@ export async function ingestFrom(
     }
     const name = nameOf(entry.path)
     try {
+      const finished = entry.lastModified
       const fetched = await source.read(entry)
 
       if (looksTextual(name, entry.contentType ?? fetched.contentType)) {
         await captureText(vault, new TextDecoder().decode(fetched.bytes), 'webdav')
         pulled += 1
+        newestSuccess = laterOf(newestSuccess, finished)
         continue
       }
 
@@ -158,6 +177,7 @@ export async function ingestFrom(
             'webdav',
           )
           pulled += 1
+          newestSuccess = laterOf(newestSuccess, finished)
           continue
         }
       }
@@ -169,6 +189,7 @@ export async function ingestFrom(
         'webdav',
       )
       pulled += 1
+      newestSuccess = laterOf(newestSuccess, finished)
     } catch (error) {
       /*
         One bad file must not stop the rest — but it must not vanish either.
@@ -181,14 +202,17 @@ export async function ingestFrom(
   }
 
   const now = new Date().toISOString()
-  await vault.setSync({ ...vault.global.sync, lastPullAt: now })
+  // Nothing succeeded and something failed: leave the cursor where it was, so
+  // the next pull tries again instead of skipping the whole folder.
+  const cursor = failed > 0 && newestSuccess === undefined ? lastPullAt : (newestSuccess ?? now)
+  await vault.setSync({ ...vault.global.sync, lastPullAt: cursor })
   return {
     status: 'ok',
     pulled,
     failed,
     skipped,
     listed,
-    lastPullAt: now,
+    lastPullAt: cursor,
     ...(failures.length === 0 ? {} : { reason: failures.slice(0, 3).join('；') }),
   }
 }

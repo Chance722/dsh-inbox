@@ -20,6 +20,7 @@ import {
   signRequest,
   signRequestV4Minimal,
   signer,
+  deleteObject,
   putObject,
   userAgentOf,
   type S3Deps,
@@ -332,5 +333,25 @@ describe('writing', () => {
         arrayBuffer: async () => new ArrayBuffer(0),
       }))),
     ).rejects.toThrow(/AccessDenied/)
+  })
+
+  it('deletes with a signed DELETE, and treats 404 as "already gone"', async () => {
+    const calls: { method: string; url: string }[] = []
+    const answer = (status: number) => async (url: string, init: { method: string }) => {
+      calls.push({ method: init.method, url })
+      return { ok: status < 400, status, text: async () => '', arrayBuffer: async () => new ArrayBuffer(0) }
+    }
+
+    await deleteObject(CONFIG, 'inbox/sync/items/a.json', deps(answer(204)))
+    expect(calls[0]?.method).toBe('DELETE')
+    expect(calls[0]?.url).toBe('https://data.cstcloud.cn/my-bucket/inbox/sync/items/a.json')
+
+    // "It is not there" is the state the caller asked for, not a failure.
+    await expect(
+      deleteObject(CONFIG, 'inbox/sync/items/b.json', deps(answer(404))),
+    ).resolves.toBeUndefined()
+    await expect(
+      deleteObject(CONFIG, 'inbox/sync/items/c.json', deps(answer(403))),
+    ).rejects.toThrow(/403/)
   })
 })
