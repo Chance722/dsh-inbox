@@ -66,6 +66,21 @@ All of it on this machine (`%DSH_HOME%`, i.e. `C:\Users\<you>\.dsh` on Windows):
 | Remote password / S3 AccessKey Secret | dsh's credential store, `.credentials.yaml` |
 | Remote settings (URL, bucket, client identity…) | dsh's own settings |
 
+### What the remote (cloud drive) looks like
+
+With `/inbox` as the configured directory:
+
+| Remote path | What it is |
+|---|---|
+| `inbox/<whatever you drop>` | The **drop folder**: any device drops files here and this one ingests them on pull |
+| `inbox/sync/items/<record id>.json` | One record, **machine-readable** — the source of truth for sync |
+| `inbox/sync/items/<record id>.txt` | The same record, **readable**: open it in the cloud drive and it is the record (text, note, which attachments it points at) |
+| `inbox/sync/attachments/<attachment id>.<ext>` | Attachment **bytes** (images, video, PDFs open as themselves) |
+| `inbox/sync/attachments/<attachment id>.meta.json` | The attachment's metadata (original name, dimensions, size, digest) |
+| A 0-byte key ending in `/` | A **folder marker the cloud drive made itself**, not us |
+
+For the details — what each name means, why a record lands twice, the encryption boundary, and how to debug a sync — see `docs/help/remote-sync-layout.md` and `docs/help/sync.md`.
+
 ## Install
 
 > Not on npm yet — that lands in M7 (`npx @duoyu/dsh-inbox init`). Until then, install from a local checkout.

@@ -519,6 +519,37 @@ export class Vault {
     await this.setGlobal({ ...this.global, sync })
   }
 
+  /**
+   * Write a record exactly as another device had it.
+   *
+   * The merge's only write, and deliberately not `create`: an imported record
+   * keeps the id other devices already know, the `createdAt` it was made with and
+   * the `updatedAt` the conflict was settled on. Re-stamping any of them would
+   * make the next pull decide the other way and bounce the record back and forth.
+   *
+   * @param item - the record, already validated by the merge's own parse.
+   * @returns the stored record.
+   */
+  async import(item: Item): Promise<Item> {
+    await this.items.put(item.id, item)
+    return item
+  }
+
+  /**
+   * The same for one attachment's row.
+   *
+   * `storeId` is the *local* store's id for the bytes the merge just admitted;
+   * everything else — our row id in particular — travels with the object so the
+   * record's `attachmentIds` still point at something.
+   *
+   * @param record - the row, with a local `storeId`.
+   * @returns the stored row.
+   */
+  async importAttachment(record: Attachment): Promise<Attachment> {
+    await this.attachments.put(record.id, record)
+    return record
+  }
+
   /** Release the domain handle. Idempotent. */
   async close(): Promise<void> {
     if (this.closed) return

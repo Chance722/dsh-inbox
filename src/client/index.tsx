@@ -1636,9 +1636,17 @@ function describePush(result: PushResult): string {
 function describePull(result: PullResult): string {
   if (result.status === 'unconfigured') return result.reason ?? '还没配置地址'
   if (result.status === 'failed') return `拉取失败：${result.reason ?? '未知原因'}`
+  // Two halves, one line each: the drop folder's files, and the merge's records.
+  const merged = result.merged ?? 0
+  const attachments = result.attachments ?? 0
+  const syncPart =
+    merged === 0 && attachments === 0
+      ? '云端的记录没有新的'
+      : `从云端合并 ${String(merged)} 条${attachments === 0 ? '' : ` / ${String(attachments)} 个附件`}`
+  if (result.pulled === 0 && result.skipped === 0 && result.failed === 0) return syncPart
   return `拉取完成：远端列出 ${String(result.listed)} 项，新入库 ${String(result.pulled)} 条，跳过 ${String(
     result.skipped,
-  )} 条${result.failed > 0 ? `，失败 ${String(result.failed)} 条` : ''}`
+  )} 条 · ${syncPart}${result.failed > 0 ? ` · 失败 ${String(result.failed)} 条` : ''}`
 }
 
 /**

@@ -66,6 +66,21 @@
 | 远端密码 / S3 AccessKey Secret | dsh 的凭证库 `.credentials.yaml` |
 | 远端设置（地址、桶、客户端标识…） | dsh 的 settings |
 
+### 远端（云盘）长什么样
+
+假设设置里的目录填 `/inbox`：
+
+| 远端路径 | 是什么 |
+|---|---|
+| `inbox/<你扔的文件>` | **投放区**：任何设备往这儿扔文件，本机拉取时读它们并入库 |
+| `inbox/sync/items/<记录 id>.json` | 一条记录的**机器可读版**（同步的真相来源） |
+| `inbox/sync/items/<记录 id>.txt` | 同一条记录的**可读版**（云盘里直接能看：正文、备注、附件指向） |
+| `inbox/sync/attachments/<附件 id>.<扩展名>` | 附件**字节**（图片/视频/PDF 直接能打开） |
+| `inbox/sync/attachments/<附件 id>.meta.json` | 附件元数据（原文件名、宽高、字节数、摘要） |
+| 0 字节、以 `/` 结尾的 key | **云盘自己建的目录占位**，不是插件写的 |
+
+细节（每个名字的含义、为什么一条记录两个文件、上云加密边界、怎么排查）见 `docs/help/remote-sync-layout.md` 与 `docs/help/sync.md`。
+
 ## 安装
 
 > 还没发到 npm（M7 做 `npx @duoyu/dsh-inbox init`）。在那之前从本地仓库装。

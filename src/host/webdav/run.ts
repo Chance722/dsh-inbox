@@ -12,6 +12,7 @@ import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import type { S3FetchLike } from '../s3/client.js'
 import type { Vault } from '../vault/vault.js'
 import { pullRemote, pullS3, type PullResult } from '../remote/pull.js'
+import { mergeRemote } from '../remote/merge.js'
 import type { FetchLike, WebdavDeps } from './client.js'
 import { activeUserAgent, readPassword, readS3Secret, readSettings } from './config.js'
 
@@ -68,6 +69,48 @@ export const s3Fetch: S3FetchLike = async (url, init) => {
  * @returns the pull's outcome; never throws.
  */
 export async function runPull(
+  ctx: Context,
+  vault: Vault,
+  attachments: AttachmentStore | undefined,
+): Promise<PullResult> {
+  return withMerge(ctx, vault, attachments, await pullDropFolder(ctx, vault, attachments))
+}
+
+/**
+ * Fold another device's push into the local vault, and report it beside the
+ * drop-folder numbers.
+ *
+ * It runs after the drop-folder ingest for every trigger the product has —
+ * startup, the panel's refresh, 立即同步 — because "the other computer's records
+ * show up" must not depend on which button was pressed. A merge failure never
+ * turns a good pull into a bad one: it becomes one more line in `reason`.
+ *
+ * @param ctx - host context.
+ * @param vault - the open vault.
+ * @param attachments - where attachment bytes go.
+ * @param pulled - what the drop-folder half did.
+ * @returns the combined answer.
+ */
+async function withMerge(
+  ctx: Context,
+  vault: Vault,
+  attachments: AttachmentStore | undefined,
+  pulled: PullResult,
+): Promise<PullResult> {
+  if (pulled.status !== 'ok' || attachments === undefined) return pulled
+  const outcome = await mergeRemote(ctx, vault, attachments)
+  const troubles = [...(pulled.failed > 0 && pulled.reason !== undefined ? [pulled.reason] : []), ...outcome.failures]
+  return {
+    ...pulled,
+    merged: outcome.merged,
+    attachments: outcome.attachments,
+    failed: pulled.failed + outcome.failures.length,
+    ...(troubles.length === 0 ? {} : { reason: troubles.slice(0, 3).join('；') }),
+  }
+}
+
+/** The half that reads the drop folder: files other devices leave for us. */
+async function pullDropFolder(
   ctx: Context,
   vault: Vault,
   attachments: AttachmentStore | undefined,

@@ -146,6 +146,13 @@ export interface PullResult {
   status: 'ok' | 'unconfigured' | 'failed'
   reason?: string
   pulled: number
+  /**
+   * Records another device pushed that this one took in (new here, or newer
+   * than the local copy). Only the merge half of a pull can produce these.
+   */
+  merged?: number
+  /** Attachment objects the merge had to fetch and admit locally. */
+  attachments?: number
   failed: number
   /** Files the server listed but we skipped as already-seen. */
   skipped: number

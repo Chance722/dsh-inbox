@@ -251,7 +251,7 @@ export async function pushRemote(
         accessKeySecret: secret,
       }
       writer = (path, bytes, contentType) => putObject(config, path, bytes, deps, contentType)
-      basePath = s3Root(settings)
+      basePath = syncRoot(settings)
     } else {
       if (settings.baseUrl.trim().length === 0) {
         return unconfigured('还没配置远端地址')
@@ -266,7 +266,7 @@ export async function pushRemote(
       }
       const base = settings.baseUrl
       writer = (path, bytes, contentType) => writeFile(base, path, bytes, deps, contentType)
-      basePath = webdavRoot(settings)
+      basePath = syncRoot(settings)
     }
   } catch (error) {
     return failed(reasonOf(error))
@@ -388,12 +388,17 @@ export async function pushOnce(
   }
 }
 
-function s3Root(settings: WebdavSettings): string {
-  const prefix = settings.directory.replace(/^\/+|\/+$/g, '')
-  return prefix.length === 0 ? 'sync' : `${prefix}/sync`
-}
-
-function webdavRoot(settings: WebdavSettings): string {
+/**
+ * Where the vault's own objects live inside the configured directory.
+ *
+ * Exported because the two halves of sync must agree on it byte for byte: the
+ * push writes here, the merge reads here, and a difference of one slash would
+ * look like "the other device never sent anything".
+ *
+ * @param settings - the remote settings.
+ * @returns the path prefix, without a trailing slash.
+ */
+export function syncRoot(settings: WebdavSettings): string {
   const prefix = settings.directory.replace(/^\/+|\/+$/g, '')
   return prefix.length === 0 ? 'sync' : `${prefix}/sync`
 }
