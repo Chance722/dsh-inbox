@@ -280,7 +280,9 @@ const CONTROL_HEIGHT = 'calc(1.6em + 12px)'
  * @returns a sentence to show under the name field.
  */
 function titleFailureText(code: string): string {
-  if (code === 'no-title') return '那个页面里没有标题（有些站点对匿名访问只回验证页）'
+  if (code === 'no-title') {
+    return '那个页面里没有标题（有些站点对非浏览器的请求只回空壳页，比如微信）'
+  }
   if (code.startsWith('http:')) return `对方返回 HTTP ${code.slice('http:'.length)}`
   if (code.startsWith('not-html:')) return '那个地址不是网页'
   if (code.startsWith('network:')) return '请求没成功（网络不通或对方拒绝）'
