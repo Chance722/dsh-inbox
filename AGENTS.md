@@ -163,6 +163,7 @@ docs/
 - 新依赖引入前确认来源可信（版本锁定，警惕同形包/投毒）
 - **同源路由只发白名单类型**：附件路由与面板同源，因此可服务的媒体类型是白名单（`INBOX_IMAGE_TYPES` 或 `video/`、`audio/`）+ `nosniff`；**绝不按客户端声明的类型发任意 content-type**（`image/svg+xml`、`text/html` 这类同源可执行）
 - **对外请求只走官方 seam**：抓链接标题（`src/host/link-title.ts`）是唯一的"插件自己发起的对外请求"，它一次只 GET 一个 URL，必须走 `ctx.web`（`@deepseek-ai/dsh-web`：解析并固定公网地址、拒私网、只跟同源跳转、限时限量、不带 cookie）；**只在本机捕获的 `kind=link` 上触发**，远端同步拉进来的链接不抓。改这里前先读第 4 条和第 3 条：一次外发请求等于告诉对方"这台机器打开过这个链接"
+- **日志只记 host**：抓取类诊断日志打 `new URL(url).host`，**不打整条 URL**——query 里可能带着 token；失败原因要能被用户看见就写进记录（`linkTitleError` 这类字段），别指望日志（`ctx.logger.info` 默认不落 stdout，实测过）
 - 权限/越权/资金/对外接口相关改动，提交前按层 2 重点审查
 
 ### 与 agent 自带记忆的分工

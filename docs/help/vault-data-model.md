@@ -33,7 +33,7 @@ M1 定下来的东西。改这个模型 = 改领域版本号 + 写迁移，别�
 
 ## 记录结构
 
-`items`：`id` / `kind` / `category` / `source` / `createdAt` / `updatedAt` / 可选 `title` / `linkTitle` / `text` / `url` / `platform` / `note` / `watchLater` / `categorySource` / `deletedAt` / `tags[]` / `attachmentIds[]`。
+`items`：`id` / `kind` / `category` / `source` / `createdAt` / `updatedAt` / 可选 `title` / `linkTitle` / `linkTitleError` / `text` / `url` / `platform` / `note` / `watchLater` / `categorySource` / `deletedAt` / `tags[]` / `attachmentIds[]`。
 
 版本演进（每次都只加可选字段，所以老记录永远还能通过校验，这正是 `compatibleVersions` 担保的东西）：
 
@@ -42,6 +42,7 @@ M1 定下来的东西。改这个模型 = 改领域版本号 + 写迁移，别�
 | 2 | `categorySource` | 记录类目是谁定的。优先级 **user > model > rule**——用户改过就标 `user`，谁也覆盖不了 |
 | 3 | `watchLater` | 取代 `status: unread/read`；`待看` 标签在迁移里被摘掉 |
 | 4 | `linkTitle` | 抓来的页面标题（`<title>`）。**与 `title` 分开**：`title` 只能是用户的字（AGENTS.md 3 那条不变式），自动抓取的东西放自己的字段，两者不会互相冒充 |
+| 5 | `linkTitleError` | 抓标题失败的原因码（`no-title` / `http:404` / `not-html:text` / `network:…`）。存在的理由只有一个：**静默失败会被当成功能坏了**，详情里要能说出一句话；成功时清空 |
 
 - `note` 是**用户追加的备注**——按产品决策，它一旦存在就是权威分类来源，模型不许覆盖；列表标题只在记录没有别的名字时才用它兜底。
 - `title`（用户命名）> `linkTitle`（抓来的页面标题）> URL / 正文 / 文件名 / 备注：这是界面取名字的顺序，规则只写在 `src/client/heading.ts`。
