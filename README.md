@@ -1,6 +1,6 @@
 # dsh-inbox
 
-![dsh-inbox](docs/assets/cover.png)
+![dsh-inbox](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/cover.png)
 
 A **local inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** (`dsh`): file whatever you copy into one vault, get it back when you need it — including **by asking your assistant in conversation**.
 
@@ -32,7 +32,7 @@ It works for you alone: everything lands on your machine, and the model only see
 
 ## Screenshots
 
-![The panel: filters on the left, list in the middle, detail on the right](docs/assets/panel.png)
+![The panel: filters on the left, list in the middle, detail on the right](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/panel.png)
 
 It all lives inside dsh: the left rail gains an **Inbox** entry that opens a full-page vault, and the panel's top right has 设置 (settings) and 使用手册 (a short manual).
 
@@ -54,9 +54,9 @@ No command needed, just talk:
 
 Two questions in the same conversation, on a real machine:
 
-![Searching by topic: the one match first, then all seven records — the two credentials show only the names their owner gave them, never the plain text](docs/assets/chat1.png)
+![Searching by topic: the one match first, then all seven records — the two credentials show only the names their owner gave them, never the plain text](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/chat1.png)
 
-![Asking for what is flagged watch-later: that one record comes back with its link and the time it was filed](docs/assets/chat2.png)
+![Asking for what is flagged watch-later: that one record comes back with its link and the time it was filed](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/chat2.png)
 
 ## Install
 

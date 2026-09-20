@@ -1,6 +1,6 @@
 # dsh-inbox
 
-![dsh-inbox](docs/assets/cover.png)
+![dsh-inbox](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/cover.png)
 
 给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）的**本地收件箱插件**：把随手复制的东西收进一个仓库，需要的时候找得回来——包括**在对话里让助手替你取**。
 
@@ -32,7 +32,7 @@
 
 ## 界面
 
-![面板：左侧筛选、中间列表、右侧详情](docs/assets/panel.png)
+![面板：左侧筛选、中间列表、右侧详情](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/panel.png)
 
 界面都在 dsh 里：左侧栏多一个 **Inbox** 入口，点开是整页仓库管理；面板右上角有「设置」和「使用手册」（手册把常见场景讲了一遍）。
 
@@ -54,9 +54,9 @@
 
 同一段对话里的两次提问（真机截图）：
 
-![按主题查仓库：助手先给命中的那一条，再把 7 条记录列成表——密钥那两行只显示你起的名字，没有明文](docs/assets/chat1.png)
+![按主题查仓库：助手先给命中的那一条，再把 7 条记录列成表——密钥那两行只显示你起的名字，没有明文](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/chat1.png)
 
-![问「有没有待看的」：按「待看」标记把那一条取回来，带链接与存入时间](docs/assets/chat2.png)
+![问「有没有待看的」：按「待看」标记把那一条取回来，带链接与存入时间](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/chat2.png)
 
 ## 安装
 
