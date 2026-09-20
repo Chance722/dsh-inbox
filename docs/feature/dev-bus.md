@@ -1,7 +1,6 @@
 # 开发总线
 
-项目：`@chance722/dsh-inbox`（2026-09-20 从 `@duoyu/dsh-inbox` 改名：npm 用户名是 `chance722`，
-`@duoyu` 那个 scope 不是我们的。**本文件与 `docs/help/index.md` 里更早的条目仍写着旧名，那是当时的事实**）
+项目：`@chance722/dsh-inbox`
 原则：**一次只推进一个模块，每个模块有可验证的验收标准，验收记录留在本文件末尾。每个模块收尾必须同步更新 README（中英双份）的「安装 / 卸载 / 开发 / 当前可用功能」四节**——用户看的是 README，不是本文件。
 
 状态图例：`未开始` / `进行中` / `待验收` / `已验收` / `阻塞`
@@ -15,8 +14,8 @@
 | M4 | 对话工具与卡片 | 对话里取得到 | 检索/取回接口按约定返回（文本截断 1000 字、图片缩略图、链接卡、列表 10 条 + 还有 N 条）；截图留证 | 已验收 |
 | M5 | 分类与脱敏 | 自动分类且不泄密 | 规则层（URL 判平台/类型、密钥正则、图片本地启发式）+ API 兜底 + 发模型前脱敏；用户描述优先级高于模型，有单测覆盖 | 已验收 |
 | M6 | 远端单向摄取 | 别的设备进得来 | 配好远端（WebDAV / S3）→ 启动拉取远端 `inbox/` → 入库 → 走分类；远端不可用不阻塞启动 | 已验收（WebDAV + S3 双协议） |
-| M7 | 界面升级（B+A） | 好用，不只是一条能跑通的链路 | ① 右侧 dock 能挂上"仓库"tab（spike 实测过）；② 列表分页/加载更多真的可用（现在没有）；③ 主区域保留全屏管理并统一到一套可维护的样式；④ 用户从原型里敲定方案 | 进行中 |
-| M8 | 打包与一键安装 | 别人装得上 | npm 包可发布 + `init` 完成装配（装包/建 preset/指默认）；中英 README；在干净环境按 README 走一遍成功 | **进行中**（`init` + 可发布清单 + README 已落地并在本机走通；剩：新会话里让模型真调到工具） |
+| M7 | 界面升级（B+A） | 好用，不只是一条能跑通的链路 | ① 右侧 dock 能挂上"仓库"tab（spike 实测过）；② 列表分页/加载更多真的可用（现在没有）；③ 主区域保留全屏管理并统一到一套可维护的样式；④ 用户从原型里敲定方案 | 已验收（2026-09-20，记录见文末） |
+| M8 | 打包与一键安装 | 别人装得上 | npm 包可发布 + `init` 完成装配（装包/建 preset/指默认）；中英 README；在干净环境按 README 走一遍成功 | 已验收（2026-09-20，记录见文末；`npx` 在全新 `%DSH_HOME%` 上走一遍留待发布后补） |
 
 ## 依赖关系
 
@@ -1154,3 +1153,29 @@ README 中英、`AGENTS.md`、`docs/help/dev-setup.md`、`product-decisions.md`�
 - `dsh --profile inbox --dump-config` 里出现 `# == @chance722/dsh-inbox` ⇒ bundle 正常解析（不用花模型调用就能验这一层）
 
 **验证**：`pnpm typecheck` 干净、**28 文件 275 条**测试全绿（+4）。
+
+### M7 — 界面升级（2026-09-20，已验收）
+
+**做到了什么**（选摘，逐条过程在上面的第三十二步之前）
+
+- 右侧 dock 长出「仓库」tab，并从对话卡片里的「打开 ↗」定位到具体那一条（第二十一步之后的修法：读 `useTabInfo()`，抽成 `dockFocusOf()`）。
+- 主区域是一套自绘三栏：筛选 / 列表（网格、紧凑两种密度，会记住）/ 详情；窄于 900px 降级成一栏。
+- 卡片按用户描述重做（图标坑位、方形预览、类型角标、紧凑模式不显示预览）；标签胶囊、判定来源徽章、浅色模式与选中强调色都跟着宿主走。
+- 命名规则收进 `src/client/heading.ts` 一处（用户起的名 → 抓来的标题 → 链接/正文/文件名 → 备注），密钥类只显示名字。
+
+**证据**：真机截图 `docs/assets/panel.png`、`chat1.png`、`chat2.png`；几何与视觉来自 headless Chrome 镜像页实测（`docs/help/ui-visual-check.md`）；`pnpm typecheck` 干净、测试从 149 条涨到 271 条、构建通过。
+
+**遗留**：无（后续同类问题都并进 M8 的步骤里改了）。
+
+### M8 — 打包与一键安装（2026-09-20，已验收）
+
+**做到了什么**
+
+- 包形状与发布：`files` 白名单只放 `lib/{index,client,cli}.js` + `cordis.patch.yml` + `lib/types/**`（加 README/LICENSE），实测 `pnpm pack` 里没有源码与 docs；补 `repository`/`homepage`/`bugs`/`keywords`/`publishConfig.access`；`prepublishOnly` 保证不会发出过期的 `lib/`。
+- `init` 一条命令做完三件事（装进 profile、建/补 agent preset、指默认 preset），重复运行安全；`--create-profile` 让全新机器也成立；**不给 `--profile` 时自己挑**（优先 `web`，其次唯一的那个）。
+- 中英 README（安装/卸载/开发/当前功能四节），隐私边界单独一节；封面与真截图进 `docs/assets/`。
+- 真会话端到端：headless 派生 profile + 插件同时作为 bundle 与 preset 行（复现"域被打开两次"），模型实调 `inbox_status` 得到 `dsh-inbox v0.1.0: vault open, 7 record(s).`。
+
+**证据**：`@chance722/dsh-inbox@0.1.0` 已发布（2026-09-20 20:01 +08），`pnpm view` 可见；发布产物解包核对过；`docs/help/index.md` 维护记录里的 M8 各步。
+
+**遗留**：发布后用 `npx @chance722/dsh-inbox@0.2.0` 在一个全新的 `%DSH_HOME%` 上把 README 的路径重走一遍（本机没跑，发布后补）；宿主侧 wire 句子与安装器输出仍是中文（见 `docs/help/panel-i18n.md`）。
