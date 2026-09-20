@@ -78,7 +78,7 @@ import {
   type WireFile,
   type WireImage,
 } from '../shared/panel-wire.js'
-import { MILESTONE, PANEL_ID, PACKAGE_NAME } from '../shared/constants.js'
+import { PANEL_ID, PACKAGE_NAME } from '../shared/constants.js'
 import { registerToolCards } from './card.js'
 import { registerInboxDock } from './dock.js'
 import { headingOf, headingTooltipOf, isSecret } from './heading.js'
@@ -942,7 +942,13 @@ function InboxPanel(): React.ReactElement {
           <div>
             <h2 style={{ margin: '0 0 4px' }}>dsh-inbox</h2>
             <p style={{ margin: 0, opacity: 0.7 }}>
-              {PACKAGE_NAME} · {MILESTONE}
+              {/*
+                No milestone marker here. `M6c` in a shipped panel is a note to
+                the developer that the user cannot act on — and it goes stale the
+                moment the milestone moves. The status tool still reports it,
+                where a developer is the one reading.
+              */}
+              {PACKAGE_NAME}
               {list === undefined
                 ? ''
                 : ` · 共 ${String(list.total)} 条 · 待看 ${String(list.watchLater)} 条 · 回收站 ${String(list.deleted)} 条`}

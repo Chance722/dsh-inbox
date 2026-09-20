@@ -31,20 +31,39 @@ It works for you alone: everything lands on your machine, and the model only see
 
 ## Screenshots
 
-<!--
-  Screenshot slots: drop the files into docs/assets/ (a window at least 1200px wide, so
-  the three columns do not collapse), then uncomment the two lines below. Real captures
-  beat mock-ups; the cover image at the top is already a real asset.
-
-![Panel: filters, list, detail](docs/assets/panel.png)
-![Settings: capture settings and credential encryption](docs/assets/settings.png)
--->
+![The panel: filters on the left, list in the middle, detail on the right](docs/assets/panel.png)
 
 It all lives inside dsh: the left rail gains an **Inbox** entry that opens a full-page vault, and the panel's top right has 设置 (settings) and 使用手册 (a short manual).
+
+## Two ways to use it
+
+**① File something from the conversation**
+
+Type `/inbox` in the composer followed by text or a link, and attach images directly — **this command never reaches the model**, it only goes into the vault. It is the way to file credentials and throwaway links that have no business appearing in a conversation.
+
+**② Ask for it later**
+
+No command needed, just talk:
+
+> which of my saved images is the mini-program code?
+>
+> show me that article about caching I saved last week
+>
+> list the links in my inbox I haven't read yet
+
+The assistant searches the vault and the answer comes back as a card: links are clickable, images are rendered as thumbnails **on your machine** (image bytes never enter the model's context — the model only sees that a picture is there; click a thumbnail to see it full size).
+
+<!--
+  For a conversation screenshot: drop the file at docs/assets/chat.png and uncomment.
+
+![Asking the vault in conversation](docs/assets/chat.png)
+-->
 
 ## Install
 
 Requires Node ≥ 22 and a working `dsh` (`@deepseek-ai/dsh`).
+
+**Platform**: fully accepted on **Windows** only so far; macOS and Linux are **not verified yet** (no platform-specific dependency in the code — try it and tell me how it goes).
 
 One command installs it:
 
