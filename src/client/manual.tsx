@@ -81,7 +81,12 @@ export function ManualDialog({ onClose }: { onClose: () => void }): React.ReactE
             manual ran off the bottom of the screen with no visible frame.
           */
           width: 'min(560px, 100%)',
-          maxHeight: '92vh',
+          /*
+            80vh rather than 92vh: at 92 the card still felt like a full screen
+            and it pushed the panel out of sight, while the point of the manual
+            is to be readable *beside* what it explains (asked 2026-09-21).
+          */
+          maxHeight: '80vh',
           // Border inside the width and the cap: without it the card is 2px
           // wider than the number and 2px taller than the overlay's room.
           boxSizing: 'border-box',
@@ -126,6 +131,7 @@ export function ManualDialog({ onClose }: { onClose: () => void }): React.ReactE
 
         {/* The scrolling part: everything below the title line. */}
         <div
+          className="dsh-inbox-scroll"
           style={{
             padding: 18,
             display: 'flex',
@@ -173,9 +179,10 @@ export function ManualDialog({ onClose }: { onClose: () => void }): React.ReactE
         <Section title={t('manual.5.title')}>
           <Line label={t('manual.5.auto.label')}>{t('manual.5.auto.body')}</Line>
           <Line label={t('manual.5.manual.label')}>{t('manual.5.manual.body')}</Line>
+          <Line label={t('manual.5.merge.label')}>{t('manual.5.merge.body')}</Line>
           <Line label={t('manual.5.twoMachines.label')}>{t('manual.5.twoMachines.body')}</Line>
+          <Line label={t('manual.5.cloud.label')}>{t('manual.5.cloud.body')}</Line>
           <Line label={t('manual.5.delete.label')}>{t('manual.5.delete.body')}</Line>
-          <Line label={t('manual.5.conflict.label')}>{t('manual.5.conflict.body')}</Line>
         </Section>
 
         <Section title={t('manual.6.title')}>

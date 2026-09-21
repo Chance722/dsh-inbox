@@ -1031,6 +1031,37 @@ function InboxPanel(): React.ReactElement {
 
   return (
     <div ref={panelRef} style={{ ...panelStyle, colorScheme: scheme }}>
+      {/*
+        Scrollbars, the one thing inline styles cannot express.
+
+        `scrollbar-width: thin` still lands on Chromium's 10px bar, which next
+        to dense cards reads as a second border; the `::-webkit-scrollbar` rules
+        take it to 8px and give the thumb our own colour. Scoped to a class we
+        put on our own scroll containers, so nothing outside this panel is
+        affected (asked 2026-09-21).
+      */}
+      <style>{`
+        /*
+          Chromium ignores ::-webkit-scrollbar the moment the standard
+          scrollbar-width is set, so the two engines get the rule they can use:
+          engines that know ::-webkit-scrollbar get the 8px bar, and Firefox —
+          which does not — falls back to its own thin one. Measured: with both
+          set, Chromium kept its 10px thin bar and the 8px rule did nothing.
+        */
+        @supports not selector(::-webkit-scrollbar) {
+          .dsh-inbox-scroll { scrollbar-width: thin; }
+        }
+        .dsh-inbox-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+        .dsh-inbox-scroll::-webkit-scrollbar-track { background: transparent; }
+        .dsh-inbox-scroll::-webkit-scrollbar-thumb {
+          background: color-mix(in srgb, currentColor 22%, transparent);
+          border-radius: 8px;
+        }
+        .dsh-inbox-scroll::-webkit-scrollbar-thumb:hover {
+          background: color-mix(in srgb, currentColor 34%, transparent);
+        }
+        .dsh-inbox-scroll::-webkit-scrollbar-corner { background: transparent; }
+      `}</style>
       <header>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <div>
@@ -1598,6 +1629,7 @@ function InboxPanel(): React.ReactElement {
           )}
 
           <div
+            className="dsh-inbox-scroll"
             style={
               listMode === 'compact'
                 ? {
@@ -2904,6 +2936,7 @@ function EntryPane({
     */
     <>
       <div
+        className="dsh-inbox-scroll"
         style={{
           flex: 1,
           minHeight: 0,
