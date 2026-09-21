@@ -1379,6 +1379,7 @@ toast 是"刚刚发生了什么"的提示，不是报告；把对象数、跳过
 - **顺手修的两个坑**：① 路径模式里的 `/a/`、`/p/` 是当年为 SegmentFault 与知乎专栏加的单字母段，会把 `github.com/a/b` 判成文章 ⇒ 收窄到整词（那两个站点现在由"宿主习惯"负责）；② `absorb()` 合并重复项时只补 note/title、**不补 platform** ⇒ 老记录（比如用户那条掘金）重贴也不会长出标签；现在补"原本没有"的平台，**已有值不覆盖**（那可能是用户自己改过的）。
 - **标签是 slug**（`juejin`、`tencentvideo`），面板原样显示 ⇒ 不进词典、不翻译。完整平台表与"加一个新平台"的步骤写进新文档 `docs/help/link-classification.md`（`index.md` 已加索引）。
 - **无 schema 变更**：`platform` 一直是自由字符串，同步与旧记录都不受影响。
+- **版本**：提交时 registry 上 latest 仍是 `0.2.5`（0.2.6 还没发），所以这一条**跟着 0.2.6 一起出去**，`package.json` 不用再动。
 
 **验证**：304 条测试全绿（`classify` 13 条含新平台与兜底判序，`capture` 25 条含"补平台 / 不覆盖"两条），`tsc --noEmit` 干净、`pnpm build` 通过；用真实的 `classifyLink` 打了 16 个真链接（掘金、知乎问题与专栏、YouTube 与 youtu.be、B 站视频与专栏、公众号、腾讯视频、Vimeo、Medium、GitHub、X、HN、小红书、未知站点）逐条核对平台与类目。
 
