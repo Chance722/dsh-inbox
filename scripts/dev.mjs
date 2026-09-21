@@ -18,7 +18,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync, rmdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -53,6 +53,23 @@ function run(command, args) {
   return result.status === 0 && result.error === undefined
 }
 
+/**
+ * 摘掉 `node_modules` 里指向本仓库的那个链接（只删链接，不动仓库）。
+ *
+ * 为什么必须做：profile 用的是 pnpm 的 **hoisted** 链接器，而"把 link 换成
+ * registry 包"这件事 pnpm 做不干净——它会去**仓库的** `.pnpm` 里建符号链接，
+ * 在 Windows 上直接 `EPERM`（实测 2026-09-21：连 `pnpm remove` 之后再 `add`
+ * 都会撞上）。先把这个链接摘掉，`add` 才是从零装一个 registry 包。
+ */
+function dropLink() {
+  const entry = join(profileDir, 'node_modules', ...PACKAGE.split('/'))
+  try {
+    if (lstatSync(entry).isSymbolicLink()) rmdirSync(entry)
+  } catch {
+    // 不存在、或不是链接：那正是我们想看到的状态，不用管。
+  }
+}
+
 function describe() {
   const value = dependency()
   if (value === undefined) return `profile「${profile}」里没有装 ${PACKAGE}`
@@ -75,9 +92,16 @@ if (mode === 'status') {
     process.stderr.write('构建失败，先修好再切（profile 仍指向原来的来源）。\n')
     process.exitCode = 1
   } else {
-    const source = mode === 'local' ? root : PACKAGE
-    if (!run('dsh', ['plugin', '--profile', profile, 'add', source])) {
-      process.stderr.write(`切换失败。手动跑：dsh plugin --profile ${profile} add ${source}\n`)
+    /*
+      registry 那一侧要先"清干净再装"：
+        remove（顺手把 bundles 里那行摘掉）→ 摘链接 → add `<包名>@latest`
+      `@latest` 是必须的：只写包名时 pnpm 会把现有的 link 当成该名字的解析结果，
+      回一句 "Already up to date" 然后什么都不做（实测）。
+    */
+    if (mode === 'npm' && !dropThenAdd()) {
+      process.exitCode = 1
+    } else if (mode === 'local' && !run('dsh', ['plugin', '--profile', profile, 'add', root])) {
+      process.stderr.write(`切换失败。手动跑：dsh plugin --profile ${profile} add ${root}\n`)
       process.exitCode = 1
     } else {
       process.stdout.write(
@@ -89,4 +113,16 @@ if (mode === 'status') {
 } else {
   process.stderr.write(`看不懂的模式「${mode}」：用 status / local / npm。\n`)
   process.exitCode = 2
+}
+
+/** registry 那一侧的完整切换：remove → 摘链接 → add latest。 */
+function dropThenAdd() {
+  // remove 失败不算错：本来就可能是"还没装过"的状态。
+  run('dsh', ['plugin', '--profile', profile, 'remove', PACKAGE])
+  dropLink()
+  if (run('dsh', ['plugin', '--profile', profile, 'add', `${PACKAGE}@latest`])) return true
+  process.stderr.write(
+    `切换失败。手动跑：dsh plugin --profile ${profile} add ${PACKAGE}@latest\n`,
+  )
+  return false
 }
