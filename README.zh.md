@@ -60,50 +60,26 @@
 
 ## 安装
 
-前置：Node ≥ 22，以及一个能用的 `dsh`。`dsh plugin add` 是转发给 pnpm 的，所以机器上没有 pnpm 时，安装命令会顺手替你装好：
-
-**平台**：目前只在 **Windows** 上做过完整验收；macOS / Linux **尚未验证**（代码里没有平台特定依赖，欢迎试用后反馈）。
-
-`dsh web` 就是 `dsh --profile web`，所以直接装进你日常启动的那个 profile：
+前置：Node ≥ 22 和一个能用的 `dsh`；没装 pnpm 时安装命令会顺手装好。**目前只在 Windows 上验收过**，macOS / Linux 未验证。
 
 ```powershell
+# 安装（`dsh web` 就是 `dsh --profile web`，所以装进你日常启动的那个 profile）
 npx @chance722/dsh-inbox init --profile web --install-pnpm
-```
 
-然后照旧启动——`dsh web`。左栏出现 **Inbox**；新会话里问「我的收件箱里有哪些还没看的链接」，助手就会去查。
-
-全新机器（从没跑过 dsh，还没有 `web` 这个 profile）加 `--create-profile` 让它先建：
-
-```powershell
+# 全新机器（还没跑过 dsh、没有这个 profile）多带一个 --create-profile
 npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
-```
 
-`init` 做三件事，重复运行是安全的：
-
-1. 把插件装进这个 profile——面板和宿主半边都从这里来
-2. 复制 dsh 自带的 `standard` preset 到 `~/.dsh/.agent-presets/inbox/` 并加入本插件——**这一步决定助手能不能看到收件箱工具**
-3. 把你**用户级**的默认 preset 指向它（会先备份 `~/.dsh/settings.yaml`），于是所有 profile 的新会话都带上这套工具
-
-有两件事跟你的设置有关，先说清楚：插件会进你点名的那个 profile；你的默认 agent preset 变成「收件箱」那份——**它是 `standard` 的副本快照，dsh 以后升级 standard 不会自动跟着变**。两件都能退（见「卸载」）。
-
-**想让日常 dsh 保持干净？** 给插件单独一个 profile 和端口：
-
-```powershell
-npx @chance722/dsh-inbox init --create-profile     # 建一个隔离的 inbox profile
-dsh --profile inbox --no-open --port 3102          # 在那个 profile 里起
-```
-
-其它选项：`--profile <名字>` 装到别处，`--install-pnpm` 在没有 pnpm 时先替你装（上面两条命令已经带上它），`--no-default` 不动默认 preset，`--help` 列全。装进哪个 profile 只决定**面板跑在哪儿**——agent preset 是所有 profile 共享的（`~/.dsh/.agent-presets/inbox/`），装第二个 profile 只会补上缺的那行。
-
-### 更新
-
-`init` 管的是"装 + 接线"，**它不会升级**：profile 里已经有这个包时，它只是把同一件事再检查一遍，pnpm 回一句 `Already up to date`——依赖是个版本范围，已装的那个版本就满足它。要更新到线上最新版：
-
-```powershell
+# 更新（init 只管装和接线，重复跑不会升级；刚发布的几分钟内请写确切版本：@0.2.6）
 dsh plugin --profile web add @chance722/dsh-inbox@latest
 ```
 
-刚发布完的几分钟里，pnpm 可能按"太新"策略把你悄悄装回旧版本，写**确切版本**最稳（`@0.2.6`）。装完**重启 dsh**。想确认当前装的是哪个版本：让助手查一次收件箱，它会回 `dsh-inbox v0.2.6: vault open, N record(s).`
+装完**重启 dsh**，然后照旧启动。左栏出现 **Inbox**；新会话里问「我的收件箱里有哪些还没看的链接」，助手就会去查。
+
+`init` 还会把 dsh 自带的 `standard` preset 复制到 `~/.dsh/.agent-presets/inbox/` 并加上本插件、把默认 preset 指向它——助手能看见收件箱工具就是靠这一步。那份快照不会跟着 dsh 以后升级 `standard` 一起变；它和 profile 都能退掉（见「卸载」）。
+
+想让日常 dsh 保持干净：`npx @chance722/dsh-inbox init --create-profile`，然后 `dsh --profile inbox --no-open --port 3102`。
+
+其它选项：`--profile <名字>`、`--install-pnpm`、`--no-default`、`--help`。
 
 ### 从本地仓库装
 
@@ -170,7 +146,7 @@ rm -r ~/.dsh/profiles/<你装的 profile>
 - **图片**：分类时会把图片发给模型判断（手机拍的证件照比例与普通照片无异）；对话里默认只回 `[attachment:id]` 标记，字节不进对话。**唯一的例外**：你明确让助手「看这张图」时，它会把那一张发给自己看——每次都要显式要求，默认永不发。
 - **模型看不到你的仓库**，除非你让它查（它调工具时才读得到），且分类请求先过脱敏。
 - **云端要有访问控制**：同步上去的内容里只有账密正文是密文，其余（文本、链接、备注、附件字节）是明文；主密码与密钥从不同步。
-- **装它会改到面板之外的一处**：抓链接标题是本插件唯一的对外请求——一次 GET，只在本机捕获的链接上发，同步拉进来的链接不抓。抓取身份是**浏览器形状**（`… AppleWebKit/537.36 (KHTML, like Gecko) dsh-inbox Safari/537.36`），由本包的 `cordis.patch.yml` 覆盖 `web-fetch-http.userAgent` 写成，因为站点按这个字符串的**形状**认客户端。这层身份是整个 profile 的，模型的 web 工具也一起用；**你自己的 `cordis.patch.yml` 覆盖得掉**。实测与理由见 [docs/help/link-title-fetch.md](docs/help/link-title-fetch.md)。
+- **装它会改到面板之外的一处**：抓链接标题是本插件唯一的对外请求——一次 GET，只在本机捕获的链接上发，同步拉进来的链接不抓。它用的是**浏览器形状**的身份，由本包的 `cordis.patch.yml` 覆盖 `web-fetch-http.userAgent` 写成，因为站点按这个字符串的**形状**认客户端。这层身份是整个 profile 的，模型的 web 工具也一起用；**你自己的 `cordis.patch.yml` 覆盖得掉**。细节见 [docs/help/link-title-fetch.md](docs/help/link-title-fetch.md)。
 
 ## 开发
 

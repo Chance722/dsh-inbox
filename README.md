@@ -60,50 +60,27 @@ Two questions in the same conversation, on a real machine:
 
 ## Install
 
-Needs Node ≥ 22 and a working `dsh`. `dsh plugin add` forwards to pnpm, so the installer brings pnpm along when your machine does not have it:
-
-**Platform**: fully accepted on **Windows** only so far; macOS and Linux are **not verified yet** (no platform-specific dependency in the code — try it and tell me how it goes).
-
-`dsh web` is just `dsh --profile web`, so install into the profile you already start:
+Needs Node ≥ 22 and a working `dsh`; the installer brings pnpm along when your machine does not have it. **Windows only so far** — macOS and Linux are unverified.
 
 ```powershell
+# install (`dsh web` is `dsh --profile web`, so this is the profile you already start)
 npx @chance722/dsh-inbox init --profile web --install-pnpm
-```
 
-Then start dsh the way you always do — `dsh web`. The **Inbox** entry is in the left rail, and a new session's assistant can look things up for you ("what links in my inbox haven't I read yet?").
-
-On a machine that has never run dsh there is no `web` profile yet; `--create-profile` makes it first:
-
-```powershell
+# never run dsh on this machine? create the profile in the same command
 npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
-```
 
-`init` does three things, and running it twice is safe:
-
-1. installs the plugin into that profile — the panel and the host half both come from here
-2. copies dsh's shipped `standard` preset into `~/.dsh/.agent-presets/inbox/` and adds this plugin — **this is the step that decides whether the assistant can see the inbox tools**
-3. points your user-level default preset at it (backing up `~/.dsh/settings.yaml` first), so new sessions in every profile get those tools
-
-Two things that changes, so you know: the plugin joins the profile you named, and your default agent preset becomes the 收件箱 copy — a snapshot of `standard` that will not follow later dsh upgrades. Both are reversible (see Uninstall).
-
-**Want to keep your daily dsh clean?** Give the plugin a profile and a port of its own:
-
-```powershell
-npx @chance722/dsh-inbox init --create-profile     # an isolated `inbox` profile
-dsh --profile inbox --no-open --port 3102          # start it there
-```
-
-Other flags: `--profile <name>` installs elsewhere, `--install-pnpm` installs pnpm first when it is missing (the two commands above already carry it), `--no-default` leaves the default preset alone, `--help` lists everything. Which profile you install into only decides **where the panel runs** — the agent preset is shared by every profile (`~/.dsh/.agent-presets/inbox/`), so installing into a second one just fills in the missing row.
-
-### Update
-
-`init` is about installing and wiring, and **it does not upgrade**: with the package already in the profile it just re-checks the same thing, and pnpm answers `Already up to date` — the dependency is a version range, and the installed version already satisfies it. To move to the published latest:
-
-```powershell
+# update (init only installs and wires things up — re-running it never upgrades;
+# minutes after a release, write the exact version instead: @0.2.6)
 dsh plugin --profile web add @chance722/dsh-inbox@latest
 ```
 
-In the first minutes after a release pnpm may quietly step back to an older version ("too new" policy), so the exact version is the reliable form (`@0.2.6`). **Restart dsh** afterwards. To see what is installed, ask the assistant to look at your inbox — it answers `dsh-inbox v0.2.6: vault open, N record(s).`
+**Restart dsh** afterwards, then start it as usual. **Inbox** is in the left rail, and a new session's assistant can look things up ("what links in my inbox haven't I read yet?").
+
+`init` also copies dsh's shipped `standard` preset to `~/.dsh/.agent-presets/inbox/` with this plugin added, and points your default preset at it — that is what lets the assistant see the inbox tools. It becomes a snapshot that will not follow later dsh upgrades; both it and the profile are reversible (see Uninstall).
+
+To keep your daily dsh untouched, give the plugin its own profile and port: `npx @chance722/dsh-inbox init --create-profile`, then `dsh --profile inbox --no-open --port 3102`.
+
+Other flags: `--profile <name>`, `--install-pnpm`, `--no-default`, `--help`.
 
 ### From a local checkout
 
@@ -171,7 +148,7 @@ With a remote configured and `/inbox` as the directory:
 - **Pictures**: classification does send an image to the model (a phone photo of an ID card has the same proportions as any other photo); the conversation gets an `[attachment:id]` marker by default. **The one exception**: when you explicitly ask the assistant to look at a picture, that single image is sent to it — per call, never by default.
 - **The model cannot see your vault** unless you ask it to look, and classification requests are redacted first.
 - **Your remote needs access control**: only credential bodies are ciphertext up there — text, links, notes and attachment bytes are in the clear, and the master password and key never sync.
-- **What the install changes outside the panel**: reading a pasted link's headline is this plugin's only outbound request — one GET, only for links captured on this machine, never for links that arrived through sync. The profile makes it with a browser-shaped identity (`… AppleWebKit/537.36 (KHTML, like Gecko) dsh-inbox Safari/537.36`), shipped in this package's `cordis.patch.yml` as an override of `web-fetch-http.userAgent`, because sites gate on the shape of that string. That identity is the whole profile's, the model's own web tools included; **your own `cordis.patch.yml` overrides it**. Measurements and reasoning: [docs/help/link-title-fetch.md](docs/help/link-title-fetch.md).
+- **What the install changes outside the panel**: reading a pasted link's headline is this plugin's only outbound request — one GET, only for links captured on this machine, never for links that arrived through sync. It goes out with a **browser-shaped** identity, an override of `web-fetch-http.userAgent` shipped in this package's `cordis.patch.yml`, because sites gate on the shape of that string. That identity covers the whole profile, the model's own web tools included; **your own `cordis.patch.yml` overrides it**. Details: [docs/help/link-title-fetch.md](docs/help/link-title-fetch.md).
 
 ## Development
 
