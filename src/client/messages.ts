@@ -149,6 +149,9 @@ export const zh = {
   'settings.region': '区域',
   'settings.bucketAddress': '地址',
   'settings.bucketDir': '目录',
+  // The default is the thing people get wrong: blank and `/` are the same as
+  // `inbox`, and the sync tree is `<directory>/sync`.
+  'settings.directoryPlaceholder': 'inbox（默认；留空或 / 都等于它）',
   'settings.dirS3.lead': '目录那一栏同时是 S3 的 key 前缀（默认 ',
   'settings.dirS3.mid': '，会转成 ',
   'settings.dirS3.tail': '）。',
@@ -208,6 +211,8 @@ export const zh = {
   'sync.pullFailed': '拉取失败：{reason}',
   'sync.pullNothingNew': '云端的记录没有新的',
   'sync.pullMerged': '从云端合并 {count} 条{attachments}',
+  'sync.pullKept': '（云端另有 {count} 条本机已有）',
+  'sync.pullAllHere': '云端的 {count} 条记录本机都有',
   'sync.pullAttachments': ' / {count} 个附件',
   'sync.pullDone':
     '拉取完成：云端有 {records} 条记录 / {files} 个附件（远端共列出 {listed} 个对象），新入库 {pulled} 条，跳过 {skipped} 条{tail}',
@@ -432,6 +437,7 @@ export const en: Dictionary = {
   'settings.region': 'Region',
   'settings.bucketAddress': 'Address',
   'settings.bucketDir': 'Directory',
+  'settings.directoryPlaceholder': 'inbox (the default — blank or / means the same)',
   'settings.dirS3.lead': 'the directory is also the key prefix for S3 (default ',
   'settings.dirS3.mid': ', which becomes ',
   'settings.dirS3.tail': ').',
@@ -490,6 +496,8 @@ export const en: Dictionary = {
   'sync.pullFailed': 'Pull failed: {reason}',
   'sync.pullNothingNew': 'Nothing new in the cloud',
   'sync.pullMerged': 'Merged {count} from the cloud{attachments}',
+  'sync.pullKept': ' ({count} more were already here)',
+  'sync.pullAllHere': 'the cloud holds {count} records this machine already has',
   'sync.pullAttachments': ' / {count} attachment(s)',
   'sync.pullDone':
     'Pull done: the cloud holds {records} records / {files} attachments ({listed} objects listed), {pulled} filed, {skipped} skipped{tail}',

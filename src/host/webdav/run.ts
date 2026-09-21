@@ -103,6 +103,7 @@ async function withMerge(
   return {
     ...pulled,
     merged: outcome.merged,
+    kept: outcome.kept,
     attachments: outcome.attachments,
     failed: pulled.failed + outcome.failures.length,
     ...(troubles.length === 0 ? {} : { reason: troubles.slice(0, 3).join('；') }),

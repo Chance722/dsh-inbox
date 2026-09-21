@@ -1752,14 +1752,25 @@ function describePull(result: PullResult): string {
   // Two halves, one line each: the drop folder's files, and the merge's records.
   const merged = result.merged ?? 0
   const attachments = result.attachments ?? 0
+  /**
+   * How many of the cloud's records this vault already had.
+   *
+   * The merge settles per record by `id` + `updatedAt`, not by which machine
+   * pushed it, so "nothing came over" and "the cloud's copies are my own" look
+   * identical without this number — and they are different facts.
+   */
+  const kept = result.kept ?? 0
+  const keptPart = kept === 0 ? '' : t('sync.pullKept', { count: kept })
   const syncPart =
     merged === 0 && attachments === 0
-      ? t('sync.pullNothingNew')
+      ? kept === 0
+        ? t('sync.pullNothingNew')
+        : t('sync.pullAllHere', { count: kept })
       : t('sync.pullMerged', {
           count: merged,
           attachments:
             attachments === 0 ? '' : t('sync.pullAttachments', { count: attachments }),
-        })
+        }) + keptPart
   if (result.pulled === 0 && result.skipped === 0 && result.failed === 0) return syncPart
   /*
     Say why the skipped ones were skipped, and who failed.
@@ -1798,7 +1809,12 @@ function describePull(result: PullResult): string {
     files: result.remoteAttachments ?? 0,
     pulled: result.pulled,
     skipped: result.skipped,
-    tail: `${skippedWhy}${syncPart}${foreignWhy}${failedWhy}`,
+    // Joined, not concatenated: each part is a complete clause, and butting
+    // them together read as one run-on sentence ("…项）云端的 7 条记录本机都有").
+    tail: [skippedWhy, syncPart, foreignWhy, failedWhy]
+      .filter((part) => part.length > 0)
+      .map((part) => ` · ${part}`)
+      .join(''),
   })
 }
 
@@ -2109,10 +2125,12 @@ function WebdavSettings({
           value={directory}
           disabled={busy}
           onChange={(event) => setDirectory(event.target.value)}
-          placeholder="/inbox"
+          placeholder={t('settings.directoryPlaceholder')}
           style={{ ...inputStyle, flex: 1 }}
         />
-        <span style={{ opacity: 0.6 }}>{t('settings.bucketHint')}</span>
+        <span style={{ opacity: 0.6 }}>
+          {t('settings.bucketHint')} · {t('settings.syncRootNow', { root: syncRootFor(directory) })}
+        </span>
       </label>
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -2216,11 +2234,11 @@ function WebdavSettings({
               value={directory}
               disabled={busy}
               onChange={(event) => setDirectory(event.target.value)}
-              placeholder="/inbox"
+              placeholder={t('settings.directoryPlaceholder')}
               style={{ ...inputStyle, flex: 1 }}
             />
             <span style={{ opacity: 0.6 }}>
-              {t('settings.syncRootNow', { root: syncRootFor(directory) })}
+              {t('settings.bucketHint')} · {t('settings.syncRootNow', { root: syncRootFor(directory) })}
             </span>
           </label>
         </>

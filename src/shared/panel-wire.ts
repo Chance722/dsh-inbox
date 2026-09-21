@@ -188,6 +188,15 @@ export interface PullResult {
   merged?: number
   /** Attachment objects the merge had to fetch and admit locally. */
   attachments?: number
+  /**
+   * Records the cloud holds that this vault **already had** (same id, not older).
+   *
+   * This is the answer to "why is the cloud's copy not coming over?": it is the
+   * same record, and the merge settles per record by `id` + `updatedAt` rather
+   * than by which machine uploaded it — a record this machine pushed comes back
+   * with the timestamp it left with, so it is kept, not re-filed.
+   */
+  kept?: number
   failed: number
   /** Files the server listed but we skipped as already-seen. */
   skipped: number
