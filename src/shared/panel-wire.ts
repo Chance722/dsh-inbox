@@ -63,6 +63,8 @@ export interface WebdavRequest {
   protocol?: RemoteProtocol
   baseUrl?: string
   directory?: string
+  /** Merge other sync trees in the same bucket, not just this directory's. */
+  adoptForeignRoots?: boolean
   username?: string
   /** Empty string clears the stored password; absent leaves it alone. */
   password?: string
@@ -99,6 +101,18 @@ export interface WebdavSettings {
   baseUrl: string
   /** Folder under the base URL; the convention every device drops into. */
   directory: string
+  /**
+   * Also merge `…/sync` trees found **outside** the configured directory.
+   *
+   * Off by default, because the directory is what tells two vaults apart and a
+   * bucket can be shared. On, this is what a person means by "it is all my
+   * cloud drive": a machine that used to sync somewhere else leaves its records
+   * behind, and they come back (asked 2026-09-21, 19 records). Merging settles
+   * per record by `id` + `updatedAt`, so an older tree cannot overwrite a newer
+   * copy — but it *can* bring back a record that was purged here, because a
+   * purge leaves nothing local to outrank it.
+   */
+  adoptForeignRoots: boolean
   username: string
   /** S3: endpoint host, e.g. `https://s3.cstcloud.cn`. */
   endpoint: string
@@ -186,6 +200,8 @@ export interface PullResult {
    * than the local copy). Only the merge half of a pull can produce these.
    */
   merged?: number
+  /** How many of {@link merged} were ids this vault did not have at all. */
+  added?: number
   /** Attachment objects the merge had to fetch and admit locally. */
   attachments?: number
   /**

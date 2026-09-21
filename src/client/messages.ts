@@ -149,6 +149,8 @@ export const zh = {
   'settings.region': '区域',
   'settings.bucketAddress': '地址',
   'settings.bucketDir': '目录',
+  'settings.adoptForeign': '同时合并别的同步目录',
+  'settings.adoptForeignHint': '（换过目录的机器留在云端的记录也会拉回来；默认关）',
   // The default is the thing people get wrong: blank and `/` are the same as
   // `inbox`, and the sync tree is `<directory>/sync`.
   'settings.directoryPlaceholder': 'inbox（默认；留空或 / 都等于它）',
@@ -212,6 +214,7 @@ export const zh = {
   'sync.detailPushedIdle': '推送 0 条（{count} 条已是最新）',
   'sync.detailPushed': '推送 {records} 条 / {attachments} 个附件',
   'sync.detailPulled': '拉取 {count} 条 · 云端 {records} 条记录 / {files} 个附件',
+  'sync.detailAdded': '（其中 {count} 条是新记录）',
   'sync.detailSkip': '（跳过 {skipped}：自己的 {sync}、更旧 {older}）',
   'sync.pullForeignSync':
     ' · ⚠️ 另有 {records} 条记录在别的同步目录：{roots}',
@@ -297,7 +300,7 @@ export const zh = {
   // The one rule that decides whether two machines see each other at all.
   'manual.5.twoMachines.label': '两台机器',
   'manual.5.twoMachines.body':
-    '两边的「目录」要一样（留空、/、inbox 是同一个意思）。不一样时不会自动互通：刷新会提示「另有 N 条记录在别的同步目录」，把它们改成同一个才会合过来。',
+    '两边的「目录」要一样（留空、/、inbox 是同一个意思）。不一样时默认不互通：刷新会提示「另有 N 条记录在别的同步目录」——把它们改成同一个，或者打开设置里的「同时合并别的同步目录」，都能合过来。',
   'manual.5.delete.label': '删除',
   'manual.5.delete.body':
     '面板里的「删除」只是把它放进回收站（别的设备也会知道它被删了，不会又被拉回来）；「清空回收站」才是真删，云端那份也会一起删。',
@@ -443,6 +446,8 @@ export const en: Dictionary = {
   'settings.region': 'Region',
   'settings.bucketAddress': 'Address',
   'settings.bucketDir': 'Directory',
+  'settings.adoptForeign': 'Merge other sync directories too',
+  'settings.adoptForeignHint': '(brings back records a machine left under an older directory; off by default)',
   'settings.directoryPlaceholder': 'inbox (the default — blank or / means the same)',
   'settings.dirS3.lead': 'the directory is also the key prefix for S3 (default ',
   'settings.dirS3.mid': ', which becomes ',
@@ -501,6 +506,7 @@ export const en: Dictionary = {
   'sync.detailPushedIdle': 'pushed 0 ({count} already up to date)',
   'sync.detailPushed': 'pushed {records} / {attachments} attachments',
   'sync.detailPulled': 'pulled {count} · the cloud holds {records} records / {files} attachments',
+  'sync.detailAdded': ' ({count} of them new)',
   'sync.detailSkip': ' ({skipped} skipped: {sync} ours, {older} older)',
   'sync.pullForeignSync':
     ' · ⚠️ {records} records live in another sync directory: {roots}',
@@ -580,7 +586,7 @@ export const en: Dictionary = {
   'manual.5.manual.body': '“Refresh” in the top right is a full sync: push local changes, pull the others, then re-read the list.',
   'manual.5.twoMachines.label': 'Two machines',
   'manual.5.twoMachines.body':
-    'Both machines need the same 「目录」 (blank, / and inbox all mean the same directory). While they differ nothing crosses over: the refresh says “N records live in another sync directory”, and setting both to the same value brings them in.',
+    'Both machines need the same 「目录」 (blank, / and inbox all mean the same directory). While they differ nothing crosses over by default: the refresh says “N records live in another sync directory”, and either matching them or ticking “Merge other sync directories too” brings them in.',
   'manual.5.delete.label': 'Deleting',
   'manual.5.delete.body': '“Delete” in the panel only moves a record to the bin (other devices learn it is gone instead of pushing it back); emptying the bin is the real delete, and the cloud copy goes with it.',
   'manual.5.conflict.label': 'Conflicts',

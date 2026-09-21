@@ -98,11 +98,22 @@ async function withMerge(
   pulled: PullResult,
 ): Promise<PullResult> {
   if (pulled.status !== 'ok' || attachments === undefined) return pulled
-  const outcome = await mergeRemote(ctx, vault, attachments)
+  /*
+    Other sync trees, when the user asked for them.
+
+    Off by default: the directory is what tells two vaults apart, and a bucket
+    can be shared. On, "it is all my cloud drive" is taken literally and the
+    trees the pull found elsewhere are merged too — same per-record rule, so an
+    older tree cannot overwrite a newer copy.
+  */
+  const settings = readSettings(ctx)
+  const extraRoots = settings.adoptForeignRoots ? (pulled.foreignSyncRoots ?? []) : []
+  const outcome = await mergeRemote(ctx, vault, attachments, extraRoots)
   const troubles = [...(pulled.failed > 0 && pulled.reason !== undefined ? [pulled.reason] : []), ...outcome.failures]
   return {
     ...pulled,
     merged: outcome.merged,
+    added: outcome.added,
     kept: outcome.kept,
     attachments: outcome.attachments,
     failed: pulled.failed + outcome.failures.length,

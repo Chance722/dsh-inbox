@@ -1851,6 +1851,15 @@ function describePull(result: PullResult): string {
     records: result.remoteRecords ?? 0,
     files: result.remoteAttachments ?? 0,
   })
+  /*
+    "19 came over" and "the vault grew by 6" are both true when a merge mostly
+    overlaps: the number a reader checks against their list is the second one,
+    so say it beside the first.
+  */
+  const gained =
+    (result.added ?? 0) === 0
+      ? ''
+      : t('sync.detailAdded', { count: result.added ?? 0 })
   const skipped =
     result.skipped === 0
       ? ''
@@ -1861,7 +1870,7 @@ function describePull(result: PullResult): string {
         })
   // The tooltip is where the full warning lives: it can name this machine's own
   // root next to the others, which is the comparison the reader is making.
-  return `${head}${skipped}${warningsOf(result, true)}`
+  return `${head}${gained}${skipped}${warningsOf(result, true)}`
 }
 
 /**
@@ -1993,6 +2002,7 @@ function WebdavSettings({
   const [status, setStatus] = React.useState<WebdavStatus>()
   const [baseUrl, setBaseUrl] = React.useState('')
   const [directory, setDirectory] = React.useState('/inbox')
+  const [adoptForeignRoots, setAdoptForeignRoots] = React.useState(false)
   const [username, setUsername] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [protocol, setProtocol] = React.useState<'webdav' | 's3'>('webdav')
@@ -2020,6 +2030,7 @@ function WebdavSettings({
     setStatus(next)
     setBaseUrl(next.settings.baseUrl)
     setDirectory(next.settings.directory)
+    setAdoptForeignRoots(next.settings.adoptForeignRoots === true)
     setUsername(next.settings.username)
     setProtocol(next.settings.protocol)
     setEndpoint(next.settings.endpoint)
@@ -2054,6 +2065,7 @@ function WebdavSettings({
         protocol,
         baseUrl,
         directory,
+        adoptForeignRoots,
         username,
         // Sending nothing leaves the stored password alone; sending "" clears it.
         ...(password.length === 0 ? {} : { password }),
@@ -2291,6 +2303,24 @@ function WebdavSettings({
       )}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {/*
+          The switch behind "it is all my cloud drive".
+
+          Off by default because the directory is what tells two vaults apart,
+          and a bucket can be shared. On, the refresh also merges `…/sync` trees
+          found elsewhere in the bucket — how a machine that changed directories
+          gets its records back.
+        */}
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', flex: '1 0 100%' }}>
+          <input
+            type="checkbox"
+            checked={adoptForeignRoots}
+            disabled={busy}
+            onChange={(event) => setAdoptForeignRoots(event.target.checked)}
+          />
+          <span>{t('settings.adoptForeign')}</span>
+          <span style={{ opacity: 0.6 }}>{t('settings.adoptForeignHint')}</span>
+        </label>
         <button type="button" style={buttonStyle} disabled={busy} onClick={() => void save()}>
           {t('settings.save')}
         </button>

@@ -97,6 +97,38 @@ describe('mergeOnce', () => {
     expect(imported?.createdAt).toBe('2026-09-20T05:00:00.000Z')
   })
 
+  it('takes a second tree in when the user asks for the whole bucket', async () => {
+    /*
+      The case behind "it is all my cloud drive": a machine that used to sync
+      under another directory left its records in `sync/`, and the directory
+      rule keeps them out of the normal merge. Merging that tree as well brings
+      them in — once; asking again finds the same ids already here.
+    */
+    const remote = tree({
+      'inbox/sync/items/11111111-1111-4111-8111-111111111111.json': packed({
+        id: '11111111-1111-4111-8111-111111111111',
+        updatedAt: '2026-09-20T05:00:00.000Z',
+        text: '本机目录里的',
+      }),
+      'sync/items/22222222-2222-4222-8222-222222222222.json': packed({
+        id: '22222222-2222-4222-8222-222222222222',
+        updatedAt: '2026-09-19T05:00:00.000Z',
+        text: '老目录里留下的',
+      }),
+    })
+
+    const ours = await mergeOnce(vault, remote, 'inbox/sync', admit)
+    expect(ours).toMatchObject({ merged: 1, kept: 0 })
+
+    const adopted = await mergeOnce(vault, remote, 'sync', admit)
+    expect(adopted).toMatchObject({ merged: 1, kept: 0 })
+    expect(vault.get('22222222-2222-4222-8222-222222222222')?.text).toBe('老目录里留下的')
+
+    // Idempotent: the second pass recognises both as already here.
+    const again = await mergeOnce(vault, remote, 'sync', admit)
+    expect(again).toMatchObject({ merged: 0, kept: 1 })
+  })
+
   it('keeps the local copy when it is newer, and overwrites when the remote is', async () => {
     const id = '22222222-2222-4222-8222-222222222222'
     await vault.import({

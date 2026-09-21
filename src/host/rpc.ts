@@ -551,6 +551,7 @@ async function handleWebdav(
     protocol?: unknown
     baseUrl?: unknown
     directory?: unknown
+    adoptForeignRoots?: unknown
     username?: unknown
     password?: unknown
     endpoint?: unknown
@@ -568,6 +569,9 @@ async function handleWebdav(
     if (typeof request.protocol === 'string') patch.protocol = request.protocol
     if (typeof request.baseUrl === 'string') patch.baseUrl = request.baseUrl
     if (typeof request.directory === 'string') patch.directory = request.directory
+    if (typeof request.adoptForeignRoots === 'boolean') {
+      patch.adoptForeignRoots = request.adoptForeignRoots
+    }
     if (typeof request.username === 'string') patch.username = request.username
     if (typeof request.password === 'string') patch.password = request.password
     if (typeof request.endpoint === 'string') patch.endpoint = request.endpoint

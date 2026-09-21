@@ -34,6 +34,7 @@ export const DEFAULT_SETTINGS: WebdavSettings = {
   protocol: 'webdav',
   baseUrl: '',
   directory: '/inbox',
+  adoptForeignRoots: false,
   username: '',
   endpoint: '',
   bucket: '',
@@ -49,6 +50,7 @@ export const WebdavSettingsSchema = z.object({
   protocol: z.union(['webdav', 's3']).default('webdav'),
   baseUrl: z.string().default(''),
   directory: z.string().default('/inbox'),
+  adoptForeignRoots: z.boolean().default(false),
   username: z.string().default(''),
   endpoint: z.string().default(''),
   bucket: z.string().default(''),
@@ -153,6 +155,8 @@ export interface WebdavPatch {
   protocol?: string
   baseUrl?: string
   directory?: string
+  /** Merge other sync trees in the same bucket, not just this directory's. */
+  adoptForeignRoots?: boolean
   username?: string
   /** Empty string clears the stored password; undefined leaves it. */
   password?: string
@@ -227,6 +231,7 @@ export async function saveWebdav(
     const directory = patch.directory.trim()
     config.directory = directory.startsWith('/') ? directory : `/${directory}`
   }
+  if (patch.adoptForeignRoots !== undefined) config.adoptForeignRoots = patch.adoptForeignRoots
   if (patch.username !== undefined) config.username = patch.username.trim()
   if (patch.endpoint !== undefined) config.endpoint = normalizeUrl(patch.endpoint)
   if (patch.bucket !== undefined) config.bucket = patch.bucket.trim()
