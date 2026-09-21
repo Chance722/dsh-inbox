@@ -1404,6 +1404,44 @@ toast 是"刚刚发生了什么"的提示，不是报告；把对象数、跳过
 
 **验证**：只改 Markdown，无代码改动；`git diff --stat` 复核行数，两份内容对称。
 
+#### M9 第十六步 — 清空回收站之后，重启又被"拉回来"：本地墓碑 `graves`（2026-09-21）
+
+用户报："**有个 bug：我清空了回收站，刷新页面回收站确实也是空的，但是当我关闭服务、重启 dsh 后，这些东西又躺在回收站里面了。**"
+
+**先定位，不猜**。三条本机证据（读的是用户真库 `~/.dsh/storages/dsh_inbox/` 与真配置）：
+
+1. `settings.yaml` 里 `dsh-inbox-webdav: { protocol: s3, directory: /, adoptForeignRoots: true }`——
+   **「同时合并别的同步目录」是开着的**（M9 第六步用户自己拍的板），自己的同步根因此是 `inbox/sync`，
+   而桶里还留着旧布局的那棵 `sync/`（M9 第五步实测过：19 条记录，其中 13 条墓碑）。
+2. 回收站里正好 **13 条**，`deletedAt` 都是 **9/19**（旧时间戳）。
+3. **决定性的一条**：这 13 个 `items/*.json` 的文件 **mtime 全是 `2026-09-21 14:47:01`**，
+   而 `global.json` 的 `lastPullAt` 是 `2026-09-21T06:47:00.188Z`（= 14:47:00 本地时间）。
+   ⇒ 它们不是"没删掉"，是**上一次启动拉取时被 merge 重新写进来的**。
+
+**根因**（不是删除失败，是"删不着那棵树"）：清空回收站只删**本机这棵**同步树里的对象（`remote/remove.ts` 是定向删除，
+故意不做 sweep）；老树 `sync/` 里那 13 条墓碑的副本还在。启动时会跑一次拉取（`remote/merge.ts`），
+用户又开着"合并别的同步目录"，于是逐条比 `wins()`：**清空之后本机一行都没有**，
+`wins(remote, undefined)` 恒真 ⇒ 13 条墓碑原样导入 ⇒ 又躺在回收站里。
+页面刷新不触发拉取（只有「刷新」按钮与启动会跑），所以中间那一步看起来"明明清干净了"。
+**这条洞 `src/shared/panel-wire.ts` 的注释里早就写着**（"a purge leaves nothing local to outrank it"），
+当时把它当成了开关默认关的*理由*，没当成要修的 bug。
+
+**修法**：域 **v7 → v8**，加一张 `graves` 表。`vault.remove` 改成 `vault.purge(id)`：删记录 + 删无人引用的附件行之后，
+再写一条 `{ id, purgedAt }`（只有 id 和时刻，没有正文、没有附件）。merge 在"本机没有这条"的分支里多问一次
+`newerThanPurge()`：**不比 `purgedAt` 新**的副本不收（进新的 `PullResult.purged`，刷新按钮 tooltip 写
+「清空过 N 条：云端的旧副本没有拉回来」），**比它新**的照旧赢——别的设备真在清空之后改过，那是一次真改动。
+
+**边界（写进 `sync.md`）**：墓碑是**本机事实**，不上云不同步；远端另一棵树里那份副本**不代删**（删别的树不可逆，
+桶可能是共享的）——它只是再也进不来。清空之后同一份内容再粘进来是**新记录**（新 id），不受墓碑影响。
+
+**验证**：`pnpm typecheck` 干净、**29 文件 307 条**全绿（+3）、`pnpm build` 通过。新增三条测试：
+`merge.test.ts`「keeps an emptied record out, even when another tree still holds a copy」（旧副本被拒 + 更新的副本仍然赢 + 再问一次还是被拒）、
+`vault.test.ts`「empties a record out of the bin and leaves only a grave behind」（记录文档真的没了、只剩 `graves/<id>.json`、
+不存在的东西清空不写墓碑）、`vault.test.ts`「opens a vault the previous domain version wrote」（**v7 的库能被 v8 打开**，加表不能毁掉任何人的库）。
+
+**给用户的即时处置**：升级到 0.2.7 之后**再清一次**回收站（在此之前清掉的那些没有墓碑记录，会被老树再送回来一次）；
+桶根那棵遗留 `sync/` 可以在云盘控制台里删掉——上面那 6 条活记录当时已经并进本机了（M9 第六步）。
+
 ### M7 — 界面升级（2026-09-20，已验收）
 
 **做到了什么**（选摘，逐条过程在上面的第三十二步之前）

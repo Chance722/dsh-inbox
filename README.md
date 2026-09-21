@@ -134,7 +134,7 @@ With a remote configured and `/inbox` as the directory:
 - **Automatic**: a push seconds after a capture or edit (debounced — several quick saves are one push); 「刷新」 is a full sync: push → pull → re-read the list.
 - **Merging**: per `id` + timestamp, the newer write wins, no conflict copies; needed attachment bytes come down with the record.
 - **Two machines**: one shared 「目录」 (blank, `/` and `inbox` are the same). Records a machine left under an older directory come back if you tick **Merge other sync directories too** in the settings.
-- **Deleting**: 「删除」 only moves a record to the bin and the other devices are told it is gone; emptying the bin deletes the cloud copy as well.
+- **Deleting**: 「删除」 only moves a record to the bin and the other devices are told it is gone; emptying the bin deletes the cloud copy as well, and it stays deleted — a copy sitting in another sync directory cannot file it back in.
 
 ## Privacy and security
 
