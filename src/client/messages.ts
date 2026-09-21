@@ -218,7 +218,13 @@ export const zh = {
     '拉取完成：云端有 {records} 条记录 / {files} 个附件（远端共列出 {listed} 个对象），新入库 {pulled} 条，跳过 {skipped} 条{tail}',
   'sync.pullSkipWhy': '（自己的同步对象 {sync} 项、比上次拉取更旧 {older} 项）',
   'sync.pullForeignSync':
-    ' · ⚠️ 还发现另一套同步前缀 {roots}（本机是 {ours}）：两台机器的「目录」设置不一致，先把两边改成同一个',
+    ' · ⚠️ 另一套同步目录：{roots}（本机 {ours}）',
+  // The toast: two numbers, nothing else. Everything else about a sync is
+  // detail, and detail belongs in a line that does not vanish.
+  'sync.shortPushed': '推送 {count} 条',
+  'sync.shortPulled': '拉取 {count} 条',
+  'sync.shortIdle': '已是最新',
+  'sync.detailLast': '上次同步：{detail}',
   'sync.pullFailures': ' · 失败 {count}：{reason}',
   'sync.thisPage': ' · 本页 {count} 条',
   'settings.status': '{settings} · {webdav} · {s3}',
@@ -503,7 +509,11 @@ export const en: Dictionary = {
     'Pull done: the cloud holds {records} records / {files} attachments ({listed} objects listed), {pulled} filed, {skipped} skipped{tail}',
   'sync.pullSkipWhy': ' ({sync} of our own sync objects, {older} older than the last pull)',
   'sync.pullForeignSync':
-    ' · ⚠️ another sync prefix exists: {roots} (this machine: {ours}) — two machines have different directory settings; make them match',
+    ' · ⚠️ another sync directory: {roots} (ours is {ours})',
+  'sync.shortPushed': 'pushed {count}',
+  'sync.shortPulled': 'pulled {count}',
+  'sync.shortIdle': 'up to date',
+  'sync.detailLast': 'Last sync: {detail}',
   'sync.pullFailures': ' · {count} failed: {reason}',
   'sync.thisPage': ' · {count} on this page',
   'settings.status': '{settings} · {webdav} · {s3}',

@@ -460,6 +460,13 @@ function InboxPanel(): React.ReactElement {
   const [text, setText] = React.useState('')
   const [staged, setStaged] = React.useState<Staged[]>([])
   const [notice, setNotice] = React.useState<string>()
+  /**
+   * The long version of the last sync.
+   *
+   * It stays in the panel (one dimmed line, hover for the whole thing) instead
+   * of riding along in the toast, which nobody can finish reading.
+   */
+  const [syncDetail, setSyncDetail] = React.useState<string>()
   const [busy, setBusy] = React.useState(false)
   const [dragging, setDragging] = React.useState(false)
   const picker = React.useRef<HTMLInputElement>(null)
@@ -697,21 +704,45 @@ function InboxPanel(): React.ReactElement {
     setNotice(t('notice.syncing'))
     try {
       const pushed = await call(INBOX_ENDPOINT_PUSH, {})
-      const pushLine = pushed.ok
-        ? describePush(pushed.value as PushResult)
-        : t('notice.pushFailed', { reason: pushed.error.message })
       const pulled = await call(INBOX_ENDPOINT_PULL, {})
-      let suffix = ''
-      if (pulled.ok) {
-        const result = pulled.value as PullResult
-        suffix = ` · ${describePull(result)}`
-      } else {
-        suffix = ` · ${t('notice.pullFailed', { reason: pulled.error.message })}`
-      }
       await refresh()
+
+      const pushFail = pushed.ok ? undefined : t('notice.pushFailed', { reason: pushed.error.message })
+      const pullFail = pulled.ok ? undefined : t('notice.pullFailed', { reason: pulled.error.message })
+      const pushCount = pushed.ok ? writtenBy(pushed.value as PushResult) : 0
+      const pullCount = pulled.ok ? arrivedFrom(pulled.value as PullResult) : 0
+      const warnings = pulled.ok ? syncWarnings(pulled.value as PullResult) : ''
       const total = list?.matched
+
+      /*
+        The toast says whether it worked, in two numbers.
+
+        It used to carry the whole diagnostic line — objects listed, skip
+        reasons, what the cloud holds — which is information you cannot read in
+        the seconds a toast lives (asked 2026-09-21). Nothing moved: "已是最新".
+        The detail goes to `syncDetail`, which stays in the panel and is also
+        the toast's hover text; failures and the other-directory warning stay
+        here, because those are the two things a reader has to act on.
+      */
+      const idle = pushFail === undefined && pullFail === undefined && pushCount === 0 && pullCount === 0
+      const short = idle
+        ? t('sync.shortIdle')
+        : [
+            pushFail ?? t('sync.shortPushed', { count: pushCount }),
+            pullFail ?? t('sync.shortPulled', { count: pullCount }),
+          ].join(' · ')
       setNotice(
-      `${pushLine}${suffix}${total === undefined ? '' : t('sync.thisPage', { count: total })}`,
+        `${short}${warnings}${total === undefined ? '' : t('sync.thisPage', { count: total })}`,
+      )
+      setSyncDetail(
+        [
+          pushed.ok
+            ? describePush(pushed.value as PushResult)
+            : t('notice.pushFailed', { reason: pushed.error.message }),
+          pulled.ok
+            ? describePull(pulled.value as PullResult)
+            : t('notice.pullFailed', { reason: pulled.error.message }),
+        ].join(' · '),
       )
     } finally {
       setBusy(false)
@@ -1386,6 +1417,27 @@ function InboxPanel(): React.ReactElement {
         </button>
       </div>
 
+      {/*
+        What the last sync actually did, in full. The toast carries two numbers
+        and disappears; this line stays until the next refresh, and hovering it
+        shows everything the toast used to try to say at once.
+      */}
+      {syncDetail !== undefined && syncDetail.length > 0 && (
+        <p
+          title={syncDetail}
+          style={{
+            margin: 0,
+            fontSize: 12,
+            opacity: 0.55,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {t('sync.detailLast', { detail: syncDetail })}
+        </p>
+      )}
+
       <div
         style={{
           display: 'grid',
@@ -1732,6 +1784,36 @@ function InboxPanel(): React.ReactElement {
 
 /** How the panel talks to the host; shared by the panel and the settings form. */
 type CallHost = (endpoint: string, payload: unknown) => Promise<InboxRpcResult<unknown>>
+
+/** Records a push actually wrote; zero when there was nothing to write to. */
+function writtenBy(result: PushResult): number {
+  return result.status === 'ok' || result.status === 'partial' ? result.pushed : 0
+}
+
+/** Records a pull brought in: files filed in the drop folder plus merged ones. */
+function arrivedFrom(result: PullResult): number {
+  return result.status === 'ok' ? result.pulled + (result.merged ?? 0) : 0
+}
+
+/**
+ * The two things a pull has to say beyond its numbers.
+ *
+ * Kept in the toast because both need a decision: another machine syncing under
+ * a different directory (its records are not reaching you), and files that
+ * failed. Everything else about a pull is detail.
+ */
+function syncWarnings(result: PullResult): string {
+  const roots = result.foreignSyncRoots ?? []
+  const foreign =
+    roots.length === 0
+      ? ''
+      : t('sync.pullForeignSync', { roots: roots.join('、'), ours: result.syncRoot ?? '' })
+  const failed =
+    result.failed > 0
+      ? t('sync.pullFailures', { count: result.failed, reason: result.reason ?? '' })
+      : ''
+  return `${foreign}${failed}`
+}
 
 /** One line describing what a push did. */
 function describePush(result: PushResult): string {
