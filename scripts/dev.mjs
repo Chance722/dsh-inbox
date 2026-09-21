@@ -32,6 +32,17 @@ const profile = process.env.DSH_PROFILE ?? 'web'
 const home = process.env.DSH_HOME ?? join(homedir(), '.dsh')
 const profileDir = join(home, 'profiles', profile)
 
+function latestVersion() {
+  const result = spawnSync('npm', ['view', PACKAGE, 'version'], {
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  })
+  const value = (result.stdout ?? '').trim()
+  return /^\d+\.\d+\.\d+/.test(value) ? value : undefined
+}
+
+const latest = latestVersion()
+
 /** 这个 profile 现在把插件指向哪里：`link:…` 是本仓库，版本号是线上包。 */
 function dependency() {
   const manifest = join(profileDir, 'package.json')
@@ -70,6 +81,22 @@ function dropLink() {
   }
 }
 
+/**
+ * `node_modules` 里**实际装的是哪一版**。
+ *
+ * 依赖行只写得出范围（`^0.2.4`），而"上次解析到的是 0.2.4"和"现在最新是 0.2.5"
+ * 是两件事——2026-09-21 用户看 `dev:status` 报 `^0.2.4` 就以为装的是 0.2.5。
+ * 链接本仓库时读的就是仓库自己的 package.json，所以两种状态都有版本可看。
+ */
+function installed() {
+  try {
+    const manifest = join(profileDir, 'node_modules', ...PACKAGE.split('/'), 'package.json')
+    return JSON.parse(readFileSync(manifest, 'utf8')).version
+  } catch {
+    return undefined
+  }
+}
+
 function describe() {
   const value = dependency()
   if (value === undefined) return `profile「${profile}」里没有装 ${PACKAGE}`
@@ -77,8 +104,14 @@ function describe() {
   return `线上包（${value}）`
 }
 
+/** `describe()` 加上实际装到的版本。 */
+function describeWithVersion() {
+  const version = installed()
+  return `${describe()}${version === undefined ? '' : `，装的是 v${version}`}`
+}
+
 if (mode === 'status') {
-  process.stdout.write(`profile「${profile}」：${describe()}\n`)
+  process.stdout.write(`profile「${profile}」：${describeWithVersion()}\n`)
   process.exitCode = existsSync(join(profileDir, 'package.json')) ? 0 : 1
 } else if (mode === 'local' || mode === 'npm') {
   if (!existsSync(join(profileDir, 'package.json'))) {
@@ -105,7 +138,7 @@ if (mode === 'status') {
       process.exitCode = 1
     } else {
       process.stdout.write(
-        `\nprofile「${profile}」现在用：${describe()}\n` +
+        `\nprofile「${profile}」现在用：${describeWithVersion()}\n` +
           `下一步：重启 dsh（宿主半边在启动时装载；只改 src/client 时页面会自己热更新）\n`,
       )
     }
@@ -120,9 +153,19 @@ function dropThenAdd() {
   // remove 失败不算错：本来就可能是"还没装过"的状态。
   run('dsh', ['plugin', '--profile', profile, 'remove', PACKAGE])
   dropLink()
-  if (run('dsh', ['plugin', '--profile', profile, 'add', `${PACKAGE}@latest`])) return true
+  if (run('dsh', ['plugin', '--profile', profile, 'add', `${PACKAGE}@${latest ?? 'latest'}`])) return true
   process.stderr.write(
-    `切换失败。手动跑：dsh plugin --profile ${profile} add ${PACKAGE}@latest\n`,
+    `切换失败。手动跑：dsh plugin --profile ${profile} add ${PACKAGE}@${latest ?? 'latest'}\n`,
   )
   return false
 }
+
+/**
+ * registry 上真正的 `latest`。
+ *
+ * 为什么不直接把 `@latest` 交给 pnpm：pnpm 的供应链策略里有"刚发布的版本先别装"
+ * （minimumReleaseAge），而它遇到这种版本会**静默降级**成上一个允许的版本——
+ * 实测 2026-09-21：0.2.5 已经发布，`add <包名>@latest` 却装回了 0.2.4，一句提示都没有。
+ * 拿确切版本号去装，pnpm 会把该版本记进 `minimumReleaseAgeExclude`（profile 的
+ * `pnpm-workspace.yaml`）然后照装。取不到就退回 `latest`，让 pnpm 自己决定。
+ */
