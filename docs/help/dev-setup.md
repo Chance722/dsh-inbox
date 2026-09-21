@@ -159,3 +159,9 @@ dsh --profile inbox-check "调用 inbox_status 工具，把它的原始结果原
 
   4. **`dev:status` 同时报"范围"和"实际版本"**：`profile「web」：线上包（^0.2.5），装的是 v0.2.5`。
      只报范围会误导——用户看到 `^0.2.4` 就以为装的是 0.2.5（范围里允许，不代表 lockfile 里解析到）。
+
+  5. **同一个 pnpm 行为也是用户侧的坑**（2026-09-21 用户实测）：`init` 重复运行**不会升级**——它转发的就是
+     `dsh plugin add <包名>`，profile 里那个版本范围已经满足了，pnpm 回一句 `Already up to date` 就结束
+     （用户看到"装完了"但版本没动）。用户侧的更新命令写进 README 中英的「更新」一节
+     （`dsh plugin --profile web add @chance722/dsh-inbox@latest`，以及"太新"时要写确切版本），
+     `init` 的收尾提示里也加了一行说明。

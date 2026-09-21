@@ -95,6 +95,16 @@ dsh --profile inbox --no-open --port 3102          # start it there
 
 Other flags: `--profile <name>` installs elsewhere, `--install-pnpm` installs pnpm first when it is missing (the two commands above already carry it), `--no-default` leaves the default preset alone, `--help` lists everything. Which profile you install into only decides **where the panel runs** — the agent preset is shared by every profile (`~/.dsh/.agent-presets/inbox/`), so installing into a second one just fills in the missing row.
 
+### Update
+
+`init` is about installing and wiring, and **it does not upgrade**: with the package already in the profile it just re-checks the same thing, and pnpm answers `Already up to date` — the dependency is a version range, and the installed version already satisfies it. To move to the published latest:
+
+```powershell
+dsh plugin --profile web add @chance722/dsh-inbox@latest
+```
+
+In the first minutes after a release pnpm may quietly step back to an older version ("too new" policy), so the exact version is the reliable form (`@0.2.6`). **Restart dsh** afterwards. To see what is installed, ask the assistant to look at your inbox — it answers `dsh-inbox v0.2.6: vault open, N record(s).`
+
 ### From a local checkout
 
 ```powershell

@@ -95,6 +95,16 @@ dsh --profile inbox --no-open --port 3102          # 在那个 profile 里起
 
 其它选项：`--profile <名字>` 装到别处，`--install-pnpm` 在没有 pnpm 时先替你装（上面两条命令已经带上它），`--no-default` 不动默认 preset，`--help` 列全。装进哪个 profile 只决定**面板跑在哪儿**——agent preset 是所有 profile 共享的（`~/.dsh/.agent-presets/inbox/`），装第二个 profile 只会补上缺的那行。
 
+### 更新
+
+`init` 管的是"装 + 接线"，**它不会升级**：profile 里已经有这个包时，它只是把同一件事再检查一遍，pnpm 回一句 `Already up to date`——依赖是个版本范围，已装的那个版本就满足它。要更新到线上最新版：
+
+```powershell
+dsh plugin --profile web add @chance722/dsh-inbox@latest
+```
+
+刚发布完的几分钟里，pnpm 可能按"太新"策略把你悄悄装回旧版本，写**确切版本**最稳（`@0.2.6`）。装完**重启 dsh**。想确认当前装的是哪个版本：让助手查一次收件箱，它会回 `dsh-inbox v0.2.6: vault open, N record(s).`
+
 ### 从本地仓库装
 
 ```powershell

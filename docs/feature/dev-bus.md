@@ -1383,6 +1383,16 @@ toast 是"刚刚发生了什么"的提示，不是报告；把对象数、跳过
 
 **验证**：304 条测试全绿（`classify` 13 条含新平台与兜底判序，`capture` 25 条含"补平台 / 不覆盖"两条），`tsc --noEmit` 干净、`pnpm build` 通过；用真实的 `classifyLink` 打了 16 个真链接（掘金、知乎问题与专栏、YouTube 与 youtu.be、B 站视频与专栏、公众号、腾讯视频、Vimeo、Medium、GitHub、X、HN、小红书、未知站点）逐条核对平台与类目。
 
+#### M9 第十三步 — 「更新」原来没有路径；`init` 不是升级命令（2026-09-21）
+
+用户问："**本地更新线上版本也是执行 `npx @chance722/dsh-inbox init --profile web --install-pnpm` 就可以了吗？**"——他跑完只看到 ① 的 `Already up to date`，看不出有没有真的更新到 0.2.6。
+
+- **答案是不能**：`init` 转发的就是 `dsh plugin add <包名>`，而 profile 里那个依赖是**版本范围**、已装版本就已满足它 ⇒ pnpm 回 `Already up to date` 直接结束（与 M9 第九步同一个 pnpm 行为，这次撞在用户侧）。
+- **改法**：README 中英新增「更新 / Update」一节——`dsh plugin --profile web add @chance722/dsh-inbox@latest`，并写明"刚发布的几分钟里'太新'策略可能把你装回旧版，写确切版本最稳"、装完**重启**、以及**怎么确认版本**（让助手查一次收件箱，它回 `dsh-inbox v0.2.6: vault open, N record(s).`）；`init` 的收尾提示加一行"重复跑 init 不会升级"；`dev-setup.md` 记下这个用户侧后果。
+- **顺带核实发布物**：把 registry 上 0.2.6 的 tarball 拉下来解包核对——`juejin`/`hackernews` 平台表、`refused-page`、新 UA **都在里面**（说明那次发布发生在 M9.12 提交之后）⇒ 平台扩展**不需要再发 0.2.7**。用户 profile 的依赖已经是 `0.2.6`（`dev:npm` 写的），`dev:status` 报 `线上包（0.2.6）`。
+
+**验证**：`tsc --noEmit`、304 条测试、`pnpm build` 全绿（CLI 那处是纯提示字符串）。
+
 ### M7 — 界面升级（2026-09-20，已验收）
 
 **做到了什么**（选摘，逐条过程在上面的第三十二步之前）

@@ -514,7 +514,9 @@ function main(argv: readonly string[]): number {
       `  · 重启 dsh（preset 在启动时扫描）\n` +
       `  · 用你平时那条命令启动它：${profile === 'web' ? 'dsh web' : `dsh --profile ${profile}`}\n` +
       `  · 新建一个会话，它就会带上收件箱工具；想让助手查仓库，直接问「我的收件箱里有哪些还没看的链接」\n` +
-      `  · 面板（侧栏 Inbox）不需要 preset，装完就在\n`,
+      `  · 面板（侧栏 Inbox）不需要 preset，装完就在\n` +
+      `  · 以后要更新到线上最新版：dsh plugin --profile ${profile} add ${PACKAGE_NAME}@latest` +
+      `（重复跑 init 只会重复检查，pnpm 回一句 "Already up to date"，不会升级）\n`,
   )
   return 0
 }
