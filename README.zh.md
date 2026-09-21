@@ -172,6 +172,14 @@ pnpm test         # vitest
 
 改客户端代码：`pnpm build` 后刷新页面即可（dsh 的 client-hmr 会自己重载）；改宿主代码要重启服务。细节见 [docs/help/dev-setup.md](docs/help/dev-setup.md)，阶段与验收记录在[开发总线](docs/feature/dev-bus.md)。
 
+日常想在**线上发布版**和**本地改动**之间切换（默认 profile 是 `web`，换 profile 加 `DSH_PROFILE`）：
+
+```powershell
+pnpm dev:status    # 现在用的是哪一个：本仓库 / 线上包
+pnpm dev:npm       # 切到 npm 上发布的版本（体验发布版）
+pnpm dev:local     # 切回当前仓库（会先 pnpm build 再链接）
+```
+
 ## 许可
 
 MIT

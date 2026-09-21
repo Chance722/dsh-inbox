@@ -173,6 +173,14 @@ pnpm test         # vitest
 
 Client-side changes need `pnpm build` and a page reload (dsh's client-hmr reloads it for you); host-side changes need a restart. Details in [docs/help/dev-setup.md](docs/help/dev-setup.md); milestones and acceptance records in the [development bus](docs/feature/dev-bus.md).
 
+To switch the profile you actually run between the **published package** and **this checkout** (default profile `web`; set `DSH_PROFILE` for another):
+
+```powershell
+pnpm dev:status    # which one is in use right now
+pnpm dev:npm       # point it at the published version
+pnpm dev:local     # point it back here (builds first, then links)
+```
+
 ## License
 
 MIT

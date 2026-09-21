@@ -1294,6 +1294,24 @@ toast 是"刚刚发生了什么"的提示，不是报告；把对象数、跳过
 
 **验证**：`pnpm typecheck` 干净、**29 文件 296 条**全绿、`pnpm build` 通过；真机（内置浏览器 + 3102）量过两处滚动条与手册尺寸，截图确认。
 
+#### M9 第八步 — 一键在"线上版"和"本地版"之间切；0.2.5（2026-09-21）
+
+用户要发 **0.2.5**，并提了一个日常问题：**"每次想装线上版体验；临时开发时怎么快速切回本地？"**
+
+- **新增 `scripts/dev.mjs` + 三条 npm script**（dev-only，`files` 里没有它，不会进发布包）：
+
+  | 命令 | 作用 |
+  |---|---|
+  | `pnpm dev:status` | 读 profile 依赖，直接说明现在是 `本仓库（…）` 还是 `线上包（^0.2.x）` |
+  | `pnpm dev:npm` | `dsh plugin --profile web add @chance722/dsh-inbox`（装线上版） |
+  | `pnpm dev:local` | **先 `pnpm build`** 再 `dsh plugin add <仓库>`——顺序刻意的：profile 是 junction，忘了构建就还在跑上一次的产物 |
+
+  `DSH_PROFILE` 换 profile（默认 `web`）；两个方向都实测过：临时 profile 上 `dev:npm` → `线上包（^0.2.4）`、`dev:local` → `本仓库（D:/Workspace/dsh-inbox）`，用完把临时 profile 删了。
+- **顺带记一个 pnpm 行为**：`minimumReleaseAge` 会把"刚发布不久的版本"写进 profile 的 `pnpm-workspace.yaml` 白名单（实测装 0.2.4 时自动加了一行），所以**发布完立刻就能 `dev:npm` 装上**，不会被"太新"挡住。
+- 版本 `0.2.4 → 0.2.5`（0.2.4 已发布，这一轮之后的改动归 0.2.5）。README 中英「开发」一节补上这三条命令，`dev-setup.md` 记了细节与实测。
+
+**验证**：`pnpm typecheck` 干净、**29 文件 296 条**全绿、`pnpm build` 通过、`pnpm dev:status` 输出正确。
+
 ### M7 — 界面升级（2026-09-20，已验收）
 
 **做到了什么**（选摘，逐条过程在上面的第三十二步之前）

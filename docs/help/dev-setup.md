@@ -120,3 +120,15 @@ dsh --profile inbox-check "调用 inbox_status 工具，把它的原始结果原
 
 - **开发期间不需要重装插件**：profile 里的 `node_modules/@chance722/dsh-inbox` 是指回仓库的 **junction**（`dsh plugin add <仓库路径>` 装的就是这个链接，实测 `Get-FileHash` 两边一致），
   `pnpm build` 改的就是它读的那份产物。只有换机器、换 profile、或改了 `package.json` 里的 `dsh.bundle` / `dsh.client` 声明时才需要再跑一次 `node lib/cli.js init --package <仓库路径>`（可重复运行）。
+
+- **在"线上发布版"和"本仓库"之间来回切**（2026-09-21 起有脚本 `scripts/dev.mjs`）：
+
+  | 命令 | 作用 |
+  |---|---|
+  | `pnpm dev:status` | 看默认 profile（`web`）现在用哪一侧：`本仓库（…）` 或 `线上包（^0.2.x）` |
+  | `pnpm dev:npm` | 切到 npm 上发布的版本（就是"装线上版体验"） |
+  | `pnpm dev:local` | 切回**当前仓库**：**先 `pnpm build`** 再 `dsh plugin add <仓库>`——顺序是刻意的，忘了 build 就还在跑上一次的产物 |
+
+  换 profile：加环境变量，`$env:DSH_PROFILE='inbox'; pnpm dev:npm`。切完**重启 dsh**（宿主半边启动时装载；只改 `src/client` 会热更新）。
+  实测（临时 profile）：`dev:npm` → `线上包（^0.2.4）`、`dev:local` → `本仓库（D:/Workspace/dsh-inbox）`，两个方向都对。
+  细节：pnpm 的 `minimumReleaseAge` 会把"刚发布的版本"写进 profile 的 `pnpm-workspace.yaml` 白名单（实测装 0.2.4 时自动加了一行），所以发布完可以立刻 `dev:npm`。
