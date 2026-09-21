@@ -202,6 +202,8 @@ export interface PullResult {
   merged?: number
   /** How many of {@link merged} were ids this vault did not have at all. */
   added?: number
+  /** How many of {@link merged} were deletions (they land in the recycle bin). */
+  deletions?: number
   /** Attachment objects the merge had to fetch and admit locally. */
   attachments?: number
   /**

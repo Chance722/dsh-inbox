@@ -52,6 +52,15 @@ export interface MergeOutcome {
   /** Records that were new here, or overwritten because the remote was newer. */
   merged: number
   /**
+   * How many of {@link merged} arrived as deletions.
+   *
+   * A deleted record travels as an ordinary record with deletedAt set, so a
+   * merge that brings deletions looks exactly like one that brings updates until
+   * somebody opens the recycle bin (measured 2026-09-21: 19 merged — 6 new
+   * records and 13 tombstones, and the bin went from empty to thirteen).
+   */
+  deletions: number
+  /**
    * How many of {@link merged} were ids this vault did not have at all.
    *
    * "19 records came over" and "the vault grew by 6" are both true at once, and
@@ -156,6 +165,7 @@ export async function mergeOnce(
   const failures: string[] = []
   let merged = 0
   let added = 0
+  let deletions = 0
   let kept = 0
   let attachments = 0
 
@@ -163,7 +173,7 @@ export async function mergeOnce(
   try {
     objects = await tree.list(`${prefix}/items/`)
   } catch (error) {
-    return { merged: 0, added: 0, kept: 0, attachments: 0, failures: [`列远端同步目录失败：${reasonOf(error)}`] }
+    return { merged: 0, added: 0, deletions: 0, kept: 0, attachments: 0, failures: [`列远端同步目录失败：${reasonOf(error)}`] }
   }
 
   /** Attachment rows this merge brought in, to fetch bytes for afterwards. */
@@ -198,6 +208,7 @@ export async function mergeOnce(
       await vault.import(remote)
       merged += 1
       if (local === undefined) added += 1
+      if (remote.deletedAt !== undefined) deletions += 1
       for (const attachmentId of remote.attachmentIds) {
         // Only the ones this vault lacks: an attachment already here (its own
         // push, or an earlier merge) is left alone.
@@ -238,7 +249,7 @@ export async function mergeOnce(
     }
   }
 
-  return { merged, added, kept, attachments, failures }
+  return { merged, added, deletions, kept, attachments, failures }
 }
 
 function extensionOfName(path: string): string {
@@ -281,7 +292,7 @@ export async function mergeRemote(
       settings.protocol === 's3'
         ? await s3Tree(ctx, settings)
         : await webdavTree(ctx, settings)
-    if (tree === undefined) return { merged: 0, added: 0, kept: 0, attachments: 0, failures: [] }
+    if (tree === undefined) return { merged: 0, added: 0, deletions: 0, kept: 0, attachments: 0, failures: [] }
     const admit = admitWith(attachments)
     const outcome = await mergeOnce(vault, tree, prefix, admit)
     for (const root of extraRoots) {
@@ -289,13 +300,14 @@ export async function mergeRemote(
       const extra = await mergeOnce(vault, tree, root, admit)
       outcome.merged += extra.merged
       outcome.added += extra.added
+      outcome.deletions += extra.deletions
       outcome.kept += extra.kept
       outcome.attachments += extra.attachments
       outcome.failures.push(...extra.failures)
     }
     return outcome
   } catch (error) {
-    return { merged: 0, added: 0, kept: 0, attachments: 0, failures: [reasonOf(error)] }
+    return { merged: 0, added: 0, deletions: 0, kept: 0, attachments: 0, failures: [reasonOf(error)] }
   }
 }
 

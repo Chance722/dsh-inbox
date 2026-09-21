@@ -165,10 +165,13 @@ describe('mergeOnce', () => {
       }),
     })
 
-    await mergeOnce(vault, remote, 'inbox/sync', admit)
+    const outcome = await mergeOnce(vault, remote, 'inbox/sync', admit)
 
     expect(vault.list()).toHaveLength(0)
     expect(vault.getBin().map((item) => item.id)).toEqual([id])
+    // Counted, so the panel can say "13 of them are deletions" instead of
+    // letting the bin's new contents be the first news of it (2026-09-21).
+    expect(outcome).toMatchObject({ merged: 1, added: 1, deletions: 1 })
   })
 
   it('fetches the attachments an imported record needs, row and all', async () => {

@@ -211,11 +211,14 @@ export const zh = {
   'sync.pullFailed': '拉取失败：{reason}',
   // The refresh button's tooltip: counts first, reasons only when something was
   // skipped. The toast carries the two numbers alone.
-  'sync.detailPushedIdle': '推送 0 条（{count} 条已是最新）',
+  // No number here on purpose: the push considers every row it has, tombstones
+  // included, so "26 条已是最新" next to a header saying "共 13 条" is a
+  // mismatch the reader has to resolve for themselves (2026-09-21).
+  'sync.detailPushedIdle': '推送 0 条（没有新改动）',
   'sync.detailPushed': '推送 {records} 条 / {attachments} 个附件',
   'sync.detailPulled': '拉取 {count} 条 · 云端 {records} 条记录 / {files} 个附件',
   'sync.detailAdded': '（其中 {count} 条是新记录）',
-  'sync.detailSkip': '（跳过 {skipped}：自己的 {sync}、更旧 {older}）',
+  'sync.detailDeleted': '（其中 {count} 条是删除，会进回收站）',
   'sync.pullForeignSync':
     ' · ⚠️ 另有 {records} 条记录在别的同步目录：{roots}',
   'sync.detailForeign': ' · ⚠️ 别的同步目录：{roots}（{records} 条记录；本机 {ours}）',
@@ -505,11 +508,11 @@ export const en: Dictionary = {
   'sync.pushPartial': '{head} · partly failed: {reason}',
   'sync.pullNoAddress': 'No address configured yet',
   'sync.pullFailed': 'Pull failed: {reason}',
-  'sync.detailPushedIdle': 'pushed 0 ({count} already up to date)',
+  'sync.detailPushedIdle': 'pushed 0 (nothing new)',
   'sync.detailPushed': 'pushed {records} / {attachments} attachments',
   'sync.detailPulled': 'pulled {count} · the cloud holds {records} records / {files} attachments',
   'sync.detailAdded': ' ({count} of them new)',
-  'sync.detailSkip': ' ({skipped} skipped: {sync} ours, {older} older)',
+  'sync.detailDeleted': ' ({count} of them deletions — they land in the recycle bin)',
   'sync.pullForeignSync':
     ' · ⚠️ {records} records live in another sync directory: {roots}',
   'sync.detailForeign': ' · ⚠️ another sync directory: {roots} ({records} records; ours is {ours})',

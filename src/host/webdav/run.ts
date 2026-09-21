@@ -114,6 +114,7 @@ async function withMerge(
     ...pulled,
     merged: outcome.merged,
     added: outcome.added,
+    deletions: outcome.deletions,
     kept: outcome.kept,
     attachments: outcome.attachments,
     failed: pulled.failed + outcome.failures.length,

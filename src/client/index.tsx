@@ -1892,17 +1892,23 @@ function describePull(result: PullResult): string {
     (result.added ?? 0) === 0
       ? ''
       : t('sync.detailAdded', { count: result.added ?? 0 })
-  const skipped =
-    result.skipped === 0
+  /* Deletions arrive looking like updates, until you open the recycle bin. */
+  const deleted =
+    (result.deletions ?? 0) === 0
       ? ''
-      : t('sync.detailSkip', {
-          skipped: result.skipped,
-          sync: result.skippedSync ?? 0,
-          older: result.skippedOlder ?? 0,
-        })
-  // The tooltip is where the full warning lives: it can name this machine's own
-  // root next to the others, which is the comparison the reader is making.
-  return `${head}${gained}${skipped}${warningsOf(result, true)}`
+      : t('sync.detailDeleted', { count: result.deletions ?? 0 })
+  /*
+    No skip breakdown.
+
+    "跳过 24（本机上传的 23、上次已收过的 1）" needed explaining twice, and both
+    halves are the normal state: our own upload queue, and files an earlier pull
+    already took in. It was detail that read like news (asked 2026-09-21). The
+    counts still travel in the host's answer for anyone debugging.
+
+    The tooltip is where the full warning lives: it can name this machine's own
+    root next to the others, which is the comparison the reader is making.
+  */
+  return `${head}${gained}${deleted}${warningsOf(result, true)}`
 }
 
 /**
