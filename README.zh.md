@@ -1,6 +1,6 @@
 # dsh-inbox
 
-![dsh-inbox](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/cover.jpeg)
+![dsh-inbox](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/banner.png)
 
 给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）的**本地收件箱插件**：把随手复制的东西收进一个仓库，需要的时候找得回来——包括**在对话里让助手替你取**。
 
