@@ -146,3 +146,14 @@ dsh --profile inbox-check "调用 inbox_status 工具，把它的原始结果原
   真机结果：`dev:npm` → 依赖 `^0.2.4`、`node_modules/@chance722/dsh-inbox` 是**实体目录**（版本 0.2.4）；
   `dev:local` → 依赖回到 `link:D:/Workspace/dsh-inbox`、node_modules 是 **Junction**；`dsh.profile.bundles` 三行完好。
   细节：pnpm 的 `minimumReleaseAge` 会把"刚发布的版本"写进 profile 的 `pnpm-workspace.yaml` 白名单（实测装 0.2.4 时自动加了一行），所以发布完可以立刻 `dev:npm`。
+
+  3. **`@latest` 会被"太新"策略静默降级**（2026-09-21 第二个坑）。pnpm 的供应链策略里有
+     `minimumReleaseAge`（刚发布的版本先别装），而它遇到这种版本**不报错、直接装上一个允许的版本**：
+     实测 0.2.5 已发布的情况下，`pnpm add @chance722/dsh-inbox@latest` 依然装回 0.2.4，一句提示都没有
+     （profile 的 `pnpm-workspace.yaml` 里那行 `minimumReleaseAgeExclude` 只写了 0.2.4）。
+     用**确切版本**去装就正常：pnpm 会把该版本追加进 `minimumReleaseAgeExclude` 然后照装。
+     所以 `dev:npm` 先 `npm view <包名> version` 拿 registry 上真正的 latest，再 `add <包名>@<那个版本>`；
+     取不到才退回 `@latest`。
+
+  4. **`dev:status` 同时报"范围"和"实际版本"**：`profile「web」：线上包（^0.2.5），装的是 v0.2.5`。
+     只报范围会误导——用户看到 `^0.2.4` 就以为装的是 0.2.5（范围里允许，不代表 lockfile 里解析到）。

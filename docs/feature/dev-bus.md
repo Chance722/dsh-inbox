@@ -1334,6 +1334,25 @@ toast 是"刚刚发生了什么"的提示，不是报告；把对象数、跳过
 
 **验证**：两个方向在真 profile 上各跑一次都是对的；`pnpm typecheck` / **29 文件 296 条** / `pnpm build` 全绿。
 
+#### M9 第十步 — `@latest` 被"太新"策略静默降级；以及 0.2.6 要不要发（2026-09-21）
+
+用户问两件事：**"现在这些改动要不要发 0.2.6？"**、**"我装的是 0.2.5，为什么 `dev:status` 说 0.2.4？"**
+
+- **不需要 0.2.6**：0.2.5 那次 bump（`8cda385`）之后，能进包的东西**一行都没改**——
+  `git log 8cda385..HEAD --name-only -- src package.json cordis.patch.yml` 是**空的**；改的只有
+  `scripts/dev.mjs`（不在 `files` 里）和文档。所以发布物与 0.2.5 完全一致。
+- **他装的确实是 0.2.4，而且不是他记错**：那次 `dev:npm` 发生在 0.2.5 发布**之前**，依赖被写成 `^0.2.4`；
+  但即使 0.2.5 发布之后重跑，`pnpm add <包名>@latest` **依然装回 0.2.4**——pnpm 的 `minimumReleaseAge`
+  对"刚发布的版本"是**静默降级**（profile 的 `pnpm-workspace.yaml` 里 `minimumReleaseAgeExclude` 只写了 0.2.4），
+  一句提示都没有。显式 `pnpm add <包名>@0.2.5` 才会装，并把 0.2.5 追加进白名单。
+- **修法**（`scripts/dev.mjs`）：`dev:npm` 先 `npm view <包名> version` 拿 registry 真正的 latest，
+  再 `add <包名>@<确切版本>`；取不到才退回 `@latest`。`dev:status` 改成同时报**范围与实际版本**：
+  `profile「web」：线上包（^0.2.5），装的是 v0.2.5`。
+- **真机**（用户 `web` profile）：`dev:npm` → `线上包（0.2.5），装的是 v0.2.5`；`dev:status` 同样。
+  两个 pnpm 行为都写进 `docs/help/dev-setup.md`。
+
+**验证**：`dev:status` / `dev:npm` 在真 profile 上各跑一次输出正确；`pnpm typecheck` / **29 文件 296 条** / `pnpm build` 全绿。
+
 ### M7 — 界面升级（2026-09-20，已验收）
 
 **做到了什么**（选摘，逐条过程在上面的第三十二步之前）
