@@ -1353,6 +1353,22 @@ toast 是"刚刚发生了什么"的提示，不是报告；把对象数、跳过
 
 **验证**：`dev:status` / `dev:npm` 在真 profile 上各跑一次输出正确；`pnpm typecheck` / **29 文件 296 条** / `pnpm build` 全绿。
 
+#### M9 第十一步 — 抓取身份与拒绝页；发 0.2.6（2026-09-21）
+
+用户拍板三件事：① **UA 换成"浏览器形状 + 自报家门"**；② **被拦时别显示"这条没有名字"，显示原文**（链接就显示链接）；③ **发 0.2.6**（发布由用户自己走）。
+
+- **背景**（实测）：站点按 UA **形状**认客户端。bilibili 对 `Mozilla/5.0 (compatible; …)` 回一个**带真标题**的反爬页（「验证码_哔哩哔哩」，HTTP 200、1360 字节），于是那条记录的名字成了「验证码」。harness 默认 UA 在同一时段也有 1/6~7/10 被拒。
+- **身份**：本包 `cordis.patch.yml` 覆盖 `web-fetch-http.userAgent` 为
+  `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) dsh-inbox Safari/537.36`。
+  字面量是量出来的：OS 段换成 mac/linux 一样过、带不带 `dsh-inbox/0.3` 版本号也一样过；**加 `(+url)` 括号、或把名字缀在 Chrome 后面就掉桶**（各 5/5 被拒）。机制：`web-fetch-http` 那一行由 `dsh-base.cordis.patch.yml:447` 声明，bundle patch 逐行"最后写入者胜"、用户自己的 profile patch 最后应用 ⇒ 用户永远能改回去。
+- **拒绝页不取名**：新增 `looksLikeRefusal`，**前提是"几乎没有正文"**（去掉脚本/样式/标签后可见文字 < 200 字符），再看挑战标记或标题像不像拒绝。判到写 `linkTitleError: refused-page`，不写 `linkTitle`。
+  **当天踩了自己的坑**：第一版把挑战标记写成"一票否决"，当场误伤 `BV1ToGC6TEjH` 的**真页面**（171929 字节、真标题、1726 字正文 —— 但 bilibili 每页都带 `risk-captcha-sdk`、`_BiliGreyResult`、`geetest`）⇒ 改成"正文优先"，并用那个真页面的形状补了回归测试。
+- **界面**：详情里那行「没抓到页面标题：…。可以自己起个名字。」**删掉**（用户要的是显示原文），`titleMissReason` 与 `link.*` 文案一并移除，host 侧 `linkTitleError` 继续记、供直接读仓库的人排查。名字位的兜底不变：`title`/`linkTitle` 都空时显示链接/文件名。
+- **真机**：用户两个 profile 的 `cordis.patch.yml` 都写上同一条 UA（`web` 那时跑的是 npm 0.2.5、自带 patch 还没这条；`inbox` 原先那条 compat UA 实测最差），各留 `.bak-<ts>` 备份。
+- **版本**：`package.json` → **0.2.6**。`VERSION` 是**构建时**从 `package.json` 替换进去的（`scripts/build.mjs` 的 define），所以发布前必须重新 `pnpm build`；`prepublishOnly` 也会挡一次。
+
+**验证**：301 条测试全绿、`tsc --noEmit` 干净、`pnpm build` 通过；`pnpm pack` 产物核对（含新的 `cordis.patch.yml`）；两个真链接用**仓库里真实的** `titleFromHtml`/`looksLikeRefusal` 打过（都拿到真标题、都判为非拒绝页），合成的验证码壳页仍判为拒绝页。
+
 ### M7 — 界面升级（2026-09-20，已验收）
 
 **做到了什么**（选摘，逐条过程在上面的第三十二步之前）
