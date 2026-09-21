@@ -209,6 +209,13 @@ export interface PullResult {
   foreignSyncRoots?: string[]
   /** This machine's own sync root, so the warning can name both sides. */
   syncRoot?: string
+  /**
+   * How many **records** the cloud holds, as opposed to how many objects that
+   * takes: `items/<id>.json` files under this machine's own sync root.
+   */
+  remoteRecords?: number
+  /** How many attachments the cloud holds (`attachments/<id>.<ext>`, no descriptors). */
+  remoteAttachments?: number
   /** How many entries the remote listed at all: distinguishes "empty folder"
    * from "everything already ingested". */
   listed: number

@@ -27,7 +27,7 @@ import {
   writeFile,
   type FetchLike,
 } from '../src/host/webdav/client.js'
-import { pullRemote } from '../src/host/remote/pull.js'
+import { pullRemote, pullS3 } from '../src/host/remote/pull.js'
 import { Vault } from '../src/host/vault/vault.js'
 
 /** A content-addressed stand-in for the shipped attachment store. */
@@ -81,6 +81,17 @@ const LISTING = `<?xml version="1.0"?>
     </d:prop></d:propstat>
   </d:response>
 </d:multistatus>`
+
+/** The same six keys as the WebDAV listing above, in S3's shape. */
+const S3_LISTING = `<?xml version="1.0"?>
+<ListBucketResult>
+  <Contents><Key>inbox/sync/items/a.json</Key><LastModified>2026-09-20T06:00:00.000Z</LastModified><Size>120</Size></Contents>
+  <Contents><Key>inbox/sync/items/a.txt</Key><LastModified>2026-09-20T06:00:00.000Z</LastModified><Size>80</Size></Contents>
+  <Contents><Key>inbox/sync/attachments/pic.png</Key><LastModified>2026-09-20T06:00:00.000Z</LastModified><Size>4096</Size></Contents>
+  <Contents><Key>inbox/sync/attachments/pic.meta.json</Key><LastModified>2026-09-20T06:00:00.000Z</LastModified><Size>140</Size></Contents>
+  <Contents><Key>inbox/archive/sync/items/b.json</Key><LastModified>2026-09-20T06:00:00.000Z</LastModified><Size>120</Size></Contents>
+  <Contents><Key>inbox/shot.png</Key><LastModified>2026-09-20T06:00:00.000Z</LastModified><Size>2048</Size></Contents>
+</ListBucketResult>`
 
 interface FakeServer {
   fetch: FetchLike
@@ -199,6 +210,108 @@ describe('the WebDAV client', () => {
 })
 
 describe('pulling', () => {
+  /**
+   * A listing built from hrefs, all dated the same so nothing is "older".
+   *
+   * Collections are included for the folders we name, because a real WebDAV
+   * listing carries them and the parser is the code under test.
+   */
+  function listingOf(paths: readonly string[]): string {
+    const entries = paths
+      .map(
+        (path) => `  <d:response>
+    <d:href>/dav/${path}</d:href>
+    <d:propstat><d:prop>
+      <d:getlastmodified>Sat, 20 Sep 2026 06:00:00 GMT</d:getlastmodified>
+      <d:resourcetype/>
+    </d:prop></d:propstat>
+  </d:response>`,
+      )
+      .join('\n')
+    return `<?xml version="1.0"?>\n<d:multistatus xmlns:d="DAV:">\n${entries}\n</d:multistatus>`
+  }
+
+  it('counts the cloud in records, and knows which objects are its own', async () => {
+    // The reader asked "远端 78 项，可我并没有那么多东西" (2026-09-21): one record
+    // is `items/<id>.json` + `.txt`, a picture adds `attachments/<id>.png` plus
+    // its `.meta.json`, so the object count is several times the record count.
+    const fake = server({
+      listing: listingOf([
+        'inbox/sync/items/a.json',
+        'inbox/sync/items/a.txt',
+        'inbox/sync/attachments/pic.png',
+        'inbox/sync/attachments/pic.meta.json',
+        // Another machine that was pointed at a *nested* directory: its tree is
+        // inside ours, so it is exactly the case the warning exists for.
+        'inbox/archive/sync/items/b.json',
+        'inbox/shot.png',
+      ]),
+    })
+
+    const result = await pullRemote(vault, { baseUrl: 'https://data.cstcloud.cn/dav' }, {
+      fetch: fake.fetch,
+      attachments: store as unknown as AttachmentStore,
+    })
+
+    expect(result).toMatchObject({
+      listed: 6,
+      pulled: 1,
+      skipped: 5,
+      skippedSync: 4,
+      skippedForeign: 1,
+      foreignSyncRoots: ['archive/sync'],
+      remoteRecords: 1,
+      remoteAttachments: 1,
+      syncRoot: 'inbox/sync',
+    })
+  })
+
+  it('scopes an S3 pull to the configured directory and claims its own tree', async () => {
+    /*
+      The bug this pins (measured in a real bucket on 2026-09-21): the S3 pull
+      was handed the *directory* and used it as "our own sync root" too, so with
+      `/` it listed the whole bucket and every own object — `inbox/sync/…` —
+      answered to a prefix that was not ours. The panel then reported
+      「自己的同步对象 0 项」 and warned that another machine used a different
+      directory, when the only other prefix was the leftovers of an older build.
+    */
+    const urls: string[] = []
+    const result = await pullS3(
+      vault,
+      { endpoint: 'https://data.cstcloud.cn', bucket: 'my-bucket' },
+      '/',
+      {
+        fetch: async (url) => {
+          urls.push(url)
+          return {
+            ok: true,
+            status: 200,
+            text: async () => S3_LISTING,
+            arrayBuffer: async () => new ArrayBuffer(0),
+          }
+        },
+        accessKeyId: 'AKIDEXAMPLE',
+        accessKeySecret: 'secret-key',
+        attachments: store as unknown as AttachmentStore,
+      },
+    )
+
+    // `/` is the default directory, so the listing asks for `inbox/` — not the
+    // whole bucket, which is how the stray root-level `sync/` got noticed.
+    expect(urls[0]).toContain('prefix=inbox%2F')
+    expect(result).toMatchObject({
+      listed: 6,
+      pulled: 1,
+      skipped: 5,
+      skippedSync: 4,
+      skippedForeign: 1,
+      foreignSyncRoots: ['archive/sync'],
+      remoteRecords: 1,
+      remoteAttachments: 1,
+      syncRoot: 'inbox/sync',
+    })
+  })
+
   it('files a text file as text and an image as an image', async () => {
     const fake = server()
     const result = await pullRemote(

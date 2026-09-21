@@ -1794,6 +1794,8 @@ function describePull(result: PullResult): string {
       : ''
   return t('sync.pullDone', {
     listed: result.listed,
+    records: result.remoteRecords ?? 0,
+    files: result.remoteAttachments ?? 0,
     pulled: result.pulled,
     skipped: result.skipped,
     tail: `${skippedWhy}${syncPart}${foreignWhy}${failedWhy}`,

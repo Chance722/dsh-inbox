@@ -209,7 +209,8 @@ export const zh = {
   'sync.pullNothingNew': '云端的记录没有新的',
   'sync.pullMerged': '从云端合并 {count} 条{attachments}',
   'sync.pullAttachments': ' / {count} 个附件',
-  'sync.pullDone': '拉取完成：远端列出 {listed} 项，新入库 {pulled} 条，跳过 {skipped} 条{tail}',
+  'sync.pullDone':
+    '拉取完成：云端有 {records} 条记录 / {files} 个附件（远端共列出 {listed} 个对象），新入库 {pulled} 条，跳过 {skipped} 条{tail}',
   'sync.pullSkipWhy': '（自己的同步对象 {sync} 项、比上次拉取更旧 {older} 项）',
   'sync.pullForeignSync':
     ' · ⚠️ 还发现另一套同步前缀 {roots}（本机是 {ours}）：两台机器的「目录」设置不一致，先把两边改成同一个',
@@ -490,7 +491,8 @@ export const en: Dictionary = {
   'sync.pullNothingNew': 'Nothing new in the cloud',
   'sync.pullMerged': 'Merged {count} from the cloud{attachments}',
   'sync.pullAttachments': ' / {count} attachment(s)',
-  'sync.pullDone': 'Pull done: {listed} listed remotely, {pulled} filed, {skipped} skipped{tail}',
+  'sync.pullDone':
+    'Pull done: the cloud holds {records} records / {files} attachments ({listed} objects listed), {pulled} filed, {skipped} skipped{tail}',
   'sync.pullSkipWhy': ' ({sync} of our own sync objects, {older} older than the last pull)',
   'sync.pullForeignSync':
     ' · ⚠️ another sync prefix exists: {roots} (this machine: {ours}) — two machines have different directory settings; make them match',

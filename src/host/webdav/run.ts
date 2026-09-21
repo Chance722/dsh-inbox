@@ -158,7 +158,10 @@ async function pullDropFolder(
         signatureVersion: settings.signatureVersion,
         userAgent: activeUserAgent(settings),
       },
-      settings.directory.replace(/^\//, ''),
+      // The configured directory, not a pre-trimmed string: `/`, `''` and
+      // "unset" all mean the default, and the ingest resolves the vault's own
+      // root from the same rule the writer uses.
+      settings.directory,
       {
         fetch: s3Fetch,
         accessKeyId: settings.accessKeyId,

@@ -141,6 +141,18 @@ export async function ingestFrom(
   let skippedSync = 0
   let skippedOlder = 0
   let skippedForeign = 0
+  /**
+   * What the cloud holds, in the unit a person thinks in.
+   *
+   * "远端列出 78 项" is an object count: one record is `items/<id>.json` plus
+   * its `.txt`, and a record with a picture adds the attachment *and* that
+   * attachment's `.meta.json`. Seven records therefore look like thirty
+   * objects, and the number the reader actually wants — how many records the
+   * cloud has — was nowhere on the line (asked 2026-09-21). Counted from the
+   * listing we already walk, so it costs nothing extra.
+   */
+  let remoteRecords = 0
+  let remoteAttachments = 0
   /** Other machines' sync roots, in the order the listing revealed them. */
   const foreignSyncRoots = new Set<string>()
   /**
@@ -177,6 +189,11 @@ export async function ingestFrom(
     if (prefix !== undefined) {
       skipped += 1
       skippedSync += 1
+      const parts = entry.path.split('/').filter((part) => part.length > 0)
+      const folder = parts[parts.length - 2] ?? ''
+      const name = parts[parts.length - 1] ?? ''
+      if (folder === 'items' && name.endsWith('.json')) remoteRecords += 1
+      else if (folder === 'attachments' && !name.endsWith('.meta.json')) remoteAttachments += 1
       continue
     }
     if (!isNewer(entry, lastPullAt)) {
@@ -253,6 +270,8 @@ export async function ingestFrom(
     skippedSync,
     skippedOlder,
     skippedForeign,
+    remoteRecords,
+    remoteAttachments,
     syncRoot,
     ...(foreignSyncRoots.size === 0 ? {} : { foreignSyncRoots: [...foreignSyncRoots] }),
     listed,
@@ -306,11 +325,24 @@ return ingestFrom(
   )
 }
 
-/** Pull over S3. */
+/**
+ * Pull over S3.
+ *
+ * @param directory - the configured directory, exactly as the settings hold it.
+ *   `/`, an empty string and "never set" all mean the default; the listing is
+ *   scoped to it and the vault's own tree is `<directory>/sync`.
+ *
+ * This used to be handed the sync root as the *listing* prefix, and to treat
+ * that same string as "ours": with S3 every object the vault had uploaded
+ * therefore answered to a prefix that was not ours, so the panel reported
+ * 「自己的同步对象 0 项」 and warned about another machine's directory — which was
+ * this machine's own (measured 2026-09-21, a bucket holding both `sync/…` from
+ * the older build and `inbox/sync/…` from this one).
+ */
 export async function pullS3(
   vault: Vault,
   config: S3Config,
-  prefix: string,
+  directory: string | undefined,
   deps: S3Deps & { attachments: AttachmentStore },
 ): Promise<PullResult> {
   if (config.endpoint.trim().length === 0 || config.bucket.trim().length === 0) {
@@ -324,18 +356,20 @@ export async function pullS3(
     }
   }
 
+  /** The directory to list: `inbox` for `/`, `''` and "unset" alike. */
+  const scope = syncDirectory(directory)
   return ingestFrom(
     vault,
     {
       list: async () =>
-        (await listPrefix(config, prefix, deps)).map((object) => ({
+        (await listPrefix(config, `${scope}/`, deps)).map((object) => ({
           path: object.key,
           ...(object.lastModified === undefined ? {} : { lastModified: object.lastModified }),
         })),
       read: async (entry) => readObject(config, entry.path, deps),
     },
     deps.attachments,
-    // S3 is handed the prefix by its caller — that prefix *is* the sync root.
-    prefix,
+    // The vault's own tree, resolved by the same rule the writer uses.
+    syncRootFor(directory),
   )
 }
