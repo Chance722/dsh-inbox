@@ -34,26 +34,42 @@
 
 ## 这不是登录态问题（2026-09-21 实测）
 
-同一台机器、同一条出口、同一个 URL，只改 `user-agent`，各跑 8 次：
+同一台机器、同一条出口、同一个 URL，只改 `user-agent`，多个身份轮转着跑（避免"某一时段整批被拒"的
+干扰）。**bilibili 视频页**：
 
-| UA | 拿到验证码页 | 拿到真页面 |
-|---|---|---|
-| `deepseek-harness/0.0.1 (+https://github.com/deepseek-ai)`（harness 默认） | 5 | 3 |
-| `Mozilla/5.0 (compatible; dsh-inbox/0.1; +https://github.com/Chance722/dsh-inbox)`（dev-setup 里给微信用的那条） | 8 | 0 |
-| `Mozilla/5.0 (Windows NT 10.0; ...) Chrome/140.0.0.0` | 0 | 8 |
-| `curl/8.4.0` | 5 | 3 |
+| UA | 结果 |
+|---|---|
+| `deepseek-harness/0.0.1 (+https://github.com/deepseek-ai)`（harness 默认） | 验证码页：三次采样 5/8、1/6、7/10 |
+| `Mozilla/5.0 (compatible; dsh-inbox/0.1; +https://github.com/Chance722/dsh-inbox)`（dev-setup 里给微信用的那条） | 验证码页：跨四次采样 20/29（8/8、5/6、3/5、4/10） |
+| `Mozilla/5.0 (Windows NT 10.0; ...) AppleWebKit/537.36 (KHTML, like Gecko) dsh-inbox/0.2 Safari/537.36` | **真页面 15/15** |
+| `Mozilla/5.0 (Windows NT 10.0; ...) Chrome/140.0.0.0 Safari/537.36` | **真页面 36/36** |
+| 上一条的 Chrome 名字**后面**再缀 ` dsh-inbox/0.2 (+...)` | 验证码 3/5（n 小，仅作提示） |
+| `curl/8.4.0` | 验证码 5/8 |
 
-补测：后两条交替各 6 次 → chaff 5/6 被拒、Chrome 6/6 正常；harness 换一个时段再跑 → 1/6 被拒。
-真页面 169KB，`<title>` 就是视频名。公开 JSON `api.bilibili.com/x/web-interface/view?bvid=...` 对上面
-**每一种身份都 5/5 命中**，同样不需要登录。全部请求都没带 cookie——验证码页反而自己往下发 `buvid3`
-和 `v_voucher`（那是发给匿名客户端的挑战票据，不是会话）。
+**微信文章**（`mp.weixin.qq.com`，仓库里另一条记录）：
 
-三条结论：
+| UA | 结果 |
+|---|---|
+| harness 默认 | 空壳页 18KB，`<title>` 空、连 `og:title` 都没有 |
+| `Mozilla/5.0 (compatible; ...)` | 真文章 3.56MB + `og:title` |
+| 浏览器形状 + 自报家门（上表那条） | 真文章 3.56MB + `og:title`，3/3 |
+
+bilibili 真页面 169KB，`<title>` 就是视频名。公开 JSON `api.bilibili.com/x/web-interface/view?bvid=...`
+对上面**每一种身份都 5/5 命中**，同样不需要登录。全部请求都没带 cookie——验证码页反而自己往下发
+`buvid3` 和 `v_voucher`（那是发给匿名客户端的挑战票据，不是会话）。
+
+四条结论：
 
 1. **风控看客户端身份（UA 形状）+ 概率**，不是会话：一个 cookie 都不发的同一个身份，有时也拿得到真页面。
-2. **「礼貌的爬虫 UA」在这里最差**：`Mozilla/5.0 (compatible; ...)` 这个形状基本必被拒。dev-setup 那条
-   微信修法**不是可以照搬的通用结论**。
-3. 真页面不需要登录态：不送任何凭据也能拿到完整 HTML。
+2. **「礼貌的爬虫 UA」不是通用解**：`Mozilla/5.0 (compatible; ...)` 在 bilibili 最差（bilibili 认的是
+   UA 里的**产品位**：`(KHTML, like Gecko) <谁>/<版本> Safari/…` 的形状才过闸，`(compatible; …)`
+   和"Chrome 后面再缀名字"都算不过），在微信够用。
+3. **浏览器形状在两个站点上都是超集**：bilibili 从"常被拒"变成"稳定放行"，微信照旧放行。想过闸**不必
+   冒充 Chrome**——写 `dsh-inbox/0.2` 在那个产品位同样 15/15（这是爬虫界的常规写法，Googlebot 也长这样）。
+4. **真页面不需要登录态**：不送任何凭据也能拿到完整 HTML。
+
+样本的边界：都在一天之内、一个 IP 上，而且同一个身份的通过率随时段漂移（harness 默认 1/6 → 5/8 → 7/10）。
+所以「哪种形状进哪个桶」是可复现的排序，不是永久保证。
 
 ## 怎么复查（read-only）
 
@@ -77,7 +93,13 @@ node -e '(async()=>{const url="<链接>";for(const [k,ua] of [["harness","deepse
 1. **把这类页面判成 miss**，写 `linkTitleError` 而不是存成名字——需要判据（页面体积下限 / 风控标记 /
    标题黑名单），都是启发式，有误伤小页面的风险；
 2. **疑似拒绝页时重试**——非浏览器 UA 的失败率约 60–93%，重试只提高概率，且让"一次抓取"变成一串请求；
-3. **把 profile 的 UA 换成浏览器形状**——本机最有效（0/20 被拒），代价是伪装身份，而且这是整个 profile
-   的抓取身份（模型的 web 工具一起变）；
+3. **把 profile 的 UA 换成浏览器形状**——本机最有效（0/36 被拒）。两种写法：浏览器形状**+ 自报家门**
+   （`... (KHTML, like Gecko) dsh-inbox/0.2 Safari/537.36`，实测与 Chrome 同档且仍说明自己是谁）或直接
+   冒充 Chrome（没有额外收益）。代价有三条：① 这是**整个 profile 的抓取身份**，模型的 web 工具一起变；
+   ② `WebFetchRequest` 只有 `url`，没法只给抓标题这一个请求换身份，要随插件发布只能让本包的 bundle patch
+   去覆盖 `web-fetch-http` 那行（bundle 顺序在我们之后是必需的），安装即改动用户整个 profile 的对外身份，
+   必须在 README 披露；③ 我们发的**不是**浏览器请求（只有 `user-agent` + `accept`，没有 cookie、不跑 JS、
+   指纹也不是 Chrome 的），所以"浏览器形状 + 非浏览器指纹"在真做指纹的风控那里反而更醒目——那类站点的
+   拦截页同样带标题（本机未实测，属于已知形态）；
 4. **bilibili 走 JSON API**——命中率 100% 且无登录，但那是按站点特殊化 + 第二个 host，与「只 GET 用户
    贴的那一个 URL」的约束直接冲突（`AGENTS.md`「对外请求只走官方 seam」）。
