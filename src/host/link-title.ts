@@ -8,12 +8,15 @@
  * private ones, follows only same-origin redirects, and caps both time and size.
  * It runs after the record is stored, never in front of the paste.
  *
- * Three rules keep it honest:
+ * Four rules keep it honest:
  * - it never writes `title`. That field is the user's own word, and the
  *   credentials rule depends on it staying that way (`AGENTS.md` 3); the fetched
  *   headline lives in `linkTitle` instead;
  * - it writes nothing when the record already has a name, and nothing when the
  *   user renamed it while the fetch was in flight;
+ * - it does not take a name from a page that is not the page: a site can answer
+ *   with an anti-bot page that carries a *real-looking* `<title>` (bilibili's is
+ *   「验证码_哔哩哔哩」), and that string names the refusal, not the link;
  * - it never turns a failure into a problem: a dead link, a slow host or a page
  *   that is not HTML simply leaves the URL as the name, which is where this
  *   started.
@@ -48,6 +51,63 @@ const ENTITIES: Record<string, string> = {
   quot: '"',
   apos: "'",
   nbsp: ' ',
+}
+
+/**
+ * Markup that only a challenge page carries.
+ *
+ * This is the precise half of the refusal check: the strings below come from the
+ * anti-bot pages themselves (bilibili's risk-captcha app, Cloudflare's challenge
+ * platform, Geetest's widget), and a page that ships one is a page that means to
+ * ask a human a question rather than to be read.
+ */
+const REFUSAL_MARKER = /(risk-captcha|_BiliGreyResult|cf-chl|challenge-platform|geetest)/i
+
+/** Titles that name a refusal rather than the page. */
+const REFUSAL_TITLE =
+  /(验证码|人机验证|安全验证|环境异常|访问异常|请完成验证|正在验证|captcha|just a moment|attention required|access denied|forbidden)/i
+
+/**
+ * How much readable text a page must carry for its headline to be believed on a
+ * challenge-free page.
+ *
+ * A refusal shell is a JavaScript application: it has the title and nothing else
+ * (bilibili's is 1360 bytes, all `<script>` and empty `<div>`s). Two hundred
+ * characters is far below any page that actually says something, so a page under
+ * it is one whose title alone is all we would have — and a title alone is not
+ * enough to name a record with.
+ */
+const REFUSAL_TEXT_FLOOR = 200
+
+/** How much text a document shows a reader, with the invisible parts cut out. */
+function visibleTextLength(html: string): number {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, '').length
+}
+
+/**
+ * True when this document is a refusal wearing a page's clothes.
+ *
+ * The checks before this one — a 2xx status, an HTML body, a non-empty
+ * `<title>` — all pass on bilibili's anti-bot page, which is what made a record
+ * show 「验证码」 as its name (2026-09-21). What separates that page from a real
+ * one is either its own markup or the fact that it carries no text at all.
+ *
+ * Both halves are deliberately biased towards refusing: a link whose name we
+ * skip shows its own address, which is honest and one keystroke away from being
+ * named by hand, while a refusal kept as a name is a wrong name that stays.
+ *
+ * @param html - the decoded document.
+ * @param title - the headline pulled out of it.
+ * @returns true when the page refuses to be read.
+ */
+export function looksLikeRefusal(html: string, title: string): boolean {
+  if (REFUSAL_MARKER.test(html)) return true
+  return visibleTextLength(html) < REFUSAL_TEXT_FLOOR && REFUSAL_TITLE.test(title)
 }
 
 function decodeEntities(text: string): string {
@@ -170,6 +230,18 @@ export async function fetchLinkTitle(
     */
     await miss(vault, id, 'no-title')
     log(`${host}：页面里没有 <title>（${String(result.body.content.length)} 字符）`)
+    return undefined
+  }
+
+  /*
+    A page can answer with a title and still be a refusal — bilibili's is the
+    case that cost us a record's name: HTTP 200, 1360 bytes, `<title>验证码_哔哩哔哩</title>`
+    around a risk-captcha app that never renders. Nothing before this line can
+    tell it apart from a small page, which is why it lives here.
+  */
+  if (looksLikeRefusal(result.body.content, title)) {
+    await miss(vault, id, 'refused-page')
+    log(`${host}：抓到的是拒绝页，不当名字`)
     return undefined
   }
 

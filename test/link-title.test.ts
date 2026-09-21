@@ -21,6 +21,7 @@ import { captureText } from '../src/host/capture.js'
 import {
   MAX_LINK_TITLE_CHARS,
   fetchLinkTitle,
+  looksLikeRefusal,
   titleFromHtml,
   type WebFetchSeam,
 } from '../src/host/link-title.js'
@@ -212,6 +213,71 @@ describe('fetchLinkTitle against a real vault', () => {
       expect(vault.get(filed.item.id)?.linkTitleError).toBe('network:ECONNREFUSED')
     })
 
+    it('refuses a page whose title names the refusal instead of the link', async () => {
+      // The reported case (2026-09-21): bilibili answers a GET it does not like
+      // with HTTP 200 and this page — 1360 bytes, a risk-captcha app that never
+      // renders, and a real-looking `<title>`. Every check before the refusal
+      // one passes on it, which is how 「验证码」 became a record's name.
+      const filed = await captureText(
+        vault,
+        'https://www.bilibili.com/video/BV1bi426EEAK',
+        'panel',
+      )
+      const notes: string[] = []
+      const refusal = [
+        '<!DOCTYPE html><html><head>',
+        '<!-- Dejavu Release Version 64940-->',
+        '<script>window._BiliGreyResult = { method: "direct", versionId: "64940", }</script>',
+        '<meta charset="UTF-8"><title>验证码_哔哩哔哩</title>',
+        '<link href="//s1.hdslb.com/bfs/static/jinkela/risk-captcha/css/base.css" rel="stylesheet">',
+        '</head><body><div id="biliMainHeader"></div><div id="risk-captcha-app"></div>',
+        '<script>window._riskdata_ = { "v_voucher": "voucher_1" }</script></body></html>',
+      ].join('')
+
+      expect(
+        await fetchLinkTitle(vault, filed.item.id, seam({ content: refusal }), (message) =>
+          notes.push(message),
+        ),
+      ).toBeUndefined()
+
+      expect(vault.get(filed.item.id)?.linkTitle).toBeUndefined()
+      expect(vault.get(filed.item.id)?.linkTitleError).toBe('refused-page')
+      // Only the host is logged, never the path — the same rule as every other
+      // line this module writes.
+      expect(notes.join()).toContain('www.bilibili.com')
+      expect(notes.join()).not.toContain('BV1bi426EEAK')
+    })
+
+    it('still takes the headline of a short page that is not a refusal', async () => {
+      // The other side of the heuristic: a little text is not a refusal. Without
+      // this, the check would be "any small page loses its name".
+      const filed = await captureText(vault, 'https://example.com/short', 'panel')
+
+      expect(
+        await fetchLinkTitle(
+          vault,
+          filed.item.id,
+          seam({ content: '<html><head><title>关于我们</title></head><body>很短的一页。</body></html>' }),
+        ),
+      ).toBe('关于我们')
+      expect(vault.get(filed.item.id)?.linkTitleError).toBeUndefined()
+    })
+
+    it('keeps a headline that merely talks about a captcha', async () => {
+      // A page *about* captchas is a page: it has text. The title pattern only
+      // refuses a document that has nothing else to offer.
+      const filed = await captureText(vault, 'https://example.com/about-captchas', 'panel')
+      const body = `<p>${'一篇讲验证码是怎么工作的长文。'.repeat(30)}</p>`
+
+      expect(
+        await fetchLinkTitle(
+          vault,
+          filed.item.id,
+          seam({ content: `<html><head><title>验证码是怎么工作的</title></head><body>${body}</body></html>` }),
+        ),
+      ).toBe('验证码是怎么工作的')
+    })
+
     it('clears the note once a headline does arrive', async () => {
       const filed = await captureText(vault, 'https://example.com/late', 'panel')
       await fetchLinkTitle(vault, filed.item.id, seam({ content: '<title></title>' }))
@@ -221,5 +287,25 @@ describe('fetchLinkTitle against a real vault', () => {
       expect(vault.get(filed.item.id)?.linkTitle).toBe('后来抓到了')
       expect(vault.get(filed.item.id)?.linkTitleError).toBeUndefined()
     })
+  })
+})
+
+describe('looksLikeRefusal', () => {
+  it('tells a challenge shell from a small page by its markup', () => {
+    // The marker alone is enough: a page that ships a challenge platform is not
+    // a page we take a name from, whatever its title says.
+    expect(looksLikeRefusal('<html><title>首页</title><script src="/cf-chl/x.js"></script>', '首页')).toBe(
+      true,
+    )
+    expect(
+      looksLikeRefusal('<html><title>文章</title><p>正常内容</p>', '文章'),
+    ).toBe(false)
+  })
+
+  it('needs a refusal-shaped title when the page is only empty', () => {
+    expect(looksLikeRefusal('<html><title>某站</title></html>', '某站')).toBe(false)
+    expect(looksLikeRefusal('<html><title>Just a moment...</title></html>', 'Just a moment...')).toBe(
+      true,
+    )
   })
 })
