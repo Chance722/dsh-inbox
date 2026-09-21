@@ -47,18 +47,18 @@ dsh --profile inbox --no-open --port 3102
 - **要先有工作区**：web UI 得有工作区才能建会话，侧栏才会出现；一个工作区都没有时，「添加工作区」弹的是 Windows 原生目录框（自动化驱动不了，得手动点一次）。
 - **端口可能被占**：`EADDRINUSE` 说明上一个实例还在跑，而它的 token 只打在启动时的 stdout、不落盘（不带 token 访问是 401）。查占用：`Get-NetTCPConnection -LocalPort 3102 -State Listen | Select-Object OwningProcess`，然后 `Stop-Process -Id <pid>`，或者干脆换个端口。
 - **停服务**：就在那个终端里 `Ctrl+C`。
-- **抓不到网页标题（微信这类站点）**：先看**我们自称谁**——`dsh-web-fetch-http` 只发 `user-agent` + `accept` 两个头，默认 UA 是 `deepseek-harness/…`，微信按 UA 认客户端，会给这种请求回一个空壳页（HTTP 200、`<title></title>`、正文写着「环境异常，完成验证后即可继续访问」），连 `og:title` 都没有。UA **不能按请求设置**（`WebFetchRequest` 只有 `url`），只能改 profile 的 provider 配置——在 `%DSH_HOME%\profiles\<name>\cordis.patch.yml` 里覆盖那个条目（条目按 `id` 匹配，`config` 是**整体替换**不是深合并）：
+- **抓不到网页标题（微信这类站点，或"抓到的是拒绝页"）**：先看**我们自称谁**——`dsh-web-fetch-http` 只发 `user-agent` + `accept` 两个头，而站点按 UA **形状**认客户端：微信给默认的 `deepseek-harness/…` 回一个空壳页（HTTP 200、`<title></title>`、连 `og:title` 都没有），bilibili 给 `Mozilla/5.0 (compatible; …)` 回一个**带真标题**的拒绝页。**本包自带的 `cordis.patch.yml` 已经把 UA 设成浏览器形状 + 自报家门**（`… (KHTML, like Gecko) dsh-inbox Safari/537.36`），装了这个包就不必再手工配。
+
+  要换一个身份：在 `%DSH_HOME%\profiles\<name>\cordis.patch.yml` 里覆盖同一个条目——**用户层在插件层之后应用、逐行以最后写入者为准**，所以用户写的永远赢（注意 `config` 是**整体替换**不是深合并；provider 其余字段有 schema 默认值）：
 
   ```yaml
   - id: web-fetch-http
     name: '@deepseek-ai/dsh-web-fetch-http'
     config:
-      userAgent: 'Mozilla/5.0 (compatible; dsh-inbox/0.1; +https://github.com/Chance722/dsh-inbox)'
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) dsh-inbox Safari/537.36'
   ```
 
-  实测：这条足以让微信吐真文章（真文章的 `<title>` 依然为空，标题只在 `og:title` 里，所以两件事缺一不可）。`--dump-config | Select-String web-fetch-http -Context 0,4` 可以确认 patch 生效。注意这是**整个 profile 的抓取身份**，模型自己的 web 工具也一起变了。
-
-  **这条 UA 不是通用解**（2026-09-21 实测）：bilibili 的风控对 `Mozilla/5.0 (compatible; ...)` 这个形状几乎必拒（8/8 回「验证码_哔哩哔哩」页；浏览器形状 0/8 被拒、harness 默认 UA 5/8 被拒），而那种拒绝页**带标题**，会被当成链接的名字存进 `linkTitle`。站点拒绝的两种长相、实测矩阵与复查命令见 `docs/help/link-title-fetch.md`。
+  `--dump-config | Select-String web-fetch-http -Context 0,4` 可以确认生效。注意这是**整个 profile 的抓取身份**，模型自己的 web 工具也一起变。哪种形状进哪个桶、拒绝页长什么样、怎么一条命令复查，见 `docs/help/link-title-fetch.md`。
 
 ## 验证模型能调到工具（headless 路线）
 

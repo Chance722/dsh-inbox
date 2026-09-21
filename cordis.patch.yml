@@ -9,3 +9,24 @@
 - insert:
     - id: dsh-inbox
       name: '@chance722/dsh-inbox'
+
+# The identity this profile fetches pages with, restated here because our own
+# link-title fetch needs a browser-shaped one: sites gate on the *shape* of this
+# string, and bilibili answers the `Mozilla/5.0 (compatible; ...)` form with an
+# anti-bot page that carries a real-looking `<title>` (measured 2026-09-21:
+# 20/29 refused for the compatible form, 0/15 for the one below). Details,
+# measurements and the refusal heuristics live in docs/help/link-title-fetch.md.
+#
+# It still says who is asking — `dsh-inbox` sits where a browser puts
+# `Chrome/140.0.0.0` — with no version token, because one that goes stale on every
+# release is worse than none. A parenthetical `(+url)` or a suffix after a browser
+# token lands in the refused bucket exactly like `(compatible; ...)` does, so
+# there is none of either.
+#
+# Scope: this is the profile's fetch identity, so the model's own web tools use it
+# too. The user's own cordis.patch.yml is applied after this layer and wins,
+# which is how anyone picks a different identity without touching the package.
+- id: web-fetch-http
+  name: '@deepseek-ai/dsh-web-fetch-http'
+  config:
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) dsh-inbox Safari/537.36'

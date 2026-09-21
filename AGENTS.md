@@ -168,7 +168,7 @@ docs/
 - 新依赖引入前确认来源可信（版本锁定，警惕同形包/投毒）
 - **同源路由只发白名单类型**：附件路由与面板同源，因此可服务的媒体类型是白名单（`INBOX_IMAGE_TYPES` 或 `video/`、`audio/`）+ `nosniff`；**绝不按客户端声明的类型发任意 content-type**（`image/svg+xml`、`text/html` 这类同源可执行）
 - **对外请求只走官方 seam**：抓链接标题（`src/host/link-title.ts`）是唯一的"插件自己发起的对外请求"，它一次只 GET 一个 URL，必须走 `ctx.web`（`@deepseek-ai/dsh-web`：解析并固定公网地址、拒私网、只跟同源跳转、限时限量、不带 cookie）；**只在本机捕获的 `kind=link` 上触发**，远端同步拉进来的链接不抓。改这里前先读第 4 条和第 3 条：一次外发请求等于告诉对方"这台机器打开过这个链接"
-- **抓不到 ≠ 站点不给**（2026-09-20 踩过）：微信按 `User-Agent` 认客户端，harness 默认自称 `deepseek-harness/…`，于是只回一个 `<title>` 为空的空壳页。UA **不是每次请求的参数**（`WebFetchRequest` 只有 `url`），它属于 profile 里 `web-fetch-http` 的配置——要改只能改 profile 的 `cordis.patch.yml`（已经这么做了，配置里带注释说明它影响该 profile 的全部抓取，含模型的 web 工具）。下一次遇到"抓不到"，先确认我们发了什么头、再下结论
+- **抓不到 ≠ 站点不给，也可能是"抓到的是拒绝页"**（2026-09-20 微信、2026-09-21 bilibili）：站点按 UA **形状**认客户端，而 UA **不是每次请求的参数**（`WebFetchRequest` 只有 `url`）——身份只属于 profile 里 `web-fetch-http` 的配置，**本包自带的 `cordis.patch.yml` 已把它设成浏览器形状 + 自报家门**（`… (KHTML, like Gecko) dsh-inbox Safari/537.36`；用户自己的 profile patch 仍然优先）。bilibili 的拒绝页是 HTTP 200 且**带真标题**（「验证码_哔哩哔哩」），所以 `link-title.ts` 的 `looksLikeRefusal` 判到拒绝页就不取名、只记 `linkTitleError: refused-page`，名字位退回显示链接本身。下一次遇到"抓不到"，先看我们发了什么头、那个页面到底是什么，再下结论；实测矩阵见 `docs/help/link-title-fetch.md`
 - **日志只记 host**：抓取类诊断日志打 `new URL(url).host`，**不打整条 URL**——query 里可能带着 token；失败原因要能被用户看见就写进记录（`linkTitleError` 这类字段），别指望日志（`ctx.logger.info` 默认不落 stdout，实测过）
 - 权限/越权/资金/对外接口相关改动，提交前按层 2 重点审查
 
