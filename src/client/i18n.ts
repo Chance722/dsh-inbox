@@ -174,25 +174,6 @@ export function sourceHint(source: CategorySource): string {
 }
 
 /**
- * Why a link never got a name.
- *
- * The host stores a machine-readable code (`http:403`, `no-title`, …) — never a
- * sentence, and deliberately not in the host's language — so the panel can say
- * it in the reader's.
- *
- * @param code - the stored `linkTitleError`, or undefined when there is none.
- * @returns a sentence, or undefined when there is nothing to explain.
- */
-export function titleMissReason(code: string | undefined): string | undefined {
-  if (code === undefined || code.length === 0) return undefined
-  if (code.startsWith('http:')) return t('link.http', { status: code.slice('http:'.length) })
-  if (code.startsWith('not-html:')) return t('link.notHtml')
-  if (code.startsWith('network:')) return t('link.unreachable')
-  if (code === 'no-title') return t('link.noTitle')
-  return t('link.unknown')
-}
-
-/**
  * Follow `<html lang>` for compositions that ship no locale service.
  *
  * @returns the disposer that stops watching.

@@ -12,11 +12,10 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { MESSAGES, zh, type Dictionary } from '../src/client/messages.js'
-import { resolveLanguage, titleMissReason } from '../src/client/i18n.js'
-import { installLanguage } from './helpers/locale.js'
+import { resolveLanguage } from '../src/client/i18n.js'
 
 /** Every file that renders copy, i.e. everything except the dictionaries. */
 function clientUiFiles(): string[] {
@@ -97,25 +96,6 @@ describe('reading the language', () => {
     expect(resolveLanguage('en-GB')).toBe('en')
     expect(resolveLanguage('ja')).toBe('en')
     expect(resolveLanguage(undefined)).toBe('en')
-  })
-})
-
-describe('the reasons a link has no title', () => {
-  // Pinned so the assertions below read the Chinese side regardless of where the
-  // suite runs (the panel reads English until a host tells it otherwise).
-  beforeAll(() => {
-    installLanguage('zh')
-  })
-
-  it('turns every code the host stores into a sentence', () => {
-    expect(titleMissReason(undefined)).toBeUndefined()
-    expect(titleMissReason('')).toBeUndefined()
-    // The code is the host's, the sentence is ours — that is the whole split.
-    expect(titleMissReason('http:403')).toContain('403')
-    expect(titleMissReason('not-html:binary')).toBe(zh['link.notHtml'])
-    expect(titleMissReason('network:timeout')).toBe(zh['link.unreachable'])
-    expect(titleMissReason('no-title')).toBe(zh['link.noTitle'])
-    expect(titleMissReason('something-new')).toBe(zh['link.unknown'])
   })
 })
 

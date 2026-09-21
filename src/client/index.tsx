@@ -290,26 +290,6 @@ const MODEL_COLOR = '#a78bfa'
 const CONTROL_HEIGHT = 'calc(1.6em + 12px)'
 
 /**
- * One line explaining why a link never got a headline.
- *
- * The codes are written by `src/host/link-title.ts`; an unrecognised one still
- * says something honest, because "原因不明" beats the silence that made the user
- * think the feature was broken.
- *
- * @param code - the short code stored on the record.
- * @returns a sentence to show under the name field.
- */
-function titleFailureText(code: string): string {
-  if (code === 'no-title') {
-    return t('link.noTitle')
-  }
-  if (code.startsWith('http:')) return t('link.http', { status: code.slice('http:'.length) })
-  if (code.startsWith('not-html:')) return t('link.notHtml')
-  if (code.startsWith('network:')) return t('link.unreachable')
-  return t('link.unknown')
-}
-
-/**
  * One row of the detail pane.
  *
  * `flex: none` on every row, and it is not decoration: the pane is a scrolling
@@ -3135,19 +3115,13 @@ function EntryPane({
       />
 
       {/*
-        A link whose headline never arrived says so. Without this line the record
-        just sits there looking unnamed, which reads as a broken feature rather
-        than as "that site would not talk to us" — WeChat answers anonymous
-        requests with an anti-bot page that has an empty <title>.
+        Nothing here announces a missing name. A link whose headline never
+        arrived shows its own address — the list, the cards and the dock all fall
+        back to it (`heading.ts`), and this pane shows it just above this form —
+        so the record already says what it is without being told it has no name.
+        Why the fetch came up empty stays on the record as `linkTitleError`, for
+        whoever reads the vault directly.
       */}
-      {detail.title === undefined &&
-        detail.linkTitle === undefined &&
-        detail.linkTitleError !== undefined &&
-        detail.kind === 'link' && (
-          <p style={{ ...paneRowStyle, margin: 0, fontSize: 12, opacity: 0.6 }}>
-            {t('detail.titleMissed', { reason: titleFailureText(detail.linkTitleError) })}
-          </p>
-        )}
 
       <SelectBox
         block

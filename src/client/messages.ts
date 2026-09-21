@@ -49,13 +49,6 @@ export const zh = {
   'source.model.hint': '规则判不出来才交给模型判的；你说的话永远优先，随时可以改',
   'source.user.hint': '你自己选的类目，规则和模型都不会覆盖它',
 
-  // Why a link has no fetched title (these reach the panel as `linkTitleError`).
-  'link.noTitle': '那个页面里没有标题（有些站点对非浏览器的请求只回空壳页，比如微信）',
-  'link.http': '对方返回 HTTP {status}',
-  'link.notHtml': '那个地址不是网页',
-  'link.unreachable': '请求没成功（网络不通或对方拒绝）',
-  'link.unknown': '原因不明',
-
   // Chrome above the list.
   'app.settings': '设置',
   'app.manual': '使用手册',
@@ -115,7 +108,6 @@ export const zh = {
   'detail.removeTag': '从这条记录上移除「{tag}」',
   'detail.updated': ' · 更新 {when}',
   'detail.sealedNote': '这条账密的正文是密文，现在解不开。到「设置 → 账密加密」解锁（或先设一个主密码）就能看到。',
-  'detail.titleMissed': '没抓到页面标题：{reason}。可以自己起个名字。',
   'detail.play': '播放',
   'detail.zoom': '放大查看',
   'detail.playInBrowser': '在浏览器里播放',
@@ -356,12 +348,6 @@ export const en: Dictionary = {
   'source.model.hint': 'the rules could not decide, so the model did; what you say always wins and can be changed any time',
   'source.user.hint': 'the category you chose yourself — neither the rules nor the model will overwrite it',
 
-  'link.noTitle': 'that page has no title (some sites answer non-browser requests with an empty shell — WeChat does)',
-  'link.http': 'the other side answered HTTP {status}',
-  'link.notHtml': 'that address is not a web page',
-  'link.unreachable': 'the request did not go through (no network, or refused)',
-  'link.unknown': 'no clear reason',
-
   'app.settings': 'Settings',
   'app.manual': 'Manual',
   'app.counts': ' · {total} total · {watch} to read · {deleted} in the bin',
@@ -417,7 +403,6 @@ export const en: Dictionary = {
   'detail.removeTag': 'Remove “{tag}” from this record',
   'detail.updated': ' · updated {when}',
   'detail.sealedNote': 'This credential’s body is ciphertext and cannot be read right now. Unlock it under Settings → Credential encryption (or set a master password first).',
-  'detail.titleMissed': 'No page title was fetched: {reason}. You can give it a name yourself.',
   'detail.play': 'Play',
   'detail.zoom': 'Zoom in',
   'detail.playInBrowser': 'Play in the browser',
