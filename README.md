@@ -1,6 +1,6 @@
 # dsh-inbox
 
-![dsh-inbox](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/cover.png)
+![dsh-inbox](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/cover.jpeg)
 
 A **local inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** (`dsh`): file whatever you copy into one vault, get it back when you need it — including **by asking your assistant in conversation**.
 
