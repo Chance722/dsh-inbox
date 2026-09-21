@@ -22,7 +22,7 @@ import {
 } from '../../shared/panel-wire.js'
 import { captureImage, captureText } from '../capture.js'
 import type { S3Config, S3Deps } from '../s3/client.js'
-import { listPrefix, readObject } from '../s3/client.js'
+import { listPrefix, listTopLevel, readObject } from '../s3/client.js'
 import type { Vault } from '../vault/vault.js'
 import { listFolder, readFile, type WebdavDeps } from '../webdav/client.js'
 
@@ -114,6 +114,12 @@ export async function ingestFrom(
   attachments: AttachmentStore,
   /** This machine's own sync root; anything else under `sync/` is a stranger. */
   syncRoot: string = syncRootFor(undefined),
+  /**
+   * Sync roots found **outside** the listed scope, from a protocol-specific
+   * probe. A listing scoped to our directory cannot see them, and without them
+   * "the other machine's records never arrived" has no explanation to show.
+   */
+  elsewhere: { roots: readonly string[]; records?: number } = { roots: [] },
 ): Promise<PullResult> {
   const lastPullAt = vault.global.sync.lastPullAt
 
@@ -154,7 +160,9 @@ export async function ingestFrom(
   let remoteRecords = 0
   let remoteAttachments = 0
   /** Other machines' sync roots, in the order the listing revealed them. */
-  const foreignSyncRoots = new Set<string>()
+  const foreignSyncRoots = new Set<string>(elsewhere.roots)
+  /** Records those other trees hold, as far as we looked. */
+  let foreignRecords = elsewhere.records ?? 0
   /**
    * The newest entry that actually worked.
    *
@@ -184,6 +192,10 @@ export async function ingestFrom(
       skipped += 1
       skippedForeign += 1
       foreignSyncRoots.add(prefix)
+      const parts = entry.path.split('/').filter((part) => part.length > 0)
+      if ((parts[parts.length - 2] ?? '') === 'items' && (parts[parts.length - 1] ?? '').endsWith('.json')) {
+        foreignRecords += 1
+      }
       continue
     }
     if (prefix !== undefined) {
@@ -274,6 +286,7 @@ export async function ingestFrom(
     remoteAttachments,
     syncRoot,
     ...(foreignSyncRoots.size === 0 ? {} : { foreignSyncRoots: [...foreignSyncRoots] }),
+    ...(foreignRecords === 0 ? {} : { foreignRecords }),
     listed,
     lastPullAt: cursor,
     ...(failures.length === 0 ? {} : { reason: failures.slice(0, 3).join('；') }),
@@ -371,5 +384,65 @@ export async function pullS3(
     deps.attachments,
     // The vault's own tree, resolved by the same rule the writer uses.
     syncRootFor(directory),
+    await s3RootsElsewhere(config, deps, scope),
   )
+}
+
+/** How many sibling folders to inspect before the probe stops being worth it. */
+const PROBE_CANDIDATES = 5
+
+/**
+ * Sync roots in this bucket that are *not* under the configured directory.
+ *
+ * The bucket root answers with its folders in one request; each candidate gets
+ * one bounded listing to see whether it holds a `sync/` tree. Bounded on purpose:
+ * a pull should not turn into a crawl of someone's cloud drive, and the answer
+ * only has to be good enough to say "another machine is syncing somewhere else".
+ *
+ * @param config - endpoint, bucket, region.
+ * @param deps - credentials, fetch, clock.
+ * @param scope - this machine's directory, e.g. `inbox`.
+ * @returns the other sync roots, and how many records they hold between them.
+ */
+async function s3RootsElsewhere(
+  config: S3Config,
+  deps: S3Deps,
+  scope: string,
+): Promise<{ roots: string[]; records?: number }> {
+  try {
+    const tops = await listTopLevel(config, deps)
+    const found: string[] = []
+    let records = 0
+    for (const top of tops.slice(0, PROBE_CANDIDATES)) {
+      // Ours, or a folder *inside* ours (a nested directory is already visible
+      // to the normal listing; the probe is only for what it cannot reach).
+      if (top === scope || top.startsWith(`${scope}/`)) continue
+      /*
+        Two shapes count as "a sync tree in there".
+
+        `<folder>/sync/items/` is the layout this version writes when the
+        directory is `folder`. `<folder>/items/` is what an older build left
+        behind when it read the directory as the *bucket root*: it wrote
+        `sync/items/…` at the top level, so the folder named `sync` **is** the
+        sync root. Both look identical from here — a folder full of records we
+        are not reading — and both are worth one line of warning.
+      */
+      for (const probe of [`${top}/sync/items/`, `${top}/items/`]) {
+        // One listing, used twice: whether the tree is there, and how big it is.
+        // Truncation only understates a number the reader is going to act on by
+        // opening the folder anyway.
+        const inside = await listPrefix(config, probe, deps, { 'max-keys': '1000' })
+        if (inside.length > 0) {
+          found.push(probe.replace(/\/items\/$/, ''))
+          records += inside.filter((object) => object.key.endsWith('.json')).length
+          break
+        }
+      }
+    }
+    return found.length === 0 ? { roots: [] } : { roots: found, records }
+  } catch {
+    // The probe is a courtesy: a gateway that cannot answer it must not turn
+    // into a failed pull.
+    return { roots: [] }
+  }
 }

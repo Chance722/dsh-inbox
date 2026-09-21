@@ -216,6 +216,8 @@ export interface PullResult {
   skippedForeign?: number
   /** Those other prefixes, e.g. `['inbox/sync']`; the panel warns about them. */
   foreignSyncRoots?: string[]
+  /** How many `items/*.json` records those other prefixes hold together. */
+  foreignRecords?: number
   /** This machine's own sync root, so the warning can name both sides. */
   syncRoot?: string
   /**

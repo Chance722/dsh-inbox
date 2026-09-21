@@ -1409,6 +1409,12 @@ function InboxPanel(): React.ReactElement {
         </span>
         <button
           type="button"
+          /*
+            The last sync's numbers live here as hover text: they are worth
+            having and not worth a row of the panel (asked 2026-09-21, after the
+            line spent a day pushing the list down).
+          */
+          title={syncDetail}
           style={{ ...buttonStyle, height: CONTROL_HEIGHT, boxSizing: 'border-box' }}
           disabled={busy}
           onClick={() => void refreshAll()}
@@ -1416,27 +1422,6 @@ function InboxPanel(): React.ReactElement {
           <RefreshCw size={13} /> {busy ? t('app.refreshing') : t('app.refresh')}
         </button>
       </div>
-
-      {/*
-        What the last sync actually did, in full. The toast carries two numbers
-        and disappears; this line stays until the next refresh, and hovering it
-        shows everything the toast used to try to say at once.
-      */}
-      {syncDetail !== undefined && syncDetail.length > 0 && (
-        <p
-          title={syncDetail}
-          style={{
-            margin: 0,
-            fontSize: 12,
-            opacity: 0.55,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-        >
-          {t('sync.detailLast', { detail: syncDetail })}
-        </p>
-      )}
 
       <div
         style={{
@@ -1803,11 +1788,28 @@ function arrivedFrom(result: PullResult): number {
  * failed. Everything else about a pull is detail.
  */
 function syncWarnings(result: PullResult): string {
+  return warningsOf(result, false)
+}
+
+/**
+ * The same warnings, with the detail a tooltip has room for.
+ *
+ * @param result - what the pull answered.
+ * @param verbose - whether to name this machine's own root beside the others.
+ * @returns the warning clauses, in the order they matter.
+ */
+function warningsOf(result: PullResult, verbose: boolean): string {
   const roots = result.foreignSyncRoots ?? []
   const foreign =
     roots.length === 0
       ? ''
-      : t('sync.pullForeignSync', { roots: roots.join('、'), ours: result.syncRoot ?? '' })
+      : verbose
+        ? t('sync.detailForeign', {
+            roots: roots.join('、'),
+            ours: result.syncRoot ?? '',
+            records: result.foreignRecords ?? 0,
+          })
+        : t('sync.pullForeignSync', { roots: roots.join('、'), records: result.foreignRecords ?? 0 })
   const failed =
     result.failed > 0
       ? t('sync.pullFailures', { count: result.failed, reason: result.reason ?? '' })
@@ -1815,89 +1817,51 @@ function syncWarnings(result: PullResult): string {
   return `${foreign}${failed}`
 }
 
-/** One line describing what a push did. */
+/**
+ * The push half of the refresh button's tooltip.
+ *
+ * Tooltips are read on purpose, so this can carry numbers the toast cannot —
+ * but it is still a tooltip: counts and nothing else.
+ */
 function describePush(result: PushResult): string {
   if (result.status === 'unconfigured') return t('sync.pushUnconfigured')
   if (result.status === 'failed') return t('sync.pushFailed', { reason: result.reason ?? t('sync.pushUnknown') })
   const head =
     result.pushed === 0 && result.attachments === 0
-      ? t('sync.pushUpToDate', { count: result.skipped })
-      : t('sync.pushDone', { records: result.pushed, attachments: result.attachments })
+      ? t('sync.detailPushedIdle', { count: result.skipped })
+      : t('sync.detailPushed', { records: result.pushed, attachments: result.attachments })
   // `partial` always carries the reason it is only partial.
   return result.status === 'partial' ? t('sync.pushPartial', { head, reason: result.reason ?? '' }) : head
 }
 
-/** One line describing what a pull did. */
+/**
+ * The pull half of the refresh button's tooltip.
+ *
+ * Shorter than the line this replaced by design: what arrived, what the cloud
+ * holds, and — only when some were skipped — why. The skip breakdown is the one
+ * part a reader occasionally needs, and it is the part that used to make the
+ * toast unreadable.
+ */
 function describePull(result: PullResult): string {
   if (result.status === 'unconfigured') return result.reason ?? t('sync.pullNoAddress')
   if (result.status === 'failed') return t('sync.pullFailed', { reason: result.reason ?? t('sync.pushUnknown') })
-  // Two halves, one line each: the drop folder's files, and the merge's records.
   const merged = result.merged ?? 0
-  const attachments = result.attachments ?? 0
-  /**
-   * How many of the cloud's records this vault already had.
-   *
-   * The merge settles per record by `id` + `updatedAt`, not by which machine
-   * pushed it, so "nothing came over" and "the cloud's copies are my own" look
-   * identical without this number — and they are different facts.
-   */
-  const kept = result.kept ?? 0
-  const keptPart = kept === 0 ? '' : t('sync.pullKept', { count: kept })
-  const syncPart =
-    merged === 0 && attachments === 0
-      ? kept === 0
-        ? t('sync.pullNothingNew')
-        : t('sync.pullAllHere', { count: kept })
-      : t('sync.pullMerged', {
-          count: merged,
-          attachments:
-            attachments === 0 ? '' : t('sync.pullAttachments', { count: attachments }),
-        }) + keptPart
-  if (result.pulled === 0 && result.skipped === 0 && result.failed === 0) return syncPart
-  /*
-    Say why the skipped ones were skipped, and who failed.
-
-    "跳过 77 / 失败 1" is not something a reader can act on: the host hands over
-    the first three `name: reason` pairs in `reason`, and the skip split says
-    whether the rest were our own upload queue or older than the pull cursor.
-  */
-  const skippedWhy =
-    result.skippedSync === undefined
-      ? ''
-      : t('sync.pullSkipWhy', { sync: result.skippedSync, older: result.skippedOlder ?? 0 })
-  /*
-    Another machine syncing under a different directory is the one failure that
-    looks like success: its records sit under `…/sync/`, which every version of
-    this plugin skipped as "ours", so the panel said "云端的记录没有新的" while
-    the other computer's work was right there. Name both prefixes.
-  */
-  const foreignWhy =
-    result.foreignSyncRoots === undefined || result.foreignSyncRoots.length === 0
-      ? ''
-      : t('sync.pullForeignSync', {
-          roots: result.foreignSyncRoots.join('、'),
-          ours: result.syncRoot ?? '',
-        })
-  const failedWhy =
-    result.failed > 0
-      ? t('sync.pullFailures', {
-          count: result.failed,
-          reason: result.reason ?? t('sync.pushUnknown'),
-        })
-      : ''
-  return t('sync.pullDone', {
-    listed: result.listed,
+  const head = t('sync.detailPulled', {
+    count: result.pulled + merged,
     records: result.remoteRecords ?? 0,
     files: result.remoteAttachments ?? 0,
-    pulled: result.pulled,
-    skipped: result.skipped,
-    // Joined, not concatenated: each part is a complete clause, and butting
-    // them together read as one run-on sentence ("…项）云端的 7 条记录本机都有").
-    tail: [skippedWhy, syncPart, foreignWhy, failedWhy]
-      .filter((part) => part.length > 0)
-      .map((part) => ` · ${part}`)
-      .join(''),
   })
+  const skipped =
+    result.skipped === 0
+      ? ''
+      : t('sync.detailSkip', {
+          skipped: result.skipped,
+          sync: result.skippedSync ?? 0,
+          older: result.skippedOlder ?? 0,
+        })
+  // The tooltip is where the full warning lives: it can name this machine's own
+  // root next to the others, which is the comparison the reader is making.
+  return `${head}${skipped}${warningsOf(result, true)}`
 }
 
 /**

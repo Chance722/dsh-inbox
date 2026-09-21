@@ -429,6 +429,7 @@ const KEY_BLOCK = /<Key>([\s\S]*?)<\/Key>/i
 const LAST_MODIFIED = /<LastModified>([\s\S]*?)<\/LastModified>/i
 const SIZE = /<Size>([\s\S]*?)<\/Size>/i
 const CONTENTS = /<Contents>[\s\S]*?<\/Contents>/gi
+const COMMON_PREFIX = /<CommonPrefixes>[\s\S]*?<Prefix>([\s\S]*?)<\/Prefix>[\s\S]*?<\/CommonPrefixes>/gi
 
 /** Undo the XML escapes a key can carry (keys legitimately contain `&`). */
 function decode(value: string): string {
@@ -482,10 +483,12 @@ export async function listPrefix(
   config: S3Config,
   prefix: string,
   deps: S3Deps,
+  /** Extra query parameters, e.g. `{ delimiter: '/', 'max-keys': '1' }`. */
+  extra: Record<string, string> = {},
 ): Promise<RemoteObject[]> {
   const sign = signer(config)
 
-  const v2 = sign(config, deps, 'GET', '', { 'list-type': '2', prefix })
+  const v2 = sign(config, deps, 'GET', '', { 'list-type': '2', prefix, ...extra })
   const first = await deps.fetch(v2.url, { method: 'GET', headers: v2.headers })
   if (first.ok) return parseListing(await first.text())
 
@@ -497,7 +500,7 @@ export async function listPrefix(
     // that verifies only `host` and `x-amz-date` rejects every signature that
     // also covers `x-amz-content-sha256`.
     if (config.signatureVersion?.toLowerCase() !== 'v2' && first.status === 401) {
-      const minimal = signRequestV4Minimal(config, deps, 'GET', '', { 'list-type': '2', prefix })
+      const minimal = signRequestV4Minimal(config, deps, 'GET', '', { 'list-type': '2', prefix, ...extra })
       const retry = await deps.fetch(minimal.url, { method: 'GET', headers: minimal.headers })
       if (retry.ok) return parseListing(await retry.text())
       throw new Error(
@@ -507,13 +510,58 @@ export async function listPrefix(
     throw refusal
   }
 
-  const v1 = sign(config, deps, 'GET', '', { prefix })
+  const v1 = sign(config, deps, 'GET', '', { prefix, ...extra })
   const second = await deps.fetch(v1.url, { method: 'GET', headers: v1.headers })
   if (!second.ok) {
     // Report both: the first explains why we tried the older call at all.
     throw new Error(`${await refused(second, '列对象（V1 回退）').then((e) => e.message)}\n首次尝试：${refusal.message}`)
   }
   return parseListing(await second.text())
+}
+
+/**
+ * The top-level folders a bucket has.
+ *
+ * `delimiter=/` collapses everything below the first slash into
+ * `<CommonPrefixes>`, which is the cheap way to ask "what else lives up here?" —
+ * one request, however many objects the bucket holds. It is what makes "another
+ * machine synced into a different directory" visible: that machine's records are
+ * not under our directory, so a listing scoped to ours can never see them, and
+ * the silence looks exactly like "nothing new" (asked 2026-09-21).
+ *
+ * @param config - endpoint, bucket, region.
+ * @param deps - credentials, fetch, clock.
+ * @returns folder names without the trailing slash, e.g. `['inbox', 'sync']`.
+ */
+export async function listTopLevel(config: S3Config, deps: S3Deps): Promise<string[]> {
+  const sign = signer(config)
+  const v2 = sign(config, deps, 'GET', '', { 'list-type': '2', delimiter: '/', 'max-keys': '100' })
+  const first = await deps.fetch(v2.url, { method: 'GET', headers: v2.headers })
+  if (first.ok) return parsePrefixes(await first.text())
+  if (first.status >= 500) {
+    const v1 = sign(config, deps, 'GET', '', { delimiter: '/', 'max-keys': '100' })
+    const second = await deps.fetch(v1.url, { method: 'GET', headers: v1.headers })
+    if (second.ok) return parsePrefixes(await second.text())
+  }
+  // A refusal is not worth failing a pull over: the caller gets no extra
+  // warning, which is the same answer as "there is nothing else up there".
+  return []
+}
+
+/**
+ * Read the folder names out of a `delimiter=/` listing.
+ *
+ * @param xml - the response body.
+ * @returns each prefix without its trailing slash.
+ */
+export function parsePrefixes(xml: string): string[] {
+  const prefixes: string[] = []
+  for (const match of xml.matchAll(COMMON_PREFIX)) {
+    const value = decode(match[1] ?? '')
+    if (value.length === 0) continue
+    prefixes.push(value.replace(/\/$/, ''))
+  }
+  return prefixes
 }
 
 /** Fetch one object's bytes, with its content type when the server sends one. */

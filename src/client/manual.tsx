@@ -173,6 +173,7 @@ export function ManualDialog({ onClose }: { onClose: () => void }): React.ReactE
         <Section title={t('manual.5.title')}>
           <Line label={t('manual.5.auto.label')}>{t('manual.5.auto.body')}</Line>
           <Line label={t('manual.5.manual.label')}>{t('manual.5.manual.body')}</Line>
+          <Line label={t('manual.5.twoMachines.label')}>{t('manual.5.twoMachines.body')}</Line>
           <Line label={t('manual.5.delete.label')}>{t('manual.5.delete.body')}</Line>
           <Line label={t('manual.5.conflict.label')}>{t('manual.5.conflict.body')}</Line>
         </Section>

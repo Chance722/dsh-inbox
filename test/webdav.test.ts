@@ -93,6 +93,20 @@ const S3_LISTING = `<?xml version="1.0"?>
   <Contents><Key>inbox/shot.png</Key><LastModified>2026-09-20T06:00:00.000Z</LastModified><Size>2048</Size></Contents>
 </ListBucketResult>`
 
+/** The bucket root: two folders, one of them ours. */
+const S3_TOP_LEVEL = `<?xml version="1.0"?>
+<ListBucketResult>
+  <CommonPrefixes><Prefix>inbox/</Prefix></CommonPrefixes>
+  <CommonPrefixes><Prefix>sync/</Prefix></CommonPrefixes>
+</ListBucketResult>`
+
+/** A record inside that leftover tree, so the warning can count it. */
+const S3_LEGACY_ITEMS = `<?xml version="1.0"?>
+<ListBucketResult>
+  <Contents><Key>sync/items/9f1e-0000.json</Key><LastModified>2026-09-19T06:00:00.000Z</LastModified><Size>120</Size></Contents>
+  <Contents><Key>sync/items/9f1e-0000.txt</Key><LastModified>2026-09-19T06:00:00.000Z</LastModified><Size>40</Size></Contents>
+</ListBucketResult>`
+
 interface FakeServer {
   fetch: FetchLike
   calls: string[]
@@ -275,20 +289,28 @@ describe('pulling', () => {
       「自己的同步对象 0 项」 and warned that another machine used a different
       directory, when the only other prefix was the leftovers of an older build.
     */
+    /**
+     * The bucket answers differently per request, because the pull now asks
+     * three different questions: what folders exist at the top level, what is
+     * under our directory, and whether some *other* folder holds a sync tree.
+     */
     const urls: string[] = []
+    const listing = (body: string) => async (url: string) => {
+      urls.push(url)
+      return { ok: true, status: 200, text: async () => body, arrayBuffer: async () => new ArrayBuffer(0) }
+    }
     const result = await pullS3(
       vault,
       { endpoint: 'https://data.cstcloud.cn', bucket: 'my-bucket' },
       '/',
       {
         fetch: async (url) => {
-          urls.push(url)
-          return {
-            ok: true,
-            status: 200,
-            text: async () => S3_LISTING,
-            arrayBuffer: async () => new ArrayBuffer(0),
-          }
+          if (url.includes('delimiter=%2F')) return listing(S3_TOP_LEVEL)(url)
+          if (url.includes('prefix=inbox%2F')) return listing(S3_LISTING)(url)
+          // The legacy layout: an older build read the directory as the bucket
+          // root and wrote `sync/items/…` at the top level.
+          if (url.includes('prefix=sync%2Fitems%2F')) return listing(S3_LEGACY_ITEMS)(url)
+          return listing('<ListBucketResult></ListBucketResult>')(url)
         },
         accessKeyId: 'AKIDEXAMPLE',
         accessKeySecret: 'secret-key',
@@ -298,14 +320,24 @@ describe('pulling', () => {
 
     // `/` is the default directory, so the listing asks for `inbox/` — not the
     // whole bucket, which is how the stray root-level `sync/` got noticed.
-    expect(urls[0]).toContain('prefix=inbox%2F')
+    expect(urls.some((url) => url.includes('prefix=inbox%2F'))).toBe(true)
+    // …and the bucket root is still visited once, with a delimiter, so a sync
+    // tree *outside* the configured directory can be reported rather than
+    // silently ignored (that listing cannot see it).
+    expect(urls.some((url) => url.includes('delimiter=%2F'))).toBe(true)
     expect(result).toMatchObject({
       listed: 6,
       pulled: 1,
       skipped: 5,
       skippedSync: 4,
       skippedForeign: 1,
-      foreignSyncRoots: ['archive/sync'],
+      // Two places hold records we are not reading: one nested inside our own
+      // directory (found by the listing) and the leftover top-level `sync/`
+      // (found by the probe).
+      // The probe's finds come first (those are the invisible ones), then what
+      // the listing turned up inside our own directory.
+      foreignSyncRoots: ['sync', 'archive/sync'],
+      foreignRecords: 2,
       remoteRecords: 1,
       remoteAttachments: 1,
       syncRoot: 'inbox/sync',
