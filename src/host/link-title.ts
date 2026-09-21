@@ -54,12 +54,15 @@ const ENTITIES: Record<string, string> = {
 }
 
 /**
- * Markup that only a challenge page carries.
+ * Strings a challenge page carries — and, it turns out, a page next to one.
  *
- * This is the precise half of the refusal check: the strings below come from the
- * anti-bot pages themselves (bilibili's risk-captcha app, Cloudflare's challenge
- * platform, Geetest's widget), and a page that ships one is a page that means to
- * ask a human a question rather than to be read.
+ * These are hints, never a verdict on their own: bilibili's *real* video pages
+ * load `risk-captcha-sdk`, set `window._BiliGreyResult` for grey releases, and
+ * mention `static.geetest.com` in an error filter (measured 2026-09-21 on
+ * `BV1ToGC6TEjH`: 171929 bytes, a real headline, 1726 characters of text, and
+ * all three strings). A version of this check that treated any hit as a refusal
+ * threw away perfectly good headlines, so a hit only counts on a page that has
+ * nothing to read (see `looksLikeRefusal`).
  */
 const REFUSAL_MARKER = /(risk-captcha|_BiliGreyResult|cf-chl|challenge-platform|geetest)/i
 
@@ -95,7 +98,11 @@ function visibleTextLength(html: string): number {
  * The checks before this one — a 2xx status, an HTML body, a non-empty
  * `<title>` — all pass on bilibili's anti-bot page, which is what made a record
  * show 「验证码」 as its name (2026-09-21). What separates that page from a real
- * one is either its own markup or the fact that it carries no text at all.
+ * one is that it carries **no text at all**: the challenge shell is 1360 bytes
+ * of scripts and empty containers, while the page it stands in for has
+ * thousands of characters. Only then do the markers and the shape of the title
+ * decide, because the markers alone are not evidence — real bilibili pages
+ * carry the same strings.
  *
  * Both halves are deliberately biased towards refusing: a link whose name we
  * skip shows its own address, which is honest and one keystroke away from being
@@ -106,8 +113,8 @@ function visibleTextLength(html: string): number {
  * @returns true when the page refuses to be read.
  */
 export function looksLikeRefusal(html: string, title: string): boolean {
-  if (REFUSAL_MARKER.test(html)) return true
-  return visibleTextLength(html) < REFUSAL_TEXT_FLOOR && REFUSAL_TITLE.test(title)
+  if (visibleTextLength(html) >= REFUSAL_TEXT_FLOOR) return false
+  return REFUSAL_MARKER.test(html) || REFUSAL_TITLE.test(title)
 }
 
 function decodeEntities(text: string): string {

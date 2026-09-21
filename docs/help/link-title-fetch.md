@@ -36,16 +36,23 @@
 ... risk-captcha-app / risk-captcha-sdk ...
 ```
 
-判据实现在 `src/host/link-title.ts` 的 `looksLikeRefusal`，两条**任一成立**即算拒绝页：
+判据实现在 `src/host/link-title.ts` 的 `looksLikeRefusal`：**先看有没有正文**——去掉
+`<script>/<style>/标签/注释` 后可见文字 ≥ 200 字符就直接放行；只有"几乎没有正文"时才看另外两个信号，任一
+成立即算拒绝页：
 
-1. **挑战标记**（精确的那一半）：文档里出现 `risk-captcha` / `_BiliGreyResult` / `cf-chl` /
-   `challenge-platform` / `geetest` —— 这些字符串本身就是"要人机验证"的意思；
-2. **没正文 + 标题像拒绝**：去掉 `<script>/<style>/标签/注释` 后可见文字 < 200 字符，且标题命中
+1. **挑战标记**：文档里出现 `risk-captcha` / `_BiliGreyResult` / `cf-chl` / `challenge-platform` / `geetest`；
+2. **标题像拒绝**：标题命中
    `验证码|人机验证|安全验证|环境异常|访问异常|captcha|just a moment|attention required|access denied|forbidden`。
 
-两边都**故意偏严**：判错成拒绝页的代价是"这条链接显示自己的地址"（诚实、随手就能自己起名），判漏的代价是
-"一个错误的名字永久留在列表里"。所以一页讲验证码的**长文**（有正文、没有挑战标记）不会被误伤——有测试钉着
-这条边界（`test/link-title.test.ts`）。
+**这个顺序是踩出来的**（2026-09-21，同一天里改的第二版）：第一版把挑战标记写成"一票否决"，当场误伤
+`https://www.bilibili.com/video/BV1ToGC6TEjH`——它的**真页面** 171929 字节、真标题、1726 字正文，而
+bilibili **每一页**都加载 `risk-captcha-sdk`（脚本 URL）、都设 `window._BiliGreyResult`（灰度发布标记）、
+都在错误过滤名单里提到 `static.geetest.com`。用户看到的现象就是"名字变成了链接"（那条记录
+`d0447b81`，`linkTitleError: refused-page`）。结论：标记只能算提示，**正文才是判据的主体**——有正文就是
+页面，没正文 + 提示才是拒绝页。
+
+边界保持不变：讲验证码的**长文**不会被误伤（有正文），真正的空壳拒绝页（1360 字节、0 字正文）照样被拒。
+两条都有测试钉着（`test/link-title.test.ts`），其中一条用的就是上面那个真页面的形状。
 
 ## 这不是登录态问题（2026-09-21 实测）
 

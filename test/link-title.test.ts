@@ -278,6 +278,28 @@ describe('fetchLinkTitle against a real vault', () => {
       ).toBe('验证码是怎么工作的')
     })
 
+    it('takes the headline of a real page that merely carries challenge markup', async () => {
+      // The regression that broke a good headline (2026-09-21): the real page for
+      // https://www.bilibili.com/video/BV1ToGC6TEjH loads `risk-captcha-sdk`, sets
+      // `window._BiliGreyResult` for grey releases and names `geetest` in an error
+      // filter. A first version of the refusal check treated any of those hits as a
+      // verdict and left the record showing its own URL.
+      const filed = await captureText(vault, 'https://www.bilibili.com/video/BV1ToGC6TEjH', 'panel')
+      const page = [
+        '<html><head><title>别觉得AI离你很远</title>',
+        '<script src="https://s1.hdslb.com/bfs/seed/jinkela/risk-captcha-sdk/CaptchaLoader.js"></script>',
+        '<script>window._BiliGreyResult={"method":"base","grayVersion":"292598"}</script>',
+        '</head><body><div>',
+        '真正的内容'.repeat(200),
+        '</div><script>MirrorErrorFilterPlugin=["static.geetest.com"]</script></body></html>',
+      ].join('')
+
+      expect(await fetchLinkTitle(vault, filed.item.id, seam({ content: page }))).toBe(
+        '别觉得AI离你很远',
+      )
+      expect(vault.get(filed.item.id)?.linkTitleError).toBeUndefined()
+    })
+
     it('clears the note once a headline does arrive', async () => {
       const filed = await captureText(vault, 'https://example.com/late', 'panel')
       await fetchLinkTitle(vault, filed.item.id, seam({ content: '<title></title>' }))
@@ -291,18 +313,24 @@ describe('fetchLinkTitle against a real vault', () => {
 })
 
 describe('looksLikeRefusal', () => {
-  it('tells a challenge shell from a small page by its markup', () => {
-    // The marker alone is enough: a page that ships a challenge platform is not
-    // a page we take a name from, whatever its title says.
-    expect(looksLikeRefusal('<html><title>首页</title><script src="/cf-chl/x.js"></script>', '首页')).toBe(
-      true,
-    )
+  it('needs an empty page before challenge markup counts', () => {
+    // A challenge shell is the markers *and* nothing to read.
     expect(
-      looksLikeRefusal('<html><title>文章</title><p>正常内容</p>', '文章'),
-    ).toBe(false)
+      looksLikeRefusal('<html><title>首页</title><script src="/cf-chl/x.js"></script>', '首页'),
+    ).toBe(true)
+    // The same strings on a page that has something to say are just strings a
+    // real page carries too — so text wins, whatever the markup mentions.
+    const real = [
+      '<html><head><title>真正的标题</title>',
+      '<script src="https://s1.hdslb.com/bfs/seed/jinkela/risk-captcha-sdk/CaptchaLoader.js"></script>',
+      '<script>window._BiliGreyResult={"method":"base"}</script></head><body><p>',
+      '正文'.repeat(400),
+      '</p><script>var list=["static.geetest.com"]</script></body></html>',
+    ].join('')
+    expect(looksLikeRefusal(real, '真正的标题')).toBe(false)
   })
 
-  it('needs a refusal-shaped title when the page is only empty', () => {
+  it('needs a refusal-shaped title when the page is empty and unmarked', () => {
     expect(looksLikeRefusal('<html><title>某站</title></html>', '某站')).toBe(false)
     expect(looksLikeRefusal('<html><title>Just a moment...</title></html>', 'Just a moment...')).toBe(
       true,
