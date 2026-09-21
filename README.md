@@ -26,7 +26,7 @@ It works for you alone: everything lands on your machine, and the model only see
 | **Ask in conversation** | Ask for 收件箱 / 仓库 / inbox and the assistant searches by words, category, tag, watch-later flag or kind (ten at a time plus a count of the rest, with thumbnails right in the results), then opens one by id (text up to 1000 characters, link, note, tags, attachment facts). To look at one yourself: expand 「N 次工具调用」 above the answer and press 打开 ↗ — the 仓库 tab opens on that record |
 | **Looking at a picture** | Image bytes stay out of the conversation by default; when you ask "look at this picture and tell me what it is", the assistant sends that one image to itself — explicitly, per call |
 | **Credentials are safe** | A credential's body is **encrypted at rest** with a key derived from your master password; neither the password nor the key is ever written down. The list shows only the name you gave it; plain text never reaches a conversation or a model |
-| **Two-way sync** | Point it at a WebDAV folder or an S3 bucket: changes are pushed a few seconds after you make them, 刷新 runs a full sync (push, then pull, settled by timestamp), and emptying the recycle bin deletes the cloud copies too |
+| **Two-way sync** | Point it at a WebDAV folder or an S3 bucket: changes are pushed a few seconds after you make them, 刷新 runs a full sync (push, then pull, merged per record by `id` + timestamp), and emptying the recycle bin deletes the cloud copies too. Two machines see each other when they share one 「目录」 (blank, `/` and `inbox` are the same) |
 | **Conversation cards** | Tool results render as dsh-inbox cards — links become clickable, image markers become thumbnails drawn on your machine |
 | **Gateway quirks** | Some object-storage gateways bind each AccessKey to an "application" and identify clients by a header (refusing you with the same status a wrong password gets) — the plugin keeps **one client identity per protocol** for exactly that |
 
@@ -145,6 +145,13 @@ With a remote configured and `/inbox` as the directory:
 | `inbox/sync/attachments/<attachment id>.<ext>` | Attachment **bytes** (images, video, PDFs open as themselves) |
 | `inbox/sync/attachments/<attachment id>.meta.json` | The attachment's metadata (original name, dimensions, size, digest) |
 | A 0-byte key ending in `/` | A folder marker the cloud drive made itself, not us |
+
+### How syncing works
+
+- **Automatic**: a push goes out a few seconds after a capture or an edit (debounced — several quick saves become one push). 「刷新」 is a full sync: push → pull → re-read the list.
+- **Merging**: incoming records are settled one by one by `id` + timestamp — the newer write wins, no conflict copies. Attachment bytes come down when a record needs them.
+- **Two machines**: they see each other when both use the same 「目录」 (blank, `/` and `inbox` all mean the same directory). Records a machine left under an older directory can be pulled in by ticking **Merge other sync directories too** in the settings.
+- **Deleting**: 「删除」 only moves a record to the bin, and other devices learn it is gone instead of pushing it back; emptying the bin is what deletes the cloud copy as well.
 
 ## Privacy and security
 
