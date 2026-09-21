@@ -133,6 +133,11 @@ export const attachmentSchema = z.object({
  * attachment. What the row buys is the one comparison the merge needs — a copy
  * **at or before** this moment is dead, a copy strictly newer still wins, the
  * same way it does for a record that was never deleted.
+ *
+ * Nothing ever collects these, and that is deliberate rather than an oversight:
+ * a grave that has been pruned is a hole reopened — the copy it was holding out
+ * is exactly as old as it was, and the next pull takes it. One row per emptied
+ * record, six fields of JSON, for as long as the vault lives.
  */
 export const graveSchema = z.object({
   /** The record's own key, repeated inside the document (see `attachments`). */
