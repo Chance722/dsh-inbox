@@ -1154,6 +1154,36 @@ README 中英、`AGENTS.md`、`docs/help/dev-setup.md`、`product-decisions.md`�
 
 **验证**：`pnpm typecheck` 干净、**28 文件 275 条**测试全绿（+4）。
 
+#### M9 第二步 — 报出的两条：S3 拉取认错了自己的树；提示该报记录数（2026-09-21）
+
+用户点「刷新」后报回来一句话：`拉取完成：远端列出 78 项，新入库 0 条，跳过 78 条（自己的同步对象 0 项、比上次拉取更旧 2 项）`
+＋`⚠️ 还发现另一套同步前缀 sync、inbox/sync`，并问了两件事：**目录设置成 `/` 为什么还说两边不一致**、
+**78 项里有很多是 meta.json 这类描述文件，能不能报"实际存了多少条"**。
+
+**两条都对，而且第一条背后是一个真 bug。**
+
+1. **`/`、留空、`inbox` 本来就是同一个意思**（`syncDirectory()` 归一，`<目录>/sync` 才是同步根），所以他的设置与家里一致。
+   警告的真因是代码：`pullDropFolder` 的 S3 分支把 `settings.directory.replace(/^\//,'')` **既当列举前缀又当"自己的同步根"**，
+   于是 ① 目录是 `/` 时前缀成空串 → **列了整个桶**（78 项，把旧版写在根目录的遗留 `sync/` 也扫进来）；
+   ② 自己的根变成 `''`/`inbox` 而不是 `inbox/sync` → **每个自己的对象都被判成"别人的前缀"**
+   （所以"自己的同步对象 0 项"，而列出的两套前缀里有一套就是本机的）。WebDAV 那半边一直是对的。
+   **修法**：S3 走同一条规则——列举 `<目录>/`，自己的根用 `syncRootFor(目录)`；`run.ts` 把原始 `settings.directory` 传给 `pullS3`。
+2. **提示改成报记录数**：`PullResult` 加 `remoteRecords` / `remoteAttachments`（在已经走过的那次列表里数，零额外请求），
+   拉取那行改成「云端有 N 条记录 / M 个附件（远端共列出 K 个对象）」。一条记录至少两个对象（`.json` + `.txt`），
+   带图再加附件与 `.meta.json`，所以对象数天然是记录数的两三倍——用户的原话是「远端 78 项，可我并没有那么多东西」。
+   `messages.ts` 中英两份同步改，`describePull` 传新字段。
+
+**新增 2 条测试**（`test/webdav.test.ts`）：① WebDAV 侧把"自己的 4 个对象 / 别人的 1 个嵌套前缀 / 1 个投放文件"分类数清，
+并断言 `remoteRecords=1 / remoteAttachments=1`（`attachments/<id>.meta.json` 不算附件）；② **S3 侧**断言列举请求是
+`prefix=inbox%2F`（而不是整个桶）且自己的根是 `inbox/sync`。**验证过这两条能抓住 bug**：把修复临时改回旧写法，第二条立刻失败
+（`expected 'prefix=inbox%2F'`，实际收到 `prefix=inbox`）。
+
+**真机复验（用户自己的桶，走面板的 pull 接口）**：修前 `listed 78 / skippedSync 0 / skippedForeign 76`；
+修后 **`listed 24 / skippedSync 23 / skippedOlder 1 / skippedForeign 0 / remoteRecords 7 / remoteAttachments 3`**，
+「另一套前缀」的警告消失。知识写进 `docs/help/sync.md`（目录三种写法、数字含义、这个 bug 的来龙去脉，以及根目录那套遗留 `sync/` 可以自行删除）。
+
+**验证**：`pnpm typecheck` 干净、**29 文件 295 条**测试全绿（+2）、`pnpm build` 通过。
+
 ### M7 — 界面升级（2026-09-20，已验收）
 
 **做到了什么**（选摘，逐条过程在上面的第三十二步之前）
