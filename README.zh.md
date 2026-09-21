@@ -65,7 +65,7 @@ npx @chance722/dsh-inbox init --profile web --install-pnpm
 # 全新机器（还没跑过 dsh、没有这个 profile）多带一个 --create-profile
 npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
 
-# 更新（init 只管装和接线，重复跑不会升级；刚发布的几分钟内请写确切版本：@0.2.6）
+# 更新（init 只管装和接线，重复跑不会升级；刚发布的几分钟内请写确切版本：@0.2.7）
 dsh plugin --profile web add @chance722/dsh-inbox@latest
 ```
 
