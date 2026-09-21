@@ -130,5 +130,19 @@ dsh --profile inbox-check "调用 inbox_status 工具，把它的原始结果原
   | `pnpm dev:local` | 切回**当前仓库**：**先 `pnpm build`** 再 `dsh plugin add <仓库>`——顺序是刻意的，忘了 build 就还在跑上一次的产物 |
 
   换 profile：加环境变量，`$env:DSH_PROFILE='inbox'; pnpm dev:npm`。切完**重启 dsh**（宿主半边启动时装载；只改 `src/client` 会热更新）。
-  实测（临时 profile）：`dev:npm` → `线上包（^0.2.4）`、`dev:local` → `本仓库（D:/Workspace/dsh-inbox）`，两个方向都对。
+  实测（临时 profile 与真 `web` profile 各一次）：`dev:npm` → `线上包（^0.2.4）`、`dev:local` → `本仓库（D:/Workspace/dsh-inbox）`，两个方向都对。
+
+  **为什么 `dev:npm` 不是简单的 `dsh plugin add <包名>`（2026-09-21 踩到的两个 pnpm 行为）**：
+
+  1. **只写包名 = 什么都不做**。当前依赖是 `link:…`，而那个目录的 `package.json` 名字正是 `@chance722/dsh-inbox`，
+     pnpm 认为这个名字已经有解析结果，回一句 `Already up to date` 就结束了（实测：`dev:status` 依旧是"本仓库"）。
+     要它去 registry 取，必须给显式说明符：`@chance722/dsh-inbox@latest`。
+  2. **带 `@latest` 也可能 `EPERM`**。profile 用的是 pnpm 的 **hoisted** 链接器（profile 自己的 `pnpm-workspace.yaml` 里
+     `nodeLinker: hoisted`），而"把 link 换成 registry 包"时 pnpm 会去**仓库的** `node_modules/.pnpm/…` 里建符号链接
+     ⇒ Windows 上 `ERR_PNPM_EPERM: symlink ...`，而且失败后依赖行会被 `remove` 掉、链接却还留着（危险中间态）。
+
+  所以 `dev:npm` 的顺序是：**`dsh plugin remove` → 摘掉 `node_modules/@scope/name` 那个链接（只删链接，不动仓库）→
+  `dsh plugin add <包名>@latest`**。`dev:local` 方向不需要这套：`pnpm add <仓库路径>` 会直接把版本行改回 `link:`。
+  真机结果：`dev:npm` → 依赖 `^0.2.4`、`node_modules/@chance722/dsh-inbox` 是**实体目录**（版本 0.2.4）；
+  `dev:local` → 依赖回到 `link:D:/Workspace/dsh-inbox`、node_modules 是 **Junction**；`dsh.profile.bundles` 三行完好。
   细节：pnpm 的 `minimumReleaseAge` 会把"刚发布的版本"写进 profile 的 `pnpm-workspace.yaml` 白名单（实测装 0.2.4 时自动加了一行），所以发布完可以立刻 `dev:npm`。

@@ -1312,6 +1312,28 @@ toast 是"刚刚发生了什么"的提示，不是报告；把对象数、跳过
 
 **验证**：`pnpm typecheck` 干净、**29 文件 296 条**全绿、`pnpm build` 通过、`pnpm dev:status` 输出正确。
 
+#### M9 第九步 — `dev:npm` 之前其实没生效：两个 pnpm 行为（2026-09-21）
+
+用户报：`pnpm dev:local`、`pnpm dev:npm` 之后 `dev:status` **都显示"本仓库"**。在他的 `web` profile 上复现，两个原因叠加：
+
+1. **只给包名 ⇒ pnpm 什么都不做**。当前依赖是 `link:D:/Workspace/dsh-inbox`，而那个目录的 `package.json` 名字正是
+   `@chance722/dsh-inbox` ⇒ pnpm 认为这个名字已经有解析结果，回 `Already up to date` 就结束。
+   （我在**全新** profile 上没撞到，是因为那里没有 `link:` 可以"满足"这个名字——这也解释了为什么上一轮的临时 profile 测试是绿的。）
+2. **带 `@latest` 又会 `EPERM`**。profile 用 pnpm 的 **hoisted** 链接器，而"把 link 换成 registry 包"时 pnpm 会去
+   **仓库的** `node_modules/.pnpm/…` 里建符号链接 ⇒ Windows 上 `ERR_PNPM_EPERM: symlink …`。
+   更糟的是失败发生在 `remove` 之后：**依赖行没了、链接还在**（危险中间态，dsh 的 bundles 还指着它）。
+
+**修法**（`scripts/dev.mjs`）：`dev:npm` = `dsh plugin remove` → **摘掉 `node_modules/@scope/name` 那个链接**
+（`lstat().isSymbolicLink()` 时 `rmdirSync`，只删链接、不碰仓库）→ `dsh plugin add <包名>@latest`。
+`dev:local` 方向不需要这套。
+
+**真机验收**（用户自己的 `web` profile）：`dev:npm` → 依赖 `^0.2.4`、`node_modules/@chance722/dsh-inbox` 是**实体目录**（0.2.4）；
+`dev:local` → 依赖回到 `link:D:/Workspace/dsh-inbox`、node_modules 是 **Junction**；`dsh.profile.bundles` 三行完好。
+收尾把 profile 停在"本仓库"（他手上的 0.2.5 改动还没发布）。测试期间的中间态（依赖被删）已恢复。
+两个 pnpm 行为写进 `docs/help/dev-setup.md`。
+
+**验证**：两个方向在真 profile 上各跑一次都是对的；`pnpm typecheck` / **29 文件 296 条** / `pnpm build` 全绿。
+
 ### M7 — 界面升级（2026-09-20，已验收）
 
 **做到了什么**（选摘，逐条过程在上面的第三十二步之前）
