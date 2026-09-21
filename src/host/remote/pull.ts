@@ -98,6 +98,33 @@ function isNewer(entry: RemoteEntry, lastPullAt: string | undefined): boolean {
 }
 
 /**
+ * Whether a listed entry is a **folder** rather than a file.
+ *
+ * S3 has no folders, so a folder made in the cloud console is a placeholder
+ * object whose key ends with `/`, and a listing of `inbox/` hands that
+ * placeholder back like any other object. Two shapes count, and both used to be
+ * read as if somebody had dropped a file:
+ *
+ *   - the placeholder (`inbox/`), and its no-slash spelling — the drop folder's
+ *     own name;
+ *   - the drop folder echoed as one more entry, i.e. the very prefix we listed.
+ *
+ * Reading one is not a file read at all, and the gateway does not answer it the
+ * way a folder deserves: 数据胶囊 answers `HTTP 500 {"msg":"未知运行时异常"}`.
+ * That is what the panel showed as `failed: 1 · inbox：取对象失败：HTTP 500 …` on
+ * every refresh (measured 2026-09-21) — and because a failed entry pins the
+ * cursor, it never went away.
+ *
+ * @param path - the remote path or key.
+ * @param dropFolder - the folder being listed, e.g. `inbox`.
+ * @returns true when the entry is a folder, never a file to file away.
+ */
+function isFolder(path: string, dropFolder: string): boolean {
+  if (path.endsWith('/')) return true
+  return dropFolder.length > 0 && path.replace(/\/+$/, '') === dropFolder
+}
+
+/**
  * Pull one remote and file everything new.
  *
  * Never throws: a remote that is down must not stop the harness from starting,
@@ -122,6 +149,13 @@ export async function ingestFrom(
   elsewhere: { roots: readonly string[]; records?: number } = { roots: [] },
 ): Promise<PullResult> {
   const lastPullAt = vault.global.sync.lastPullAt
+  /**
+   * The folder this listing came from: the parent of the sync root, by the same
+   * single rule the writer and the listing use (`<目录>/sync` beside `<目录>/`).
+   * Derived here so the folder check below cannot disagree with either of them
+   * about where the drop folder is.
+   */
+  const dropFolder = syncRoot.endsWith('/sync') ? syncRoot.slice(0, -'/sync'.length) : ''
 
   let entries: RemoteEntry[]
   try {
@@ -147,6 +181,8 @@ export async function ingestFrom(
   let skippedSync = 0
   let skippedOlder = 0
   let skippedForeign = 0
+  /** Folders the listing offered. Not files, and never read as any. */
+  let skippedFolders = 0
   /**
    * What the cloud holds, in the unit a person thinks in.
    *
@@ -206,6 +242,21 @@ export async function ingestFrom(
       const name = parts[parts.length - 1] ?? ''
       if (folder === 'items' && name.endsWith('.json')) remoteRecords += 1
       else if (folder === 'attachments' && !name.endsWith('.meta.json')) remoteAttachments += 1
+      continue
+    }
+    /*
+      A folder is not a dropped file.
+
+      Checked after the two sync-tree guards on purpose: inside `…/sync/` the
+      tree itself is the reason to skip, and both reasons already land in
+      `skipped`. Out in the drop folder the difference is worth a number of its
+      own — "older than the cursor" is a fact about the cursor, "it is a folder"
+      is a fact about the entry, and only the second one explains a gateway
+      answering a read with a 500.
+    */
+    if (isFolder(entry.path, dropFolder)) {
+      skipped += 1
+      skippedFolders += 1
       continue
     }
     if (!isNewer(entry, lastPullAt)) {
@@ -282,6 +333,7 @@ export async function ingestFrom(
     skippedSync,
     skippedOlder,
     skippedForeign,
+    skippedFolders,
     remoteRecords,
     remoteAttachments,
     syncRoot,

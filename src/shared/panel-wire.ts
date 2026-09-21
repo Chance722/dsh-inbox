@@ -239,6 +239,18 @@ export interface PullResult {
   /** How many of {@link skipped} were older than the last pull's cursor. */
   skippedOlder?: number
   /**
+   * How many of {@link skipped} were **folders**, not files.
+   *
+   * S3 has no folders, so a folder the user made in the cloud console is a
+   * placeholder object whose key ends with `/` — and the listing hands the drop
+   * folder's own placeholder back like any other object. Reading one is not a
+   * file read: 数据胶囊 answers `HTTP 500 {"msg":"未知运行时异常"}`, which the
+   * panel showed as `失败 1：inbox：取对象失败：HTTP 500 …` on every refresh,
+   * because a failed entry pins the pull cursor (measured 2026-09-21). They are
+   * skipped by shape now; the count is here for whoever is debugging a listing.
+   */
+  skippedFolders?: number
+  /**
    * How many of {@link skipped} sat under a `…/sync/` prefix that is **not**
    * ours — another machine syncing under a different directory.
    */

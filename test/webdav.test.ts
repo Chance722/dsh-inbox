@@ -464,6 +464,117 @@ describe('pulling', () => {
     expect(result.reason).toContain('shot.png')
   })
 
+  it('skips a folder the gateway lists among the files', async () => {
+    /*
+      Measured on the real bucket (2026-09-21): the pull of `inbox/` listed 39
+      objects — 38 of them this machine's own `inbox/sync/…` uploads, and the
+      last one the drop folder itself. Reading that one is not a file read, and
+      the gateway answers `HTTP 500 {"msg":"未知运行时异常","code":500}`, so every
+      refresh ended in `失败 1：inbox：取对象失败：HTTP 500 …`. Because a failed
+      entry pins the pull cursor, the next refresh produced the same line.
+
+      Both spellings the gateway can use are covered: the folder's own
+      placeholder (`inbox/`, and a nested `inbox/sub/`) and the bare name.
+    */
+    const fake = server({
+      // The first entry is the drop folder's own placeholder, which the WebDAV
+      // parser already drops; `inbox/sub/` is the shape that reaches the ingest.
+      listing: listingOf(['inbox/', 'inbox/sub/', 'inbox/note.txt']),
+    })
+    const asked: string[] = []
+    const guarded: FetchLike = async (url, init) => {
+      asked.push(`${init.method} ${url}`)
+      // What a folder read returns when we do ask. It must never be asked.
+      if (url.endsWith('/')) {
+        return {
+          ok: false,
+          status: 500,
+          text: async () => '{"msg":"未知运行时异常","code":500}',
+          arrayBuffer: async () => new ArrayBuffer(0),
+        }
+      }
+      return fake.fetch(url, init)
+    }
+
+    const result = await pullRemote(vault, { baseUrl: 'https://data.cstcloud.cn/dav' }, {
+      fetch: guarded,
+      attachments: store as unknown as AttachmentStore,
+    })
+
+    expect(asked.some((call) => call.endsWith('/'))).toBe(false)
+    expect(result).toMatchObject({
+      status: 'ok',
+      listed: 2,
+      pulled: 1,
+      failed: 0,
+      skipped: 1,
+      skippedFolders: 1,
+    })
+    expect(vault.list().map((item) => item.kind)).toEqual(['link'])
+  })
+
+  it('skips an S3 listing entry that is the drop folder, or a folder marker', async () => {
+    /*
+      The S3 shape of the same bug. A listing scoped to `inbox/` can carry the
+      folder's placeholder object (a key ending in `/`) and can echo the listed
+      prefix itself; both are folders, neither is a dropped file, and 数据胶囊
+      answers a GET on one with `HTTP 500 {"msg":"未知运行时异常"}`.
+    */
+    const folderListing = `<?xml version="1.0"?>
+<ListBucketResult>
+  <Contents><Key>inbox/</Key><Size>0</Size></Contents>
+  <Contents><Key>inbox</Key><Size>0</Size></Contents>
+  <Contents><Key>inbox/note.txt</Key><LastModified>2026-09-21T06:00:00.000Z</LastModified><Size>24</Size></Contents>
+</ListBucketResult>`
+    const asked: string[] = []
+    const result = await pullS3(
+      vault,
+      { endpoint: 'https://s3.cstcloud.cn', bucket: 'duoyu-inbox' },
+      '/',
+      {
+        fetch: async (url) => {
+          asked.push(url)
+          if (url.includes('delimiter=%2F')) {
+            return { ok: true, status: 200, text: async () => '', arrayBuffer: async () => new ArrayBuffer(0) }
+          }
+          if (url.includes('prefix=inbox%2F')) {
+            return { ok: true, status: 200, text: async () => folderListing, arrayBuffer: async () => new ArrayBuffer(0) }
+          }
+          if (url.endsWith('/')) {
+            return {
+              ok: false,
+              status: 500,
+              text: async () => '{"msg":"未知运行时异常","code":500}',
+              arrayBuffer: async () => new ArrayBuffer(0),
+            }
+          }
+          const body = new TextEncoder().encode('https://mp.weixin.qq.com/s/abc')
+          return {
+            ok: true,
+            status: 200,
+            text: async () => '',
+            arrayBuffer: async () =>
+              body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer,
+            headers: { get: () => 'text/plain' },
+          }
+        },
+        accessKeyId: 'AKIDEXAMPLE',
+        accessKeySecret: 'secret-key',
+        attachments: store as unknown as AttachmentStore,
+      },
+    )
+
+    expect(asked.some((url) => url.endsWith('/'))).toBe(false)
+    expect(result).toMatchObject({
+      status: 'ok',
+      listed: 3,
+      pulled: 1,
+      failed: 0,
+      skipped: 2,
+      skippedFolders: 2,
+    })
+  })
+
   it('merges a re-pulled file instead of storing it twice', async () => {
     const fake = server()
     await pullRemote(vault, { baseUrl: 'https://data.cstcloud.cn/dav' }, {
