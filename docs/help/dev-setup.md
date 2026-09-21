@@ -58,6 +58,8 @@ dsh --profile inbox --no-open --port 3102
 
   实测：这条足以让微信吐真文章（真文章的 `<title>` 依然为空，标题只在 `og:title` 里，所以两件事缺一不可）。`--dump-config | Select-String web-fetch-http -Context 0,4` 可以确认 patch 生效。注意这是**整个 profile 的抓取身份**，模型自己的 web 工具也一起变了。
 
+  **这条 UA 不是通用解**（2026-09-21 实测）：bilibili 的风控对 `Mozilla/5.0 (compatible; ...)` 这个形状几乎必拒（8/8 回「验证码_哔哩哔哩」页；浏览器形状 0/8 被拒、harness 默认 UA 5/8 被拒），而那种拒绝页**带标题**，会被当成链接的名字存进 `linkTitle`。站点拒绝的两种长相、实测矩阵与复查命令见 `docs/help/link-title-fetch.md`。
+
 ## 验证模型能调到工具（headless 路线）
 
 **2026-09-20 起用这个配方**（它复现的正是用户真实的组合：插件既是 profile bundle、又由会话 preset 带进来，也就是那个
