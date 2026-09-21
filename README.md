@@ -30,7 +30,7 @@ Everything lands on your machine, and the model only sees a record when you ask 
 
 ## Screenshots
 
-![The panel: filters on the left, list in the middle, detail on the right](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/panel.png)
+![The panel: filters on the left, list in the middle, detail on the right](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/panel.png?v=1)
 
 ## Two ways to use it
 

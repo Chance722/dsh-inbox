@@ -30,7 +30,7 @@
 
 ## 界面
 
-![面板：左侧筛选、中间列表、右侧详情](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/panel.png)
+![面板：左侧筛选、中间列表、右侧详情](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/panel.png?v=1)
 
 ## 两种用法
 
