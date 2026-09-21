@@ -211,6 +211,7 @@ export const zh = {
   'sync.detailPulled': '拉取 {count} 条 · 云端 {records} 条记录 / {files} 个附件',
   'sync.detailAdded': '（其中 {count} 条是新记录）',
   'sync.detailDeleted': '（其中 {count} 条是删除，会进回收站）',
+  'sync.detailPurged': '（清空过 {count} 条：云端的旧副本没有拉回来）',
   'sync.pullForeignSync':
     ' · ⚠️ 另有 {records} 条记录在别的同步目录：{roots}',
   'sync.detailForeign': ' · ⚠️ 别的同步目录：{roots}（{records} 条记录；本机 {ours}）',
@@ -498,6 +499,7 @@ export const en: Dictionary = {
   'sync.detailPulled': 'pulled {count} · the cloud holds {records} records / {files} attachments',
   'sync.detailAdded': ' ({count} of them new)',
   'sync.detailDeleted': ' ({count} of them deletions — they land in the recycle bin)',
+  'sync.detailPurged': ' ({count} emptied out of the bin: their older cloud copies stayed out)',
   'sync.pullForeignSync':
     ' · ⚠️ {records} records live in another sync directory: {roots}',
   'sync.detailForeign': ' · ⚠️ another sync directory: {roots} ({records} records; ours is {ours})',

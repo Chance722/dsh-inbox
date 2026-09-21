@@ -68,6 +68,16 @@ export interface MergeOutcome {
    * 2026-09-21, after merging an abandoned tree whose copies mostly overlapped).
    */
   added: number
+  /**
+   * Copies of records this vault **emptied out of the bin** — left alone, on
+   * purpose, because a purge is not a deletion to be argued with.
+   *
+   * Counted apart from {@link kept}: "the cloud has a copy you already have" and
+   * "the cloud has a copy of something you threw away" are different sentences,
+   * and only the second one answers "so why did the emptied records stay empty
+   * this time?" (2026-09-21).
+   */
+  purged: number
   /** Records the remote had and this machine already had, newer or equal. */
   kept: number
   /** Attachment objects pulled down (bytes plus their row). */
@@ -143,6 +153,36 @@ function wins(remote: Item, local: Item | undefined): boolean {
 }
 
 /**
+ * Whether a copy of a record nobody here has any more is new enough to survive
+ * the grave its purge left behind.
+ *
+ * This is the one place where "no local copy" is not automatically "take it".
+ * Emptying the recycle bin is the user saying *gone*, and the copy that shows up
+ * afterwards is not a conflict — it is the same record, older, filed by
+ * machinery (an older `sync/` tree in the same bucket, a device that has not
+ * pulled the tombstone) that has no idea the user threw it away. Without this
+ * the startup pull put thirteen of them back into the bin on every restart
+ * (measured 2026-09-21).
+ *
+ * The comparison has the same shape as `wins`, deliberately: strictly newer
+ * than the purge wins, everything else is dead. So another device that
+ * genuinely *edits* the record after the purge still brings it back — that is a
+ * real change, and it is settled by `updatedAt` like every other conflict.
+ *
+ * @param vault - the vault that holds the graves.
+ * @param remote - the copy the cloud is offering.
+ * @returns true when the copy is new enough to be taken.
+ */
+function newerThanPurge(vault: Vault, remote: Item): boolean {
+  const purged = vault.purgedAt(remote.id)
+  if (purged === undefined) return true
+  // An unreadable timestamp is not "newer": `wins` is equally unwilling to
+  // settle a comparison it cannot make, and the state it would settle into is
+  // "the record the user emptied is back".
+  return Date.parse(remote.updatedAt) > Date.parse(purged)
+}
+
+/**
  * Pull other devices' records out of `sync/` and settle them against the local
  * vault, then fetch whatever attachment bytes those records need.
  *
@@ -166,6 +206,7 @@ export async function mergeOnce(
   let merged = 0
   let added = 0
   let deletions = 0
+  let purged = 0
   let kept = 0
   let attachments = 0
 
@@ -173,7 +214,15 @@ export async function mergeOnce(
   try {
     objects = await tree.list(`${prefix}/items/`)
   } catch (error) {
-    return { merged: 0, added: 0, deletions: 0, kept: 0, attachments: 0, failures: [`列远端同步目录失败：${reasonOf(error)}`] }
+    return {
+      merged: 0,
+      added: 0,
+      deletions: 0,
+      purged: 0,
+      kept: 0,
+      attachments: 0,
+      failures: [`列远端同步目录失败：${reasonOf(error)}`],
+    }
   }
 
   /** Attachment rows this merge brought in, to fetch bytes for afterwards. */
@@ -201,6 +250,10 @@ export async function mergeOnce(
         continue
       }
       const local = vault.get(remote.id)
+      if (local === undefined && !newerThanPurge(vault, remote)) {
+        purged += 1
+        continue
+      }
       if (!wins(remote, local)) {
         kept += 1
         continue
@@ -249,7 +302,7 @@ export async function mergeOnce(
     }
   }
 
-  return { merged, added, deletions, kept, attachments, failures }
+  return { merged, added, deletions, purged, kept, attachments, failures }
 }
 
 function extensionOfName(path: string): string {
@@ -292,7 +345,9 @@ export async function mergeRemote(
       settings.protocol === 's3'
         ? await s3Tree(ctx, settings)
         : await webdavTree(ctx, settings)
-    if (tree === undefined) return { merged: 0, added: 0, deletions: 0, kept: 0, attachments: 0, failures: [] }
+    if (tree === undefined) {
+      return { merged: 0, added: 0, deletions: 0, purged: 0, kept: 0, attachments: 0, failures: [] }
+    }
     const admit = admitWith(attachments)
     const outcome = await mergeOnce(vault, tree, prefix, admit)
     for (const root of extraRoots) {
@@ -301,13 +356,22 @@ export async function mergeRemote(
       outcome.merged += extra.merged
       outcome.added += extra.added
       outcome.deletions += extra.deletions
+      outcome.purged += extra.purged
       outcome.kept += extra.kept
       outcome.attachments += extra.attachments
       outcome.failures.push(...extra.failures)
     }
     return outcome
   } catch (error) {
-    return { merged: 0, added: 0, deletions: 0, kept: 0, attachments: 0, failures: [reasonOf(error)] }
+    return {
+      merged: 0,
+      added: 0,
+      deletions: 0,
+      purged: 0,
+      kept: 0,
+      attachments: 0,
+      failures: [reasonOf(error)],
+    }
   }
 }
 

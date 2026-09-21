@@ -156,6 +156,10 @@ export class Vault {
     return this.domain.table('attachments')
   }
 
+  private get graves() {
+    return this.domain.table('graves')
+  }
+
   /** Where the key state stands; what the panel shows and the tools consult. */
   get lockState(): VaultLockState {
     return { configured: this.global.master !== undefined, unlocked: this.key !== undefined }
@@ -444,16 +448,26 @@ export class Vault {
   }
 
   /**
-   * Delete one record for good, together with its attachment rows.
+   * Delete one record for good, together with its attachment rows, and leave a
+   * grave behind so nothing that is still in the cloud can file it again.
    *
    * The bytes behind an attachment live in dsh's own store, which never deletes
    * automatically — emptying the recycle bin drops our references, not their
    * objects. A row another record still references is left alone.
    *
+   * The grave is the other half of that sentence, and it is why this is not
+   * called `remove` any more: deleting the row really does take this machine's
+   * copy away, but a copy under a *different* `sync/` tree in the same bucket
+   * survives the purge of our own tree (`../remote/remove.ts` only ever deletes
+   * under this vault's root), and the merge has no local row to outrank it with.
+   * Measured 2026-09-21: thirteen emptied tombstones came back into the bin on
+   * every `dsh` restart. The grave is what makes "gone" stick; it holds the id
+   * and the moment, no content.
+   *
    * @param id - record key.
    * @returns whether the record existed.
    */
-  async remove(id: string): Promise<boolean> {
+  async purge(id: string): Promise<boolean> {
     const item = this.items.get(id)
     if (item === undefined) return false
 
@@ -465,7 +479,19 @@ export class Vault {
     for (const attachmentId of item.attachmentIds) {
       if (!stillReferenced.has(attachmentId)) await this.attachments.delete(attachmentId)
     }
-    return this.items.delete(id)
+    await this.items.delete(id)
+    await this.graves.put(id, { id, purgedAt: new Date().toISOString() })
+    return true
+  }
+
+  /**
+   * When this id was emptied out of the bin, if it ever was.
+   *
+   * The merge asks this before taking a copy of a record this vault does not
+   * have (see `newerThanPurge` in `../remote/merge.ts`).
+   */
+  purgedAt(id: string): string | undefined {
+    return this.graves.get(id)?.purgedAt
   }
 
   /**

@@ -4,7 +4,7 @@
  * also pins the interface this plugin actually depends on at runtime.
  */
 
-import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -73,6 +73,40 @@ describe('vault over the real storage domain', () => {
     expect(vault.get(created.id)?.text).toBe('secretid=AKIDexample')
   })
 
+  it('opens a vault the previous domain version wrote', async () => {
+    /*
+      The version bump that added `graves` must not cost anybody their vault: a
+      version-7 document is still one of ours, read as-is. Written by hand here
+      because that is exactly what upgrade day looks like — the new code opening
+      documents the old code left behind.
+    */
+    const id = '99999999-9999-4999-8999-999999999999'
+    await vault.close()
+    const dir = join(root, 'dsh_inbox', 'items')
+    await mkdir(dir, { recursive: true })
+    await writeFile(
+      join(dir, `${id}.json`),
+      JSON.stringify({
+        version: 7,
+        record: {
+          id,
+          kind: 'text',
+          category: 'other',
+          source: 'panel',
+          createdAt: '2026-09-19T06:00:00.000Z',
+          updatedAt: '2026-09-19T06:00:00.000Z',
+          text: '版本 7 写下的记录',
+          tags: [],
+          attachmentIds: [],
+        },
+      }),
+    )
+
+    vault = await Vault.open(ctx)
+    expect(vault.get(id)?.text).toBe('版本 7 写下的记录')
+    expect(vault.purgedAt(id)).toBeUndefined()
+  })
+
   it('patches classification and the 待看 flag without dropping the other fields', async () => {
     const created = await vault.create({
       kind: 'image',
@@ -98,6 +132,35 @@ describe('vault over the real storage domain', () => {
     await vault.restore(created.id)
     expect(vault.list().map((item) => item.id)).toEqual([created.id])
     expect(vault.get(created.id)?.deletedAt).toBeUndefined()
+  })
+
+  it('empties a record out of the bin and leaves only a grave behind', async () => {
+    const created = await vault.create({
+      kind: 'text',
+      category: 'other',
+      source: 'panel',
+      text: '清掉的那条',
+    })
+    await vault.softDelete(created.id)
+
+    expect(await vault.purge(created.id)).toBe(true)
+    expect(vault.get(created.id)).toBeUndefined()
+    expect(vault.getBin()).toHaveLength(0)
+
+    /*
+      What is on disk matters as much as what is in memory: the record's own
+      document is really gone (that is "emptied", not "deleted"), and the only
+      thing left of it is an id and a moment — the grave that stops a copy in
+      another sync tree from filing it back in.
+    */
+    const documents = await readdir(join(root, 'dsh_inbox'), { recursive: true })
+    expect(documents).not.toContain(join('items', `${created.id}.json`))
+    expect(documents).toContain(join('graves', `${created.id}.json`))
+    expect(vault.purgedAt(created.id)).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+
+    // Nothing to empty is a no-op, and it does not mint a grave out of nowhere.
+    expect(await vault.purge(created.id)).toBe(false)
+    expect(vault.purgedAt('11111111-1111-4111-8111-111111111111')).toBeUndefined()
   })
 
   it('keeps attachment metadata and the global slot', async () => {

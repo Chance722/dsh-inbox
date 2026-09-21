@@ -119,6 +119,29 @@ export const attachmentSchema = z.object({
 })
 
 /**
+ * One grave: the id the user emptied out of the recycle bin, and when.
+ *
+ * Emptying the bin is not "deleted" — it is *gone*, and a copy of the record
+ * living somewhere else (another `sync/` tree in the same bucket, a device that
+ * has not pulled the tombstone yet) must not be able to file it back in.
+ * `updatedAt` cannot express that on its own: the merge compares the incoming
+ * copy against the local one, and after a purge there is no local row at all,
+ * so any copy won. That is measured, not theoretical — thirteen tombstones came
+ * back into the bin on every restart (2026-09-21).
+ *
+ * It carries an id and a time and nothing else: no text, no note, no
+ * attachment. What the row buys is the one comparison the merge needs — a copy
+ * **at or before** this moment is dead, a copy strictly newer still wins, the
+ * same way it does for a record that was never deleted.
+ */
+export const graveSchema = z.object({
+  /** The record's own key, repeated inside the document (see `attachments`). */
+  id: z.string().min(1),
+  /** When the user emptied it out of the bin. */
+  purgedAt: timestamp,
+})
+
+/**
  * One global slot per domain. Sync state lives here because it belongs to the
  * vault as a whole, not to any item; M6 fills it in.
  */
@@ -160,6 +183,7 @@ export const vaultGlobalSchema = z.object({
 
 export type Item = z.infer<typeof itemSchema>
 export type Attachment = z.infer<typeof attachmentSchema>
+export type Grave = z.infer<typeof graveSchema>
 export type VaultGlobal = z.infer<typeof vaultGlobalSchema>
 
 /**
@@ -187,9 +211,17 @@ export const vaultSpec = defineDomain({
    * Version 7 adds `sync.lastPushAt`: the cursor that keeps a push to "what
    * changed since last time" instead of re-uploading the vault on every pass.
    * A `global` field, so no record shape changes at all.
+   *
+   * Version 8 adds the `graves` table: one row per record the user emptied out
+   * of the bin. A purge leaves no local row, so the merge had nothing to
+   * outrank the cloud's copy with — with 「同时合并别的同步目录」 on, the older
+   * tree in the same bucket filed all thirteen of them back into the bin on
+   * every restart (measured 2026-09-21). A new table, so no record shape
+   * changes; an older vault simply has no graves, and there is nothing to
+   * protect until the next purge.
    */
-  version: 7,
-  compatibleVersions: [1, 2, 3, 4, 5, 6],
+  version: 8,
+  compatibleVersions: [1, 2, 3, 4, 5, 6, 7],
   layout: 'per-record',
   global: {
     schema: vaultGlobalSchema,
@@ -198,6 +230,7 @@ export const vaultSpec = defineDomain({
   tables: {
     items: domainTable<string, Item>(itemSchema),
     attachments: domainTable<string, Attachment>(attachmentSchema),
+    graves: domainTable<string, Grave>(graveSchema),
   },
 })
 

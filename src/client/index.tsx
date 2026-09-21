@@ -1878,6 +1878,16 @@ function describePull(result: PullResult): string {
       ? ''
       : t('sync.detailDeleted', { count: result.deletions ?? 0 })
   /*
+    And the mirror image of that sentence: records the user emptied out of the
+    bin, whose copies in another sync tree were offered and refused. Without a
+    line for it, the only evidence is a bin that stays empty — which is what the
+    user asked for, and therefore invisible.
+  */
+  const purged =
+    (result.purged ?? 0) === 0
+      ? ''
+      : t('sync.detailPurged', { count: result.purged ?? 0 })
+  /*
     No skip breakdown.
 
     "跳过 24（本机上传的 23、上次已收过的 1）" needed explaining twice, and both
@@ -1888,7 +1898,7 @@ function describePull(result: PullResult): string {
     The tooltip is where the full warning lives: it can name this machine's own
     root next to the others, which is the comparison the reader is making.
   */
-  return `${head}${gained}${deleted}${warningsOf(result, true)}`
+  return `${head}${gained}${deleted}${purged}${warningsOf(result, true)}`
 }
 
 /**

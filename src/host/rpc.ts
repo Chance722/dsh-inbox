@@ -510,6 +510,12 @@ async function handlePurge(
     local removal uses, so a file two records share survives until the last of
     them is emptied. And it is the row, not the id, because the object's name
     carries an extension derived from the file's own name and media type.
+
+    The remote half only reaches this vault's own `sync/` tree. That is not a
+    gap to be closed by sweeping: another tree in the same bucket may belong to
+    someone else, and deleting objects there is irreversible. What makes the
+    purge stick instead is the grave `vault.purge` leaves for each id — see its
+    doc comment, and `docs/help/sync.md`.
   */
   const doomedAttachments = new Map<string, Attachment>()
   for (const item of bin) {
@@ -520,7 +526,7 @@ async function handlePurge(
   }
   let removed = 0
   for (const item of bin) {
-    if (await vault.remove(item.id)) removed += 1
+    if (await vault.purge(item.id)) removed += 1
   }
   const stillReferenced = new Set(
     vault.list({ includeDeleted: true }).flatMap((item) => [...item.attachmentIds]),

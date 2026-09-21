@@ -109,8 +109,10 @@ export interface WebdavSettings {
    * cloud drive": a machine that used to sync somewhere else leaves its records
    * behind, and they come back (asked 2026-09-21, 19 records). Merging settles
    * per record by `id` + `updatedAt`, so an older tree cannot overwrite a newer
-   * copy — but it *can* bring back a record that was purged here, because a
-   * purge leaves nothing local to outrank it.
+   * copy — and a record the user **emptied out of the bin** stays gone: the
+   * grave that `purge` leaves is the thing such a copy cannot outrank (it used
+   * to, and thirteen emptied tombstones came back into the bin on every restart
+   * — measured 2026-09-21).
    */
   adoptForeignRoots: boolean
   username: string
@@ -202,6 +204,15 @@ export interface PullResult {
   merged?: number
   /** How many of {@link merged} were ids this vault did not have at all. */
   added?: number
+  /**
+   * Copies the cloud still holds of records this vault **emptied out of the bin**.
+   *
+   * Not taken in, on purpose: `purge` leaves a grave, and a copy that is not
+   * *newer* than it does not come back (see `graves` in `src/host/vault/spec.ts`).
+   * Reported because a reader who just emptied the bin is owed the sight of the
+   * older tree trying and being refused.
+   */
+  purged?: number
   /** How many of {@link merged} were deletions (they land in the recycle bin). */
   deletions?: number
   /** Attachment objects the merge had to fetch and admit locally. */

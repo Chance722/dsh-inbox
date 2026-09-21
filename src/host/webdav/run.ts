@@ -115,6 +115,7 @@ async function withMerge(
     merged: outcome.merged,
     added: outcome.added,
     deletions: outcome.deletions,
+    ...(outcome.purged === 0 ? {} : { purged: outcome.purged }),
     kept: outcome.kept,
     attachments: outcome.attachments,
     failed: pulled.failed + outcome.failures.length,

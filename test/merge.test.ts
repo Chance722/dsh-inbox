@@ -174,6 +174,64 @@ describe('mergeOnce', () => {
     expect(outcome).toMatchObject({ merged: 1, added: 1, deletions: 1 })
   })
 
+  it('keeps an emptied record out, even when another tree still holds a copy', async () => {
+    /*
+      The bug this pins (reported 2026-09-21): empty the bin, watch it stay
+      empty through a page reload, restart dsh — and thirteen tombstones are
+      back in the bin. The copy was never in this vault's own tree; an older
+      `sync/` tree in the same bucket still held it, and with 「同时合并别的
+      同步目录」 on, the startup pull offered it again. Nothing local outranked
+      it, because emptying the bin leaves no row at all — so the grave the
+      purge writes is what has to answer.
+    */
+    const id = '77777777-7777-4777-8777-777777777777'
+    await vault.import({
+      id,
+      kind: 'text',
+      category: 'other',
+      source: 'panel',
+      createdAt: '2026-09-19T06:00:00.000Z',
+      updatedAt: '2026-09-19T06:00:00.000Z',
+      text: '已经清空的那条',
+      tags: [],
+      attachmentIds: [],
+    })
+    await vault.softDelete(id)
+    await vault.purge(id)
+
+    const stale = tree({
+      [`sync/items/${id}.json`]: packed({
+        id,
+        updatedAt: '2026-09-19T06:00:00.000Z',
+        text: '已经清空的那条',
+        deletedAt: '2026-09-19T06:00:00.000Z',
+      }),
+    })
+
+    const refused = await mergeOnce(vault, stale, 'sync', admit)
+    expect(refused).toMatchObject({ merged: 0, purged: 1 })
+    expect(vault.get(id)).toBeUndefined()
+    expect(vault.getBin()).toHaveLength(0)
+
+    // Asking again changes nothing: a grave is not consumed by being read.
+    expect(await mergeOnce(vault, stale, 'sync', admit)).toMatchObject({ merged: 0, purged: 1 })
+
+    /*
+      The other side of the rule, so the grave cannot quietly turn into "this id
+      is banned forever": a copy that is genuinely *newer* than the purge is a
+      change, and it wins — the same way it would for a record nobody deleted.
+    */
+    const edited = tree({
+      [`sync/items/${id}.json`]: packed({
+        id,
+        updatedAt: '2099-01-01T00:00:00.000Z',
+        text: '清空之后又在另一台设备上改过',
+      }),
+    })
+    expect(await mergeOnce(vault, edited, 'sync', admit)).toMatchObject({ merged: 1, purged: 0 })
+    expect(vault.get(id)?.text).toBe('清空之后又在另一台设备上改过')
+  })
+
   it('fetches the attachments an imported record needs, row and all', async () => {
     const id = '44444444-4444-4444-8444-444444444444'
     const attachmentId = '55555555-5555-4555-8555-555555555555'
