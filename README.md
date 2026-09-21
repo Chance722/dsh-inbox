@@ -6,45 +6,41 @@ A **local inbox plugin for [DeepSeek Harness](https://github.com/deepseek-ai/dee
 
 English | [中文](README.zh.md)
 
-## The problem it solves
+## What it is
 
-The things you copy during a day — a link to read later, a screenshot, a snippet of config, an account and password — end up scattered across clipboard history, bookmark folders and temporary files. When you need them you cannot find them, and you cannot remember where they went.
+The things you copy in a day — a link to read later, a screenshot, a config snippet, an account and password — end up scattered across clipboard history, bookmarks and temp files. dsh-inbox keeps them in one local vault: paste to file, automatic classification, browse and search from the sidebar — and instead of digging through it yourself, ask your assistant "what was that article about caching I saved last month?".
 
-**dsh-inbox puts them in one local vault**: paste to file, automatic classification, browse and search from the sidebar — and instead of digging through it yourself, just ask your assistant "what was that article about caching I saved last month?".
-
-It works for you alone: everything lands on your machine, and the model only sees a record when you ask it to look.
+Everything lands on your machine, and the model only sees a record when you ask it to look.
 
 ## Features
 
 | Feature | What it does |
 |---|---|
 | **Two ways in** | `/inbox <text or link>` in the composer (attach images to carry them along), or paste / drop / pick a file in the panel |
-| **Automatic classification** | Links are filed by platform and media type (Bilibili/YouTube videos, WeChat/掘金/Zhihu articles — 60-odd sites), text by credential shape, images get a 疑似证件 tag when they have card proportions; what the rules cannot decide goes to the model, with a daily cap |
-| **Panel** | Filter by watch-later / category / tag, search across title, text, link and note, switch between two list densities; the detail pane edits name, category, note and tags, flags watch-later, deletes and restores; it follows dsh's dark and light themes **and its language** (switch dsh to English under 设置 → 常规 and the whole panel, dock, cards and manual come with you) |
-| **Everything has a name** | A link is named by the headline of the page it points at (no model tokens spent), a photo or file by the name it arrived with, and the name you type always wins. A page that will not be read — an anti-bot page, a dead link — leaves the address itself as the name rather than a guess. The row shows the name; the glyph on the left says what kind of thing it is (a key for a credential) |
-| **Who judged the category** | A coloured badge next to the category: 规则判定 (grey, the local rules) / 模型判定 (violet, the capped model pass) / 手动判定 (blue, your own choice — nothing overwrites it later) |
-| **Ask in conversation** | Ask for 收件箱 / 仓库 / inbox and the assistant searches by words, category, tag, watch-later flag or kind (ten at a time plus a count of the rest, with thumbnails right in the results), then opens one by id (text up to 1000 characters, link, note, tags, attachment facts). To look at one yourself: expand 「N 次工具调用」 above the answer and press 打开 ↗ — the 仓库 tab opens on that record |
-| **Looking at a picture** | Image bytes stay out of the conversation by default; when you ask "look at this picture and tell me what it is", the assistant sends that one image to itself — explicitly, per call |
-| **Credentials are safe** | A credential's body is **encrypted at rest** with a key derived from your master password; neither the password nor the key is ever written down. The list shows only the name you gave it; plain text never reaches a conversation or a model |
-| **Two-way sync** | Point it at a WebDAV folder or an S3 bucket: changes are pushed a few seconds after you make them, 刷新 runs a full sync (push, then pull, merged per record by `id` + timestamp), and emptying the recycle bin deletes the cloud copies too. Two machines see each other when they share one 「目录」 (blank, `/` and `inbox` are the same) |
-| **Conversation cards** | Tool results render as dsh-inbox cards — links become clickable, image markers become thumbnails drawn on your machine |
-| **Gateway quirks** | Some object-storage gateways bind each AccessKey to an "application" and identify clients by a header (refusing you with the same status a wrong password gets) — the plugin keeps **one client identity per protocol** for exactly that |
+| **Automatic classification** | Links by platform and media type (60-odd sites: Bilibili, YouTube, WeChat, 掘金, Zhihu…), text by credential shape, images get a 疑似证件 tag at card proportions; the rest goes to the model, with a daily cap |
+| **Panel** | Filter by watch-later / category / tag, search title, text, link and note, two list densities; the detail pane edits name, category, note and tags, flags watch-later, deletes and restores — and it follows dsh's theme **and language** |
+| **Every record has a name** | A link takes the page's own headline (no model tokens), a photo or file its file name, and the name you type always wins. A page that will not be read — an anti-bot page, a dead link — leaves the address as the name rather than a guess |
+| **Who judged the category** | A coloured badge: 规则判定 (local rules) / 模型判定 (the capped model pass) / 手动判定 (yours — nothing overwrites it later) |
+| **Ask in conversation** | Ask for 收件箱 / 仓库 / inbox and the assistant searches by words, category, tag, watch-later flag or kind (ten at a time plus a count, thumbnails inline) and opens one by id (text up to 1000 characters, link, note, tags, attachments). 「打开 ↗」 under an answer jumps to that record in the 仓库 tab |
+| **Looking at a picture** | Image bytes stay out of the conversation; ask the assistant to look at one and that single image is sent — explicitly, per call |
+| **Credentials are safe** | The body is encrypted at rest, with a key derived from your master password — neither is ever written down. The list shows only the name you gave it, and plain text never reaches a conversation or a model |
+| **Two-way sync** | Point it at a WebDAV folder or an S3 bucket: changes push a few seconds later, 刷新 runs a full push-then-pull merged per record by `id` + timestamp, and emptying the recycle bin deletes the cloud copies too. Two machines see each other when they share one 「目录」 |
+| **Conversation cards** | Tool results render as dsh-inbox cards — links clickable, image markers drawn as thumbnails on your machine |
+| **Gateway quirks** | Some object-storage gateways bind each AccessKey to an "application" and identify clients by a header — so the plugin keeps **one client identity per protocol** |
 
 ## Screenshots
 
 ![The panel: filters on the left, list in the middle, detail on the right](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/panel.png)
 
-It all lives inside dsh: the left rail gains an **Inbox** entry that opens a full-page vault, and the panel's top right has 设置 (settings) and 使用手册 (a short manual).
-
 ## Two ways to use it
 
 **① File something from the conversation**
 
-Type `/inbox` in the composer followed by text or a link, and attach images directly — **this command never reaches the model**, it only goes into the vault. It is the way to file credentials and throwaway links that have no business appearing in a conversation.
+`/inbox` in the composer, followed by text or a link, with images attached right there — **this never reaches the model**, it only goes into the vault. That is the way to file credentials and throwaway links.
 
 **② Ask for it later**
 
-No command needed, just talk:
+No command, just talk:
 
 > which of my saved images is the mini-program code?
 >
@@ -54,9 +50,9 @@ No command needed, just talk:
 
 Two questions in the same conversation, on a real machine:
 
-![Searching by topic: the one match first, then all seven records — the two credentials show only the names their owner gave them, never the plain text](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/chat1.png)
+![Searching by topic — the two credentials show only their names](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/chat1.png)
 
-![Asking for what is flagged watch-later: that one record comes back with its link and the time it was filed](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/chat2.png)
+![Asking for what is flagged watch-later](https://raw.githubusercontent.com/Chance722/dsh-inbox/main/docs/assets/chat2.png)
 
 ## Install
 
@@ -110,7 +106,7 @@ rm -r ~/.dsh/profiles/<that profile>
 
 ## Where things live
 
-All of it on your machine (`%DSH_HOME%`, i.e. `C:\Users\<you>\.dsh` on Windows):
+Everything under `%DSH_HOME%` (`C:\Users\<you>\.dsh` on Windows):
 
 | What | Where |
 |---|---|
@@ -135,20 +131,20 @@ With a remote configured and `/inbox` as the directory:
 
 ### How syncing works
 
-- **Automatic**: a push goes out a few seconds after a capture or an edit (debounced — several quick saves become one push). 「刷新」 is a full sync: push → pull → re-read the list.
-- **Merging**: incoming records are settled one by one by `id` + timestamp — the newer write wins, no conflict copies. Attachment bytes come down when a record needs them.
-- **Two machines**: they see each other when both use the same 「目录」 (blank, `/` and `inbox` all mean the same directory). Records a machine left under an older directory can be pulled in by ticking **Merge other sync directories too** in the settings.
-- **Deleting**: 「删除」 only moves a record to the bin, and other devices learn it is gone instead of pushing it back; emptying the bin is what deletes the cloud copy as well.
+- **Automatic**: a push seconds after a capture or edit (debounced — several quick saves are one push); 「刷新」 is a full sync: push → pull → re-read the list.
+- **Merging**: per `id` + timestamp, the newer write wins, no conflict copies; needed attachment bytes come down with the record.
+- **Two machines**: one shared 「目录」 (blank, `/` and `inbox` are the same). Records a machine left under an older directory come back if you tick **Merge other sync directories too** in the settings.
+- **Deleting**: 「删除」 only moves a record to the bin and the other devices are told it is gone; emptying the bin deletes the cloud copy as well.
 
 ## Privacy and security
 
-- **Credentials are encrypted at rest**: the body is stored as ciphertext (AES-256-GCM, key derived from your master password). **Neither the password nor the key is ever written down** — the vault locks again on every restart and you unlock it under 设置 → 账密加密; a forgotten password means unrecoverable ciphertext. With no master password set, a credential is **refused rather than stored in the clear**.
-- **What that covers**: only the **body** of credential records. Notes, categories, tags, timestamps and attachment **bytes** are not encrypted — a key inside a pasted file is still a key inside a file.
+- **Credential bodies are encrypted at rest** (AES-256-GCM, key derived from your master password). Neither the password nor the key is written down: the vault locks on every restart and you unlock it under 设置 → 账密加密, and a forgotten password means unrecoverable ciphertext. With no master password set, a credential is **refused rather than stored in the clear**.
+- **That covers the body only**: notes, categories, tags, timestamps and attachment **bytes** are not encrypted — a key inside a pasted file is still a key inside a file.
 - **Masked where it matters**: a credential is listed by the name you gave it, and its plain text never reaches a conversation or a model.
-- **Pictures**: classification does send an image to the model (a phone photo of an ID card has the same proportions as any other photo); the conversation gets an `[attachment:id]` marker by default. **The one exception**: when you explicitly ask the assistant to look at a picture, that single image is sent to it — per call, never by default.
+- **Pictures**: classification does send an image to the model, and the conversation gets an `[attachment:id]` marker — that one image is sent only when you explicitly ask the assistant to look at it.
 - **The model cannot see your vault** unless you ask it to look, and classification requests are redacted first.
 - **Your remote needs access control**: only credential bodies are ciphertext up there — text, links, notes and attachment bytes are in the clear, and the master password and key never sync.
-- **What the install changes outside the panel**: reading a pasted link's headline is this plugin's only outbound request — one GET, only for links captured on this machine, never for links that arrived through sync. It goes out with a **browser-shaped** identity, an override of `web-fetch-http.userAgent` shipped in this package's `cordis.patch.yml`, because sites gate on the shape of that string. That identity covers the whole profile, the model's own web tools included; **your own `cordis.patch.yml` overrides it**. Details: [docs/help/link-title-fetch.md](docs/help/link-title-fetch.md).
+- **One thing the install changes outside the panel**: reading a pasted link's headline is the plugin's only outbound request (one GET, only for links captured on this machine, never for links that came through sync). It goes out with a **browser-shaped** identity, an override of `web-fetch-http.userAgent` shipped in this package's `cordis.patch.yml`. That identity is the whole profile's, the model's own web tools included; **your own `cordis.patch.yml` overrides it**. Details: [docs/help/link-title-fetch.md](docs/help/link-title-fetch.md).
 
 ## Development
 
@@ -159,7 +155,7 @@ pnpm typecheck
 pnpm test         # vitest
 ```
 
-Client-side changes need `pnpm build` and a page reload (dsh's client-hmr reloads it for you); host-side changes need a restart. Details in [docs/help/dev-setup.md](docs/help/dev-setup.md); milestones and acceptance records in the [development bus](docs/feature/dev-bus.md).
+Client-side changes need `pnpm build` (dsh's client-hmr reloads the page); host-side changes need a restart. Details in [docs/help/dev-setup.md](docs/help/dev-setup.md), milestones in the [development bus](docs/feature/dev-bus.md).
 
 To switch the profile you actually run between the **published package** and **this checkout** (default profile `web`; set `DSH_PROFILE` for another):
 
