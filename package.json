@@ -1,6 +1,6 @@
 {
   "name": "@chance722/dsh-inbox",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": false,
   "description": "Personal paste inbox for DeepSeek Harness (dsh): capture, classify, browse and retrieve.",
   "keywords": [

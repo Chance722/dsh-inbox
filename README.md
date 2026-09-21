@@ -66,7 +66,7 @@ npx @chance722/dsh-inbox init --profile web --install-pnpm
 npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
 
 # update (init only installs and wires things up — re-running it never upgrades;
-# minutes after a release, write the exact version instead: @0.2.7)
+# minutes after a release, write the exact version instead: @0.2.8)
 dsh plugin --profile web add @chance722/dsh-inbox@latest
 ```
 
