@@ -100,12 +100,24 @@ function mergedNote(current: Item, incoming?: string): string | undefined {
 async function absorb(
   vault: Vault,
   existing: Item,
-  incoming: { note?: string; title?: string },
+  incoming: { note?: string; title?: string; platform?: string },
 ): Promise<CaptureOutcome> {
   const patched = await vault.patch(existing.id, {
     note: mergedNote(existing, incoming.note),
     ...(existing.title === undefined && incoming.title !== undefined
       ? { title: incoming.title }
+      : {}),
+    /*
+      A repeat is the cheap chance to fill in what the rules learned since.
+
+      `platform` is derived from the host, and the table grows (掘金 was added
+      after a record for it already existed), so an old record can sit there
+      with no platform while a fresh paste of the same URL knows it. This only
+      ever *fills*: a record that already names a platform keeps it, because
+      that value may be what the user corrected by hand.
+    */
+    ...(existing.platform === undefined && incoming.platform !== undefined
+      ? { platform: incoming.platform }
       : {}),
   })
   /*
@@ -189,7 +201,12 @@ export async function captureText(
           : item.secretDigest === sealed.secretDigest,
     )
 
-  if (existing !== undefined) return absorb(vault, existing, { note })
+  if (existing !== undefined) {
+    return absorb(vault, existing, {
+      note,
+      ...(platform === undefined ? {} : { platform }),
+    })
+  }
   return { item: await vault.create(candidate), merged: false, restored: false, verdict }
 }
 

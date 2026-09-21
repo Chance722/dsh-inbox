@@ -8,6 +8,7 @@
 | 已锁定的产品与架构决策 | `product-decisions.md` | 需求边界、隐私红线、分类与生命周期规则 |
 | 本地开发与验收流程 | `dev-setup.md` | 建 profile、挂插件、起服务、headless 验证工具的命令 |
 | 抓链接标题（外发请求） | `link-title-fetch.md` | 一次 GET 的自述身份、站点拒绝的两种长相（空壳页 / 假标题）、实测矩阵与复查命令 |
+| 链接分类与平台标签 | `link-classification.md` | 平台表（62 个主机后缀）、路径优先 / 宿主习惯的判序、加一个新平台的步骤 |
 | 仓库数据模型 | `vault-data-model.md` | 域 spec、词汇表、记录结构、查询语义、软删 |
 | 对象存储网关兼容性排查 | `remote-gateway-compat.md` | 401/403 的三种可能、客户端标识按凭证绑定、数据胶囊实测矩阵 |
 | 远端目录布局 | `remote-sync-layout.md` | `inbox/` 里每个名字的含义、记录信封、附件命名理由、上云加密边界、还没做的两件事 |

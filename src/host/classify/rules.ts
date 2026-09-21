@@ -26,21 +26,89 @@ export interface Classification {
   tags?: readonly string[]
 }
 
-/** Hostname suffix → platform tag. Extend as real links show up. */
-const PLATFORMS: readonly (readonly [string, string])[] = [
-  ['bilibili.com', 'bilibili'],
-  ['b23.tv', 'bilibili'],
-  ['mp.weixin.qq.com', 'wechat'],
-  ['weixin.qq.com', 'wechat'],
-  ['zhihu.com', 'zhihu'],
-  ['xiaohongshu.com', 'xiaohongshu'],
-  ['xhslink.com', 'xiaohongshu'],
-  ['maimai.cn', 'maimai'],
+/**
+ * Hostname suffix → the platform that lives there, and what it mostly serves.
+ *
+ * The tag is what the record shows as its platform (detail pane, tool output,
+ * search payload); the third column is the **fallback** category for a host
+ * whose own shape says nothing — a short link, a profile page, a
+ * `/cover/abc.html` only the site itself can read. Two rules keep it honest:
+ *
+ * - an explicit path wins over the host's habit (`bilibili.com/read/…` is an
+ *   article even though bilibili is a video site), which is why the path checks
+ *   run first in `classifyLink`;
+ * - a row **without** a third column is a host whose medium we cannot call
+ *   (a GitHub repo is neither an article nor a video) — those stay `unsure` and
+ *   may cost one model call, exactly as before.
+ *
+ * One row per platform, one place to extend. `platformOf` reads only the tag.
+ */
+const PLATFORMS: readonly (readonly [string, string, ('media' | 'article')?])[] = [
+  // 视频 / 音频
+  ['bilibili.com', 'bilibili', 'media'],
+  ['b23.tv', 'bilibili', 'media'],
+  ['youtube.com', 'youtube', 'media'],
+  ['youtu.be', 'youtube', 'media'],
+  ['vimeo.com', 'vimeo', 'media'],
+  ['youku.com', 'youku', 'media'],
+  ['v.qq.com', 'tencentvideo', 'media'],
+  ['iqiyi.com', 'iqiyi', 'media'],
+  ['mgtv.com', 'mgtv', 'media'],
+  ['douyin.com', 'douyin', 'media'],
+  ['iesdouyin.com', 'douyin', 'media'],
+  ['kuaishou.com', 'kuaishou', 'media'],
+  ['ixigua.com', 'xigua', 'media'],
+  ['tiktok.com', 'tiktok', 'media'],
+  ['twitch.tv', 'twitch', 'media'],
+  ['dailymotion.com', 'dailymotion', 'media'],
+  ['music.163.com', 'netease-music', 'media'],
+  ['y.qq.com', 'qq-music', 'media'],
+  ['spotify.com', 'spotify', 'media'],
+  ['soundcloud.com', 'soundcloud', 'media'],
+  ['ximalaya.com', 'ximalaya', 'media'],
+  // 文章 / 帖子
+  ['mp.weixin.qq.com', 'wechat', 'article'],
+  ['weixin.qq.com', 'wechat', 'article'],
+  ['zhihu.com', 'zhihu', 'article'],
+  ['juejin.cn', 'juejin', 'article'],
+  ['csdn.net', 'csdn', 'article'],
+  ['cnblogs.com', 'cnblogs', 'article'],
+  ['jianshu.com', 'jianshu', 'article'],
+  ['segmentfault.com', 'segmentfault', 'article'],
+  ['v2ex.com', 'v2ex', 'article'],
+  ['sspai.com', 'sspai', 'article'],
+  ['36kr.com', '36kr', 'article'],
+  ['infoq.cn', 'infoq', 'article'],
+  ['toutiao.com', 'toutiao', 'article'],
+  ['weibo.com', 'weibo', 'article'],
+  ['weibo.cn', 'weibo', 'article'],
+  ['douban.com', 'douban', 'article'],
+  ['xiaohongshu.com', 'xiaohongshu', 'article'],
+  ['xhslink.com', 'xiaohongshu', 'article'],
+  ['maimai.cn', 'maimai', 'article'],
+  ['yuque.com', 'yuque', 'article'],
+  ['medium.com', 'medium', 'article'],
+  ['substack.com', 'substack', 'article'],
+  ['dev.to', 'devto', 'article'],
+  ['news.ycombinator.com', 'hackernews', 'article'],
+  ['reddit.com', 'reddit', 'article'],
+  ['stackoverflow.com', 'stackoverflow', 'article'],
+  ['arxiv.org', 'arxiv', 'article'],
+  ['developer.mozilla.org', 'mdn', 'article'],
+  ['x.com', 'twitter', 'article'],
+  ['twitter.com', 'twitter', 'article'],
+  ['instagram.com', 'instagram', 'article'],
+  ['threads.net', 'threads', 'article'],
+  ['bsky.app', 'bluesky', 'article'],
+  ['t.me', 'telegram', 'article'],
+  ['linkedin.com', 'linkedin', 'article'],
+  // 代码 / 包：认得出站点，说不准"文章还是视频"，交给模型
   ['github.com', 'github'],
-  ['youtube.com', 'youtube'],
-  ['youtu.be', 'youtube'],
-  ['x.com', 'twitter'],
-  ['twitter.com', 'twitter'],
+  ['gitlab.com', 'gitlab'],
+  ['gitee.com', 'gitee'],
+  ['npmjs.com', 'npm'],
+  ['pypi.org', 'pypi'],
+  ['huggingface.co', 'huggingface'],
 ]
 
 /**
@@ -76,30 +144,42 @@ function hostOf(url: string): string | undefined {
   }
 }
 
-/** The platform a URL belongs to, or undefined when it is just "somewhere". */
-export function platformOf(url: string): string | undefined {
+/** The `PLATFORMS` row that claims a host, if any. */
+function ruleFor(url: string): readonly [string, string, ('media' | 'article')?] | undefined {
   const host = hostOf(url)
   if (host === undefined) return undefined
-  for (const [suffix, platform] of PLATFORMS) {
-    if (host === suffix || host.endsWith(`.${suffix}`)) return platform
+  for (const rule of PLATFORMS) {
+    const [suffix] = rule
+    if (host === suffix || host.endsWith(`.${suffix}`)) return rule
   }
   return undefined
 }
 
-/** A video/audio platform, by host or by the path that names the medium. */
-function isMedia(host: string, path: string): boolean {
-  if (/bilibili\.com$|b23\.tv$|youtube\.com$|youtu\.be$/.test(host)) {
-    return !path.startsWith('/read/')
-  }
-  return /\/video\/|\/watch\b|\/audio\/|\/podcast/.test(path)
+/** The platform a URL belongs to, or undefined when it is just "somewhere". */
+export function platformOf(url: string): string | undefined {
+  return ruleFor(url)?.[1]
 }
 
-/** An article-shaped page. */
-function isArticle(host: string, path: string): boolean {
-  if (/mp\.weixin\.qq\.com$|weixin\.qq\.com$/.test(host)) return true
-  if (/zhihu\.com$/.test(host)) return true
-  if (/xiaohongshu\.com$|xhslink\.com$/.test(host)) return true
-  return /\/article\/|\/post\/|\/blog\/|\/read\//.test(path)
+/**
+ * A path that names the medium, whatever host it is on.
+ *
+ * Paths are the one thing that keeps meaning across sites, so they are checked
+ * before a host's habit: `/read/` on a video site is still an article.
+ */
+function pathSaysMedia(path: string): boolean {
+  return /\/video\/|\/watch\b|\/audio\/|\/podcast|\/shorts\/|\/v_show\/|\/playlist\b/.test(path)
+}
+
+/**
+ * A path that names a written piece, whatever host it is on.
+ *
+ * Only whole words, and only ones that mean something on their own: an earlier
+ * cut had `/a/` and `/p/` (SegmentFault and Zhihu columns), which turned
+ * `github.com/a/b` into an article — a one-letter segment is a path, not a
+ * signal. Those hosts carry a habit in `PLATFORMS` now, so nothing is lost.
+ */
+function pathSaysArticle(path: string): boolean {
+  return /\/article\/|\/articles\/|\/post\/|\/posts\/|\/blog\/|\/read\/|\/story\/|\/item\b/.test(path)
 }
 
 /**
@@ -109,7 +189,9 @@ function isArticle(host: string, path: string): boolean {
  * @returns the verdict; `unsure` for a host no rule knows.
  */
 export function classifyLink(url: string): Classification {
-  const platform = platformOf(url)
+  const rule = ruleFor(url)
+  const platform = rule?.[1]
+  const habit = rule?.[2]
   const parsed = (() => {
     try {
       return new URL(url)
@@ -121,15 +203,22 @@ export function classifyLink(url: string): Classification {
     return { category: 'other', confidence: 'unsure', reason: '链接解析不了' }
   }
 
-  const host = parsed.hostname.toLowerCase().replace(/^www\./, '')
   const path = parsed.pathname
   const base = platform === undefined ? {} : { platform }
 
-  if (isMedia(host, path)) {
+  if (pathSaysMedia(path)) {
     return { ...base, category: 'media', confidence: 'decided', reason: '链接指向视频/音频页' }
   }
-  if (isArticle(host, path)) {
+  if (pathSaysArticle(path)) {
     return { ...base, category: 'article', confidence: 'decided', reason: '链接指向文章页' }
+  }
+  if (habit !== undefined) {
+    return {
+      ...base,
+      category: habit,
+      confidence: 'decided',
+      reason: habit === 'media' ? `${String(platform)} 上的视频/音频页` : `${String(platform)} 上的文章页`,
+    }
   }
   if (platform !== undefined) {
     return { ...base, category: 'other', confidence: 'unsure', reason: `认得出平台是 ${platform}，但说不准是文章还是视频` }

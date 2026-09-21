@@ -1369,6 +1369,19 @@ toast 是"刚刚发生了什么"的提示，不是报告；把对象数、跳过
 
 **验证**：301 条测试全绿、`tsc --noEmit` 干净、`pnpm build` 通过；`pnpm pack` 产物核对（含新的 `cordis.patch.yml`）；两个真链接用**仓库里真实的** `titleFromHtml`/`looksLikeRefusal` 打过（都拿到真标题、都判为非拒绝页），合成的验证码壳页仍判为拒绝页。
 
+#### M9 第十二步 — 平台映射扩到 60 多个站点；老记录重贴可补（2026-09-21）
+
+用户问："**贴了掘金的文章链接，没显示平台；微信公众号却显示 wechat**——现在对链接有哪些平台映射？希望兼容多一点（文章类掘金、知乎，视频类 YouTube 等）。"
+
+- **查证**：映射表在 `src/host/classify/rules.ts`，原来只有 12 条（bilibili/b23、wechat、zhihu、xiaohongshu/xhslink、maimai、github、youtube/youtu.be、x/twitter）⇒ 掘金确实没有；知乎与 YouTube 有平台标签，但**没有"宿主习惯"兜底**，所以 `v.qq.com/x/cover/abc.html`、`vimeo.com/12345` 这类不含路径关键词的页面仍落进「其它」。
+- **判序变了**：`classifyLink` 现在是 **路径 → 宿主习惯 → 认得出平台但说不准（unsure，可能花一次模型调用）→ 不认识**。表里新增第三列"这个宿主主要是什么"（`media` / `article`）；路径优先保住了既有行为（`bilibili.com/read/cv123` 仍是文章）。
+- **62 个主机后缀**：视频/音频 21 条（bilibili、YouTube、Vimeo、优酷、腾讯视频、爱奇艺、芒果、抖音、快手、西瓜、TikTok、Twitch、Dailymotion、网易云音乐、QQ 音乐、Spotify、SoundCloud、喜马拉雅…），文章/帖子 34 条（公众号、知乎、掘金、CSDN、博客园、简书、SegmentFault、V2EX、少数派、36氪、InfoQ、头条、微博、豆瓣、小红书、脉脉、语雀、Medium、Substack、dev.to、HN、Reddit、StackOverflow、arXiv、MDN、X、Instagram、Threads、Bluesky、Telegram、LinkedIn…），代码/包 6 条（GitHub、GitLab、Gitee、npm、PyPI、HuggingFace）**故意不写第三列**——仓库既不是文章也不是视频，继续 `unsure` + 模型。
+- **顺手修的两个坑**：① 路径模式里的 `/a/`、`/p/` 是当年为 SegmentFault 与知乎专栏加的单字母段，会把 `github.com/a/b` 判成文章 ⇒ 收窄到整词（那两个站点现在由"宿主习惯"负责）；② `absorb()` 合并重复项时只补 note/title、**不补 platform** ⇒ 老记录（比如用户那条掘金）重贴也不会长出标签；现在补"原本没有"的平台，**已有值不覆盖**（那可能是用户自己改过的）。
+- **标签是 slug**（`juejin`、`tencentvideo`），面板原样显示 ⇒ 不进词典、不翻译。完整平台表与"加一个新平台"的步骤写进新文档 `docs/help/link-classification.md`（`index.md` 已加索引）。
+- **无 schema 变更**：`platform` 一直是自由字符串，同步与旧记录都不受影响。
+
+**验证**：304 条测试全绿（`classify` 13 条含新平台与兜底判序，`capture` 25 条含"补平台 / 不覆盖"两条），`tsc --noEmit` 干净、`pnpm build` 通过；用真实的 `classifyLink` 打了 16 个真链接（掘金、知乎问题与专栏、YouTube 与 youtu.be、B 站视频与专栏、公众号、腾讯视频、Vimeo、Medium、GitHub、X、HN、小红书、未知站点）逐条核对平台与类目。
+
 ### M7 — 界面升级（2026-09-20，已验收）
 
 **做到了什么**（选摘，逐条过程在上面的第三十二步之前）

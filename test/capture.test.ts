@@ -121,6 +121,40 @@ describe('capture against a real vault', () => {
     expect(vault.size).toBe(1)
   })
 
+  it('fills in a platform an older record never had', async () => {
+    // A record filed before the platform table knew its host (掘金 was added on
+    // 2026-09-21, after such records existed) carries no `platform`, and the
+    // detail pane therefore shows nothing. Re-pasting the same link is the
+    // cheap chance to fill that in, and it must not touch a platform the record
+    // already has — that value may be the user's own correction.
+    const filed = await vault.create({
+      kind: 'link',
+      category: 'article',
+      source: 'panel',
+      url: 'https://juejin.cn/post/7300000000000000000',
+    })
+    expect(filed.platform).toBeUndefined()
+
+    const again = await captureText(vault, 'https://juejin.cn/post/7300000000000000000', 'panel')
+
+    expect(again.merged).toBe(true)
+    expect(vault.get(filed.id)?.platform).toBe('juejin')
+  })
+
+  it('leaves a platform the record already carries alone', async () => {
+    const filed = await vault.create({
+      kind: 'link',
+      category: 'media',
+      source: 'panel',
+      url: 'https://www.bilibili.com/video/BV1xx',
+      platform: '哔哩哔哩（我自己写的）',
+    })
+
+    await captureText(vault, 'https://www.bilibili.com/video/BV1xx', 'panel')
+
+    expect(vault.get(filed.id)?.platform).toBe('哔哩哔哩（我自己写的）')
+  })
+
   it('merges a repeat text and keeps the first note', async () => {
     const first = await captureText(vault, '一段灵感', 'panel')
     const second = await captureText(vault, '一段灵感', 'chat', '模型猜的描述')

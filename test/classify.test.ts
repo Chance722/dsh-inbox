@@ -22,6 +22,11 @@ describe('platform and link rules', () => {
     expect(platformOf('https://space.bilibili.com/1')).toBe('bilibili')
     expect(platformOf('https://b23.tv/abc')).toBe('bilibili')
     expect(platformOf('https://mp.weixin.qq.com/s/abc')).toBe('wechat')
+    expect(platformOf('https://juejin.cn/post/7300000000000000000')).toBe('juejin')
+    expect(platformOf('https://zhuanlan.zhihu.com/p/123')).toBe('zhihu')
+    expect(platformOf('https://youtu.be/abc')).toBe('youtube')
+    expect(platformOf('https://blog.csdn.net/someone/article/details/1')).toBe('csdn')
+    expect(platformOf('https://news.ycombinator.com/item?id=1')).toBe('hackernews')
     expect(platformOf('https://example.com/a')).toBeUndefined()
   })
 
@@ -48,6 +53,39 @@ describe('platform and link rules', () => {
       confidence: 'unsure',
     })
     expect(classifyLink('https://example.com/a')).toMatchObject({ confidence: 'unsure' })
+  })
+
+  it('falls back to what the platform mostly serves when the path says nothing', () => {
+    // The reported case (2026-09-21): a 掘金 post arrived with a platform of
+    // `undefined`, so nothing showed in the detail pane. Some of these paths do
+    // say what they are (`/post/`), but the ones only the site can read — a
+    // numeric id, an opaque `/cover/abc.html` — need the host to speak.
+    expect(classifyLink('https://juejin.cn/post/7300000000000000000')).toMatchObject({
+      category: 'article',
+      platform: 'juejin',
+      confidence: 'decided',
+    })
+    expect(classifyLink('https://vimeo.com/12345')).toMatchObject({
+      category: 'media',
+      platform: 'vimeo',
+      confidence: 'decided',
+    })
+    expect(classifyLink('https://v.qq.com/x/cover/abc.html')).toMatchObject({
+      category: 'media',
+      platform: 'tencentvideo',
+    })
+    expect(classifyLink('https://www.zhihu.com/question/123')).toMatchObject({
+      category: 'article',
+      platform: 'zhihu',
+    })
+    expect(classifyLink('https://medium.com/@someone/a-post')).toMatchObject({
+      category: 'article',
+      platform: 'medium',
+    })
+    expect(classifyLink('https://www.instagram.com/p/abc')).toMatchObject({
+      category: 'article',
+      platform: 'instagram',
+    })
   })
 })
 
