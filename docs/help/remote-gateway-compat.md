@@ -93,5 +93,6 @@ npm install @aws-sdk/client-s3 @smithy/signature-v4 @smithy/protocol-http @aws-c
 | `PROPFIND /dav/<我的桶>/`，同上凭证 | 404（桶名不在 WebDAV 路径里） |
 | 用户自己的 WebDAV 账号（绑 `Zotero`）+ UA 含 `Zotero` | **207**，同一份目录 |
 | 用户自己的 WebDAV 账号 + UA 含 `Obsidian` | 403 `Client type mismatch.` |
+| 服务级 `GET /`（SigV4，路径不带桶名） | **200** + `<ListAllMyBucketsResult>`（2026-09-28 实测：该账号只有一个桶）——**列桶可用**，排查"东西是不是传到了别的桶"就靠它 |
 
 插件侧对应实现与验收记录见 `docs/feature/dev-bus.md` 的「M6c 收尾」一节。
