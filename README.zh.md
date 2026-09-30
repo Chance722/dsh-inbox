@@ -56,45 +56,36 @@
 
 ## 安装
 
-前置：Node ≥ 22 和一个能用的 `dsh`；没装 pnpm 时安装命令会顺手装好。**目前只在 Windows 上验收过**，macOS / Linux 未验证。装了桌面端的话，让它自带的那条 `dsh`（`<安装目录>\resources\runtime\cli\bin`）在 PATH 前面——`init` 用 PATH 上那个 dsh 干活，找错了会去指挥另一个版本的运行时（0.2.9 起它会在第①步回显问到的版本）。
+前置：Node ≥ 22 和一个能用的 `dsh`（没装 pnpm 时安装命令会顺手装好）。**只在 Windows 上验收过**，macOS / Linux 未验证。
+
+**Web（命令行）**
 
 ```powershell
-# 安装（`dsh web` 就是 `dsh --profile web`，所以装进你日常启动的那个 profile）
+# 安装（`dsh web` 就是 `dsh --profile web`，装进你日常启动的那个 profile）
 npx @chance722/dsh-inbox init --profile web --install-pnpm
 
 # 全新机器（还没跑过 dsh、没有这个 profile）多带一个 --create-profile
 npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
 
-# 更新（init 只管装和接线，重复跑不会升级；刚发布的 24 小时内要写确切版本，见下）
+# 更新（刚发布 24 小时内把 @latest 换成确切版本，如 @0.2.9）
 dsh plugin --profile web add @chance722/dsh-inbox@latest
 ```
 
-`dsh plugin add` 会核对本插件声明的 dsh 版本区间，对不上就拒绝安装（并回滚 profile）。本插件 **0.2.9** 起同时声明 `0.1.5-rc.2` 与 `0.2.0-rc.2` 两条线。版本对不上时先更新插件；报错里那条 `allow-version` 是"我知道风险、照样装"的开关，它只关掉检查，不解决真正的不兼容。
+**桌面端（DeepSeek Harness 桌面版）**
 
-**刚发布之后请写确切版本**（`@chance722/dsh-inbox@0.2.9`，不是 `@latest`）：pnpm 默认不装发布不满 24 小时的版本，而写范围时它会**静默装上一个旧版**——于是门禁报错会指向那个旧版，看起来像兼容性没修好，其实是新版本压根没装上。写确切版本 pnpm 会直接装（它自己会把这一条加进 profile 的 `minimumReleaseAgeExclude`）。
+侧栏打开**插件** → 安装 → 填 `@chance722/dsh-inbox@latest`（刚发布 24 小时内填 `@0.2.9`）→ 按提示重启。
 
-装完**重启 dsh**，然后照旧启动。左栏出现 **Inbox**；新会话里问「我的收件箱里有哪些还没看的链接」，助手就会去查。
+命令行等价（用桌面版自带的那条 `dsh`）：
 
-`init` 还会把 dsh 自带的 `standard` preset 复制到 `~/.dsh/.agent-presets/inbox/` 并加上本插件、把默认 preset 指向它。**dsh 0.2 起这两步自动跳过**：那个版本把 preset 改成了随 bundle 声明的行，不再读这个目录——也**不需要**它，装进 profile 的那一行，工具对会话直接可见（0.2.0-rc.2 实测）。0.1.x 上那份快照不会跟着 dsh 以后升级 `standard` 一起变；它和 profile 都能退掉（见「卸载」）。
+```powershell
+"<桌面版安装目录>\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add @chance722/dsh-inbox@latest
+```
+
+装完**重启**。左栏出现 **Inbox**；新会话里问「我的收件箱里有哪些还没看的链接」，助手就会去查。
 
 想让日常 dsh 保持干净：`npx @chance722/dsh-inbox init --create-profile`，然后 `dsh --profile inbox --no-open --port 3102`。
 
 其它选项：`--profile <名字>`、`--install-pnpm`、`--no-default`、`--help`。
-
-### 桌面端（DeepSeek Harness 桌面版）
-
-桌面版**不用** `npx ... init`——它自带插件面板：
-
-1. 侧栏打开**插件**，点安装，输入框里填 `@chance722/dsh-inbox@latest`（**发布后 24 小时内填确切版本**，如 `@chance722/dsh-inbox@0.2.9`，理由见上）
-2. 按提示重启桌面版；左栏出现 **Inbox**，新会话里问「我的收件箱里有哪些还没看的链接」，助手就会去查
-
-那个输入框收的是 **pnpm 认的 spec**（包名 / GitHub 地址 / 本地目录），但有三件事要知道：**没有版本选择器，也没有升级按钮**——升级＝先卸载再装一次；**一次只能装一个**；面板只列带 `dsh.bundle.patch` 的组合包（本插件是）。
-
-等价命令行，用桌面版自带的那条 `dsh`：
-
-```powershell
-"<桌面版安装目录>\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add @chance722/dsh-inbox@0.2.9
-```
 
 ### 从本地仓库装
 

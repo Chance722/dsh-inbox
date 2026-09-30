@@ -56,7 +56,9 @@ Two questions in the same conversation, on a real machine:
 
 ## Install
 
-Needs Node ≥ 22 and a working `dsh`; the installer brings pnpm along when your machine does not have it. **Windows only so far** — macOS and Linux are unverified. If you also have the desktop app, put its bundled `dsh` (`<install dir>\resources\runtime\cli\bin`) ahead on PATH: `init` drives whichever `dsh` it finds there, and from 0.2.9 it echoes the version it asked.
+Needs Node ≥ 22 and a working `dsh` (the installer brings pnpm along when your machine does not have it). **Windows only so far** — macOS and Linux are unverified.
+
+**Web (command line)**
 
 ```powershell
 # install (`dsh web` is `dsh --profile web`, so this is the profile you already start)
@@ -65,37 +67,25 @@ npx @chance722/dsh-inbox init --profile web --install-pnpm
 # never run dsh on this machine? create the profile in the same command
 npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
 
-# update (init only installs and wires things up — re-running it never upgrades;
-# within 24h of a release, write the exact version — see below)
+# update (within 24h of a release, swap @latest for the exact version, e.g. @0.2.9)
 dsh plugin --profile web add @chance722/dsh-inbox@latest
 ```
 
-`dsh plugin add` checks the dsh version range this plugin declares and refuses to install (rolling the profile back) when they disagree. From **0.2.9** this plugin declares both the `0.1.5-rc.2` and the `0.2.0-rc.2` line. If your dsh is outside that, update the plugin first; the `allow-version` line in the error is an "I accept the risk" switch that turns the check off — it does not fix a real incompatibility.
+**Desktop app (DeepSeek Harness)**
 
-**Right after a release, write the exact version** (`@chance722/dsh-inbox@0.2.9`, not `@latest`): pnpm does not install a version published less than 24 hours ago, and with a range it **silently installs an older one** — the compatibility error then names that older version and looks like the fix did not work, when the new version was never installed. An exact version goes in, and pnpm records it in the profile's `minimumReleaseAgeExclude` itself.
+Open **Plugins** in the sidebar → install → enter `@chance722/dsh-inbox@latest` (within 24h of a release, `@0.2.9`) → restart when it asks.
 
-**Restart dsh** afterwards, then start it as usual. **Inbox** is in the left rail, and a new session's assistant can look things up ("what links in my inbox haven't I read yet?").
+The same from the desktop's own CLI:
 
-`init` also copies dsh's shipped `standard` preset to `~/.dsh/.agent-presets/inbox/` with this plugin added, and points your default preset at it. **From dsh 0.2 both steps are skipped**: that version declares presets from a bundle instead and no longer reads that directory — and does not need it, because the row in the profile already makes the tools visible to a session (measured on 0.2.0-rc.2). On 0.1.x that copy becomes a snapshot that will not follow later dsh upgrades; both it and the profile are reversible (see Uninstall).
+```powershell
+"<desktop install dir>\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add @chance722/dsh-inbox@latest
+```
+
+**Restart** afterwards. **Inbox** is in the left rail, and a new session's assistant can look things up ("what links in my inbox haven't I read yet?").
 
 To keep your daily dsh untouched, give the plugin its own profile and port: `npx @chance722/dsh-inbox init --create-profile`, then `dsh --profile inbox --no-open --port 3102`.
 
 Other flags: `--profile <name>`, `--install-pnpm`, `--no-default`, `--help`.
-
-### Desktop app (DeepSeek Harness)
-
-The desktop app does **not** use `npx ... init` — it has its own plugin panel:
-
-1. Open **Plugins** in the sidebar, hit install, and enter `@chance722/dsh-inbox@latest` (within 24h of a release enter the exact version, e.g. `@chance722/dsh-inbox@0.2.9` — see above)
-2. Restart the desktop app when it asks. **Inbox** appears in the left rail, and a new session's assistant can look things up
-
-That field takes a **pnpm spec** (package name / GitHub URL / local directory), with three things worth knowing: there is **no version picker and no upgrade button** — upgrading means uninstall, then install again; **one install at a time**; and the panel only lists bundles that ship a `dsh.bundle.patch` (this plugin does).
-
-The same thing from the desktop's own CLI:
-
-```powershell
-"<desktop install dir>\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add @chance722/dsh-inbox@0.2.9
-```
 
 ### From a local checkout
 
