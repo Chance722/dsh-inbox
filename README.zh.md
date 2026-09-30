@@ -81,6 +81,21 @@ dsh plugin --profile web add @chance722/dsh-inbox@latest
 
 其它选项：`--profile <名字>`、`--install-pnpm`、`--no-default`、`--help`。
 
+### 桌面端（DeepSeek Harness 桌面版）
+
+桌面版**不用** `npx ... init`——它自带插件面板：
+
+1. 侧栏打开**插件**，点安装，输入框里填 `@chance722/dsh-inbox@latest`（**发布后 24 小时内填确切版本**，如 `@chance722/dsh-inbox@0.2.9`，理由见上）
+2. 按提示重启桌面版；左栏出现 **Inbox**，新会话里问「我的收件箱里有哪些还没看的链接」，助手就会去查
+
+那个输入框收的是 **pnpm 认的 spec**（包名 / GitHub 地址 / 本地目录），但有三件事要知道：**没有版本选择器，也没有升级按钮**——升级＝先卸载再装一次；**一次只能装一个**；面板只列带 `dsh.bundle.patch` 的组合包（本插件是）。
+
+等价命令行，用桌面版自带的那条 `dsh`：
+
+```powershell
+"<桌面版安装目录>\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add @chance722/dsh-inbox@0.2.9
+```
+
 ### 从本地仓库装
 
 ```powershell
@@ -93,9 +108,10 @@ node lib/cli.js init --package <本仓库的绝对路径>
 
 ```powershell
 # 1. 从你装进去的那个 profile 里摘掉（同时会从 dsh.profile.bundles 移除）
+#    桌面端：在插件面板里卸载，等价于这一条
 dsh plugin --profile <你装的 profile> remove @chance722/dsh-inbox
 
-# 2. 删掉 init 建的东西
+# 2. 删掉 init 建的东西（**只有 dsh 0.1.x 会建**；0.2 起 init 会跳过这步）
 rm -r ~/.dsh/.agent-presets/inbox      # 那个 preset 副本
 # 默认 preset：把 ~/.dsh/settings.yaml 里 agent-presets.default 删掉（继承部署默认），
 # 或改成 standard；init 每次都留了 settings.yaml.bak-* 备份，也可以直接还原

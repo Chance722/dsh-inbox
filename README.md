@@ -82,6 +82,21 @@ To keep your daily dsh untouched, give the plugin its own profile and port: `npx
 
 Other flags: `--profile <name>`, `--install-pnpm`, `--no-default`, `--help`.
 
+### Desktop app (DeepSeek Harness)
+
+The desktop app does **not** use `npx ... init` — it has its own plugin panel:
+
+1. Open **Plugins** in the sidebar, hit install, and enter `@chance722/dsh-inbox@latest` (within 24h of a release enter the exact version, e.g. `@chance722/dsh-inbox@0.2.9` — see above)
+2. Restart the desktop app when it asks. **Inbox** appears in the left rail, and a new session's assistant can look things up
+
+That field takes a **pnpm spec** (package name / GitHub URL / local directory), with three things worth knowing: there is **no version picker and no upgrade button** — upgrading means uninstall, then install again; **one install at a time**; and the panel only lists bundles that ship a `dsh.bundle.patch` (this plugin does).
+
+The same thing from the desktop's own CLI:
+
+```powershell
+"<desktop install dir>\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add @chance722/dsh-inbox@0.2.9
+```
+
 ### From a local checkout
 
 ```powershell
@@ -95,9 +110,10 @@ node lib/cli.js init --package <absolute path to this repo>
 ```powershell
 # 1. remove the package from the profile you installed it into
 #    (also drops it from dsh.profile.bundles)
+#    desktop app: uninstall it in the Plugins panel — same thing
 dsh plugin --profile <that profile> remove @chance722/dsh-inbox
 
-# 2. delete what init created
+# 2. delete what init created (**dsh 0.1.x only**; from 0.2 init skips this)
 rm -r ~/.dsh/.agent-presets/inbox      # the preset copy
 # default preset: delete agent-presets.default in ~/.dsh/settings.yaml (falls back to the
 # deployment default) or set it to standard; every init left a settings.yaml.bak-* backup

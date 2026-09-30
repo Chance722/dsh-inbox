@@ -330,6 +330,19 @@ slot 注册里是否可用、以及 `ctx.effect` 的释放是否按官方样例�
   （页面里出现 `plugins/??@chance722/dsh-inbox/client.js&rev=…`，那个 URL 直接 GET 回
   `200 text/javascript`、21 万字节、内容是 `window.__ModuleLoader__.load({ id: "@chance722/dsh-inbox", … })`）。
 
+### 桌面端的插件面板（用户装插件走的那条路）
+
+侧栏的**插件**面板（`@deepseek-ai/dsh-client-ui-plugin-manager`，root 页面，不属于任何会话）是桌面端装插件的正道。
+它和 `dsh plugin add` 跑的是**同一套 pnpm、同一道门禁**，所以上面那些坑在这里一模一样。官方自陈的边界
+（`app.asar` 里该包的 README「已知限制」）：
+
+- **没有版本选择器，也没有升级按钮**——spec 按 pnpm 接受的写法手输，升级＝卸载后重装。⇒ 刚发布 24 小时内
+  必须手输**确切版本**，否则就是"静默降级到上一版 + 门禁报旧版不兼容"那一幕（0.2.9 发布当天就是这么中招的）。
+- **一次只能装一个**；**只管理组合包**（没有 `dsh.bundle.patch` 的依赖在安装前就被拒）。
+- 失败的**行只显示阶段、不显示原因**（原因在 Host 日志里）；"要等重启的变更"是一条会自己消失的 toast。
+- 那个输入框收的是 pnpm 认的 spec：包名 / GitHub 地址 / 本地目录。**GitHub 地址对本包没用**——仓库里
+  没有 `lib/`（`.gitignore` 里就有它），而 `prepare` 也没写，所以从 git 装出来是个没有构建产物的空壳。
+
 ### 插件兼容门禁就是 peer 区间（这是"版本不一致"报错的全部真相）
 
 报错原文 `Plugin <pkg>@<v> is incompatible with dsh <runtime>: peerDependencies {…}` 来自
