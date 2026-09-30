@@ -166,7 +166,7 @@ window.__ModuleLoader__.load({
 
 ### pnpm 11 的构建脚本白名单
 
-pnpm 11 在跑任何脚本前会先做依赖状态检查，一看到「ignored build scripts」就**非零退出**——`pnpm build` / `pnpm test` / `pnpm typecheck` 全部失效。`pnpm-workspace.yaml` 里要同时写两条：
+pnpm 11 在跑任何脚本前会先做依赖状态检查，一看到「ignored build scripts」就**非零退出**——`pnpm build` / `pnpm test` / `pnpm typecheck` 全部失效。`pnpm-workspace.yaml` 里要写三条：
 
 - `allowBuilds: { esbuild: true }`——**值必须是布尔**（2026-09-30 实测）：pnpm 11.10 把这张表当开关读，
   非布尔值**静默忽略**，而 `approve-builds` 留给你的那行占位文本（`esbuild: set this to true or false`）
