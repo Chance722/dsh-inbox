@@ -379,10 +379,14 @@ build-required plugins ship no lib/"；`lib/install.js` 的 `validateAddedPlugin
 - **真实 profile 上也验过（同一台机器，宿主正在运行）**：把报错打印的那行键加进 `profiles/desktop/pnpm-workspace.yaml`
   再重跑同一条 spec 就成功（热 store 下 8.1 s），装出来的 `lib/` 与本地构建 sha256 相同，`dsh.profile.bundles` 里的行照旧 ——
   也就是说这条路不只能在空 scratch home 上成立。
-- 那个键的形状是 `'<包名>@https://codeload.github.com/<owner>/<repo>/tar.gz/<sha>': true` —— **带 commit**，
-  所以浮动目标（`github:owner/repo`）每换一个 commit 就要重新放行一次。照 pnpm 打印的那行抄；
+- 那个键的形状是 `'<包名>@https://codeload.github.com/<owner>/<repo>/tar.gz/<sha>': true` —— **带 commit**，照 pnpm 打印的那行抄；
   `createAllowBuildFunction` 里名字键（我们给 esbuild 用的 `esbuild: true` 那种）走的是"注册表依赖"那条匹配分支，
-  对归档依赖到不了（读源码判断，未单独实测）。
+  对归档依赖到不了 —— **实测**：只写 `'@chance722/dsh-inbox': true` 再跑，pnpm 用同一个错误拒绝（exit 1、没有 `lib/`）。
+- **每换一个 commit 就要重来一次**（2026-09-30 用户在同一台机器上撞了两次：装成并重启生效之后，卸载重装时 `main`
+  已经前进了两个提交，同一个键失效——报错里现成的就是新 sha 的键）。三条出路，按推荐度排：
+  ① 用 npm 包名那条，没有这一档；② 把 spec 固定到 commit（`github:owner/repo#<sha>`，键随之稳定，代价是升级要手动改两处）；
+  ③ **不推荐**：profile 里写 `dangerouslyAllowAllBuilds: true` —— pnpm 的应急开关（`createAllowBuildFunction` 见到它
+  就 `() => true`，实测能过门禁），但等于放行**所有**依赖的构建脚本，任何从 git 装的插件都能在你机器上跑代码。
 - **同一个 commit 只付一次**：准备好的包按解析 id 进了内容寻址仓，换个 profile 再装同一 commit 时
   `added 0`、1.9 s 就完，连放行都不需要（实测：另一个 profile 一行 `allowBuilds` 都没写，照样装上）。
 - pnpm 说的那次 `pnpm install` 用的是**仓库自己的** `pnpm-lock.yaml` 与 `pnpm-workspace.yaml`：本仓库那份
