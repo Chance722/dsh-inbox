@@ -64,7 +64,7 @@
     "build": "node scripts/build.mjs && node node_modules/typescript/bin/tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "prepare": "node scripts/build.mjs && node node_modules/typescript/bin/tsc -p tsconfig.build.json",
+    "check:lib": "node scripts/check-lib.mjs",
     "prepublishOnly": "npm run build",
     "dev:status": "node scripts/dev.mjs status",
     "dev:local": "node scripts/dev.mjs local",

@@ -37,12 +37,28 @@ const HOST_EXTERNALS = ['@deepseek-ai/*', 'node:*', 'zod']
  */
 const defines = { __DSH_INBOX_VERSION__: JSON.stringify(pkg.version) }
 
-await mkdir(resolve(root, 'lib'), { recursive: true })
+/**
+ * Where the artifacts go.
+ *
+ * `lib/` is the default and it is **tracked in git on purpose**: pnpm builds a
+ * git dependency only when its manifest carries a non-empty `prepare`, and
+ * asking every user to allow that build for every commit is not an install path
+ * — so the built plugin ships in the repository and a GitHub-URL install just
+ * unpacks it (docs/help/dsh-plugin-platform.md).
+ *
+ * `--out` exists for `scripts/check-lib.mjs`, which builds into a scratch
+ * directory and compares it with what is committed, so a forgotten `pnpm build`
+ * fails a test instead of shipping stale bytes.
+ */
+const outFlag = process.argv.indexOf('--out')
+const outDir = resolve(root, outFlag === -1 ? 'lib' : (process.argv[outFlag + 1] ?? 'lib'))
+
+await mkdir(outDir, { recursive: true })
 
 // ── host half ───────────────────────────────────────────────────────────────
 await build({
   entryPoints: [resolve(root, 'src/host/index.ts')],
-  outfile: resolve(root, 'lib/index.js'),
+  outfile: resolve(outDir, 'index.js'),
   bundle: true,
   format: 'esm',
   platform: 'node',
@@ -80,14 +96,14 @@ const wrapped = [
   '',
 ].join('\n')
 
-await writeFile(resolve(root, 'lib/client.js'), wrapped, 'utf8')
+await writeFile(resolve(outDir, 'client.js'), wrapped, 'utf8')
 
 // ── the CLI ─────────────────────────────────────────────────────────────────
 // `dsh-inbox init`: a plain Node script anyone can run with npx. Nothing from
 // the profile is needed, so everything is bundled except the platform itself.
 await build({
   entryPoints: [resolve(root, 'src/cli.ts')],
-  outfile: resolve(root, 'lib/cli.js'),
+  outfile: resolve(outDir, 'cli.js'),
   bundle: true,
   format: 'esm',
   platform: 'node',
@@ -96,4 +112,4 @@ await build({
   logLevel: 'warning',
 })
 
-console.log(`built lib/index.js, lib/client.js and lib/cli.js for ${pkg.name}`)
+console.log(`built index.js, client.js and cli.js into ${outDir} for ${pkg.name}`)

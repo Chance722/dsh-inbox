@@ -5,8 +5,13 @@
 # Dependencies and build output
 node_modules/
 dist/
-lib/
 coverage/
+# NOT `lib/` — the built plugin is committed on purpose. pnpm builds a git
+# dependency only when its manifest has a non-empty `prepare`, and requiring
+# that permission (per commit) from every user is not an install path, so a
+# GitHub-URL install unpacks what is committed here. `pnpm build` writes it;
+# `test/lib-artifacts.test.ts` fails when the two drift apart.
+# docs/help/dsh-plugin-platform.md has the mechanism and the measurements.
 # pnpm's store, when it lands inside the repo (this machine's default)
 .pnpm-store/
 
