@@ -24,6 +24,7 @@ import {
   missingPnpmMessage,
   parse,
   pnpmInstallAttempts,
+  presetMechanism,
   profileCreationAttempts,
 } from '../src/cli.js'
 
@@ -229,6 +230,38 @@ describe('running as a program', () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe('which preset carrier the running dsh has', () => {
+  it('reads 0.1.x as the directory carrier', () => {
+    // The line this repo was built on, and the one the README's older advice
+    // (copy `standard` into ~/.dsh/.agent-presets) was written against.
+    expect(presetMechanism('0.1.5-rc.2\n')).toBe('directory')
+    expect(presetMechanism('0.1.0-rc.2')).toBe('directory')
+  })
+
+  it('reads 0.2.x as the declaration carrier', () => {
+    // Measured 2026-09-30 against the desktop runtime: `dsh --version` answers
+    // `0.2.0-rc.2`, `@deepseek-ai/dsh-agent-presets` does not exist at that
+    // version, and the string appears nowhere in its app.asar — nothing reads
+    // the directory any more, so step ② must not run.
+    expect(presetMechanism('0.2.0-rc.2\n')).toBe('declaration')
+    expect(presetMechanism('0.2.1')).toBe('declaration')
+    expect(presetMechanism('1.0.0')).toBe('declaration')
+  })
+
+  it('only major.minor decide, so an rc or alpha number cannot flip it', () => {
+    expect(presetMechanism('0.2.0-alpha.1')).toBe('declaration')
+    expect(presetMechanism('0.1.7-rc.9+build.3')).toBe('directory')
+  })
+
+  it('assumes the old carrier when dsh cannot be asked', () => {
+    // Doing a step that is unnecessary is recoverable; skipping one that was
+    // needed leaves the assistant without tools and says nothing.
+    expect(presetMechanism(undefined)).toBe('unknown')
+    expect(presetMechanism('')).toBe('unknown')
+    expect(presetMechanism('not a version')).toBe('unknown')
   })
 })
 

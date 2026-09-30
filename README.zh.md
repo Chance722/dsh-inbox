@@ -56,7 +56,7 @@
 
 ## 安装
 
-前置：Node ≥ 22 和一个能用的 `dsh`；没装 pnpm 时安装命令会顺手装好。**目前只在 Windows 上验收过**，macOS / Linux 未验证。
+前置：Node ≥ 22 和一个能用的 `dsh`；没装 pnpm 时安装命令会顺手装好。**目前只在 Windows 上验收过**，macOS / Linux 未验证。装了桌面端的话，让它自带的那条 `dsh`（`<安装目录>\resources\runtime\cli\bin`）在 PATH 前面——`init` 用 PATH 上那个 dsh 干活，找错了会去指挥另一个版本的运行时（0.2.9 起它会在第①步回显问到的版本）。
 
 ```powershell
 # 安装（`dsh web` 就是 `dsh --profile web`，所以装进你日常启动的那个 profile）
@@ -65,13 +65,15 @@ npx @chance722/dsh-inbox init --profile web --install-pnpm
 # 全新机器（还没跑过 dsh、没有这个 profile）多带一个 --create-profile
 npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
 
-# 更新（init 只管装和接线，重复跑不会升级；刚发布的几分钟内请写确切版本：@0.2.8）
+# 更新（init 只管装和接线，重复跑不会升级；刚发布的几分钟内请写确切版本：@0.2.9）
 dsh plugin --profile web add @chance722/dsh-inbox@latest
 ```
 
+`dsh plugin add` 会核对本插件声明的 dsh 版本区间，对不上就拒绝安装（并回滚 profile）。本插件 **0.2.9** 起同时声明 `0.1.5-rc.2` 与 `0.2.0-rc.2` 两条线。版本对不上时先更新插件；报错里那条 `allow-version` 是"我知道风险、照样装"的开关，它只关掉检查，不解决真正的不兼容。
+
 装完**重启 dsh**，然后照旧启动。左栏出现 **Inbox**；新会话里问「我的收件箱里有哪些还没看的链接」，助手就会去查。
 
-`init` 还会把 dsh 自带的 `standard` preset 复制到 `~/.dsh/.agent-presets/inbox/` 并加上本插件、把默认 preset 指向它——助手能看见收件箱工具就是靠这一步。那份快照不会跟着 dsh 以后升级 `standard` 一起变；它和 profile 都能退掉（见「卸载」）。
+`init` 还会把 dsh 自带的 `standard` preset 复制到 `~/.dsh/.agent-presets/inbox/` 并加上本插件、把默认 preset 指向它。**dsh 0.2 起这两步自动跳过**：那个版本把 preset 改成了随 bundle 声明的行，不再读这个目录——也**不需要**它，装进 profile 的那一行，工具对会话直接可见（0.2.0-rc.2 实测）。0.1.x 上那份快照不会跟着 dsh 以后升级 `standard` 一起变；它和 profile 都能退掉（见「卸载」）。
 
 想让日常 dsh 保持干净：`npx @chance722/dsh-inbox init --create-profile`，然后 `dsh --profile inbox --no-open --port 3102`。
 

@@ -7,6 +7,12 @@ packages:
 allowBuilds:
   esbuild: set this to true or false
 
+# pnpm's default `minimumReleaseAge` (24h) refuses a package published minutes
+# ago. This repo tracks dsh's rc line on purpose, so the age gate is lifted for
+# that scope only — every other dependency still has to age.
+minimumReleaseAgeExclude:
+  - '@deepseek-ai/*'
+
 onlyBuiltDependencies:
   - esbuild
 

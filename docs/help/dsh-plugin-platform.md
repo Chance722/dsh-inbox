@@ -308,3 +308,94 @@ const rev  = info.tab.navigation.revision // 每次导航 +1，参数没变也�
 **接之前先做小 spike**（rc 期 API 会变）：我们的客户端 bundle 能否 require 到它（`package.json` 的
 `dsh.client.inject` 要加这一条，和现有的 connection/ui-layout/ui-sidebar 并列）、`t` 席位在我们自己的
 slot 注册里是否可用、以及 `ctx.effect` 的释放是否按官方样例走。
+
+## 0.2.0-rc.2（DeepSeek Harness 桌面端）实测（2026-09-30）
+
+本机多了一个运行时：桌面端 `DeepSeek Harness 0.2.0-rc.2`（注册表项 `InstallLocation: D:\deepseek`），
+而 PATH/nvm 上的 `@deepseek-ai/dsh` 仍是 `0.1.5-rc.2`。**两个运行时并存**，`docs/help/dev-setup.md`
+里的老命令只对后者成立。
+
+### 桌面端的 dsh 在哪、怎么当命令行用
+
+- 桌面端自带 CLI：`D:\deepseek\resources\runtime\cli\bin\dsh.cmd`。它把 Electron 当 node 用
+  （`ELECTRON_RUN_AS_NODE=1`），跑 `app.asar\dsh\node_modules\@deepseek-ai\dsh-desktop-host\lib\cli.js`。
+  `--version` 回 `0.2.0-rc.2`，`dsh --help` / `dsh plugin --profile <p> …` 与 CLI 版同形。
+- **运行时包在 `app.asar` 里**（121 MB 的归档，shell 工具打不开，官方文档也这么写）。要在里面找事实
+  （README、`lib/types`、patch 行 id）只能把 asar 当字节流搜：`[IO.File]::ReadAllBytes` + 全文 `IndexOf`，
+  或用 `--expose-internals` 跑一段脚本。**profile 仍在 `%DSH_HOME%\profiles`**，桌面端自己那个叫 `desktop`。
+- 于是可以完全不碰真实环境地验证：`$env:DSH_HOME=<仓库里的 scratch 目录>` 之后
+  `dsh --profile X --from-default-profile web --dump-config` 建 profile、
+  `dsh plugin --profile X add <路径>` 装插件、`dsh --profile X --no-open --port <n>` 起 web。
+  实测 0.2.0-rc.2 会照常把我们的 client bundle 挂上
+  （页面里出现 `plugins/??@chance722/dsh-inbox/client.js&rev=…`，那个 URL 直接 GET 回
+  `200 text/javascript`、21 万字节、内容是 `window.__ModuleLoader__.load({ id: "@chance722/dsh-inbox", … })`）。
+
+### 插件兼容门禁就是 peer 区间（这是"版本不一致"报错的全部真相）
+
+报错原文 `Plugin <pkg>@<v> is incompatible with dsh <runtime>: peerDependencies {…}` 来自
+`@deepseek-ai/dsh-app-boot` 的 `evaluatePluginCompatibility`（证据：`app.asar` 里该包的 lib 源码）：
+
+- 只看 peerDependencies 里名字是 `@deepseek-ai/dsh` 或 `@deepseek-ai/dsh-*` 的项，
+  **`@deepseek-ai/cordis` 之类不在检查范围**（名字不匹配）。
+- 判定是 `semver.satisfies(runtimeVersion, range, { includePrerelease: true })`——**预发布版参与区间比较**，
+  没有"rc 一律放行"的宽容。
+- `workspace:^` / `workspace:~` / `workspace:*` 三个写法被当作"等于当前运行时版本"。
+- **坑在 semver 对 0.x 的规矩**：`^0.1.5-rc.2` = `>=0.1.5-rc.2 <0.2.0`，所以 0.2.0-rc.2 **天然落在区间外**。
+  不是 dsh 0.2 "改了接口"，是 `^0.1.x` 从不允许 `0.2.x`。修法是把区间写成
+  `^0.1.5-rc.2 || ^0.2.0-rc.2`（本包 0.2.9 起这么写）。
+- 时机：`dsh plugin add` **先把包装完**（pnpm 正常跑），再校验**已安装的** package.json，不合格就
+  `dsh: installation rejected: …` 并把 `package.json` / `pnpm-lock.yaml` / `node_modules` **一起回滚**
+  （证据：`~/.dsh/profiles/<p>/\.plugin-manager\logs\operation-*/pnpm.log`）。
+- 逃生门（应急，不是解法）：`dsh plugin --profile <p> allow-version <pkg>@<ver> --dsh-version <exact> --accept-risk`。
+  **豁免是"精确包版本 × 精确运行时版本"的一对**，落在 profile 的 `compatibility.json` 里；它只关掉门禁，
+  不解决任何真实不兼容。
+
+**验证这套结论的办法**（别只看一次成功）：拿同一份代码、只把 peer 区间改回 `^0.1.5-rc.2` 装进另一个
+scratch profile，报错应当逐字复现；改回 `|| ^0.2.0-rc.2` 则装上。0.2.9 的这次就是这么验的。
+
+### 预设不再是目录（0.2.0 起，`init` 的第②③步因此是死路）
+
+0.1.5-rc.2 的用户级 preset 是目录 `$DSH_HOME/.agent-presets/<id>/`（`preset.yml` + `agent.cordis.yml`）。
+0.2.0-rc.2 改成**声明行**，官方原话（`app.asar` 里的 authoring 文档）：
+
+> Before declaration rows, a user preset was a directory `$DSH_HOME/.agent-presets/<id>/` … **Nothing reads
+> that directory any more.**
+
+- 现在一份 preset 是 bundle patch 里的一行：
+  `- id: preset-<id>` / `name: '@deepseek-ai/dsh-agent-preset'` / `config: { id, name?, description?, order?, plugins: [...] }`。
+  默认 preset 归 `@deepseek-ai/dsh-agent-preset-registry`：`config.default` 是部署默认，用户的选择存在它的
+  易变字段 `selectedDefault` 里；**registry 不扫目录、也不接受 preset 路径**。
+- 对本包的含义：`src/cli.ts` 里"复制 standard 目录 + 追加 `agent.cordis.yml` 一行"这条路在 0.2.0-rc.2 上
+  **是死的**（不报错，只是没人读；而 `@deepseek-ai/dsh-agent-presets` 这个包在 0.2.0 上根本不存在——
+  npm 上最高 `0.1.6-alpha.2`，桌面端 `app.asar` 里连字符串都搜不到，所以老 `init` 会卡在第②步
+  "找不到随 dsh 附带的 standard preset" 并以 1 退出）。
+
+### 但工具**不需要** preset 就能到模型面前（2026-09-30 用真模型实测，这条推翻了 AGENTS 的老说法）
+
+在 `hl` profile（`dsh-base` + `dsh-headless` + 本插件，**没有** preset 声明）上问
+「我的收件箱里有哪些还没看的链接？没有相关工具就说没有」，模型直接调了 `inbox_status`
+（回显 `dsh-inbox v0.2.9`、仓库已打开）。再把**官方那份 `standard` 的 plugins 列表原样**塞进
+`--patch` 覆盖层（`agent-preset-registry` + `preset-standard`，两次运行都确认没有
+"1 entry did not activate" 警告，即 preset 真的挂上了）重跑，模型照样调到 `inbox_status` / `inbox_search`。
+
+**结论**：`ctx.tools.register` 在 **profile 组合**里注册的工具，会话直接看得见，preset 挂不挂都一样。
+"工具必须挂进 agent preset 才可见"是错的（`docs/help/dsh-plugin-platform.md` 的 M4 一节早就这么测过，
+只是 AGENTS 那条一直没改）。**声明式 preset 因此不是必需品**，`init` 在 0.2.x 上直接跳过第②③步
+（`presetMechanism()`，0.1.x 仍走目录那条路）。
+
+**硬做也做不动**：声明一行要**复述整份** standard 的 `plugins` 列表（覆盖是整体替换），而桌面端那份
+`presets/standard.patch.yml` 在 `app.asar` 里——一个 `npx` 跑的 CLI 打不开它。真要走声明式，
+只能先 `dsh --profile <p> --dump-config` 把组合打出来再从文本里抠出那段，收益（实测为零）不抵这个脆弱度。
+
+### `init` 用的是 PATH 上那个 dsh，不是目标 profile 的运行时
+
+`dsh plugin add` 转发给 PATH 上的 `dsh`，所以这台机器上（PATH 是 0.1.5-rc.2、桌面端是 0.2.0-rc.2）
+`npx @chance722/dsh-inbox init` 会**用 0.1.5 去装**、并走**目录式 preset** 那条分支。要装进桌面端那个
+profile，先把桌面端的 CLI 放到 PATH 前面：`D:\deepseek\resources\runtime\cli\bin`。
+0.2.9 起 `init` 在第①步回显它问到的版本（`（用 dsh 0.2.0-rc.2）`），这类错配不再静默。
+
+### pnpm 的 `minimumReleaseAge` 会挡住刚发布的 rc
+
+pnpm 11 默认 `minimumReleaseAge: 1440`（24 小时），刚发出来的 rc 直接被拒；`pnpm install` 会自作主张往
+`pnpm-workspace.yaml` 里追加一长串 `minimumReleaseAgeExclude: <pkg>@<ver>`。本仓库改成一行
+`minimumReleaseAgeExclude: ['@deepseek-ai/*']`——只给这一条产品线开口子，其它依赖照样要过 24 小时。

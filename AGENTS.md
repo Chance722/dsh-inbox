@@ -6,7 +6,7 @@
 
 - **一句话**：dsh-inbox 是 DeepSeek Harness（dsh）的插件，把日常复制粘贴的链接、图片、文本、账密收进一个本地仓库，自动分类、可在侧栏浏览、可在 dsh 对话里检索取回。
 - **面向谁**：公开 npm 包 `@chance722/dsh-inbox`，任何人都能像装社区插件一样安装。
-- **当前阶段**：**M0–M8 已验收**（阶段、验收标准与记录见 `docs/feature/dev-bus.md`）；此后按模块继续（面板中英双语等）。当前版本 `0.2.8`（`package.json` 是版本的单一源，这里只是回显）。
+- **当前阶段**：**M0–M8 已验收**（阶段、验收标准与记录见 `docs/feature/dev-bus.md`）；此后按模块继续（面板中英双语等）。当前版本 `0.2.9`（`package.json` 是版本的单一源，这里只是回显）。
 - **平台**：代码跨平台；**v1 只在 Windows 实测验收**，macOS/Linux 未验证（README 需如实写明）。
 - **包名**：`@chance722/dsh-inbox`。
 
@@ -40,13 +40,14 @@ docs/
 ## 关键约束与约定
 
 1. **单包双半边**：`package.json` 同时声明宿主侧 `dsh.bundle.patch` 与浏览器侧 `dsh.client`（`platform: "web"` + 导出 `./client`）。客户端 bundle 由 tsdown 生成，**禁止手写 `window.__ModuleLoader__.load(...)`**。
-2. **工具必须挂进 agent preset**：`defineTool` 注册的工具只有在会话的 `agent.cordis.yml` 里挂上才对模型可见。安装体验必须自动化这一步（`init` 命令），不指望用户手工改 preset。**代价是同一个进程里会有两个插件实例**（profile 一份 + 每个会话的 preset 一份），而存储域按名字只允许 open 一次——所以**宿主半边必须是进程内单例**（现在走 `src/host/vault/lease.ts`，进程级引用计数），凡是 open 域/开端口/挂定时器这类进程级资源，都按"`apply` 会跑两遍"写；细节见 `docs/help/dsh-plugin-platform.md`。
+   - **peer 区间就是安装门禁**：`dsh plugin add` 用 `semver.satisfies(runtime, range, { includePrerelease: true })` 逐个核对名字以 `@deepseek-ai/dsh` 开头的 `peerDependencies`，不合格就拒绝安装并回滚 profile。`^0.1.x` 按 semver 天然不含 `0.2.x`，所以**每支持一条 dsh 线都要显式写进区间**（现在是 `^0.1.5-rc.2 || ^0.2.0-rc.2`）——只升 devDependencies 不改 peer，等于什么都没做。机制与逃生门见 `docs/help/dsh-plugin-platform.md`。
+2. **工具靠 profile 那一行就到模型面前，不靠 preset**（2026-09-30 真模型实测订正；老说法"必须挂进 agent preset"不成立）：`defineTool` + `ctx.tools.register` 在 profile 组合里注册的工具，会话直接看得见——0.2.0-rc.2 上验过两次（会话挂着 `standard` preset 与不挂，模型都调到了 `inbox_status`）。0.2.0 起 preset 也不再是 `$DSH_HOME/.agent-presets/` 目录，而是 bundle 里的声明行，`init` 在 0.2.x 上跳过那两步（`presetMechanism()`）。**但同一进程里仍可能有两个实例**（profile 一份 + 某个 preset 里再挂一份），而存储域按名字只允许 open 一次——所以**宿主半边必须是进程内单例**（现在走 `src/host/vault/lease.ts`，进程级引用计数），凡是 open 域/开端口/挂定时器这类进程级资源，都按"`apply` 会跑两遍"写；证据见 `docs/help/dsh-plugin-platform.md`。
 3. **密钥红线**：账密类资源**加密落盘（2026-09-20 已实现，域 v6）**——正文进 `secret`（AES-256-GCM，密钥由主密码 scrypt 派生），主密码与派生密钥**都不落盘**（只在进程内存里，重启即锁，界面显式解锁）；新捕获的账密在**没有密钥时直接拒绝入库**（绝不退回明文），老明文记录在首次设置/解锁时自动转密文。列表脱敏、明文**永不进模型上下文**、对话里**永不输出明文**，长期保留。任何发往模型的分类请求先过脱敏。列表里密钥/账密记录**只显示你起的名字**，没起名字时才用你的备注，**绝不显示正文**；取名规则只写在一处（`src/client/heading.ts`，列表与 dock 共用），「这是什么」由类目图标（钥匙）表达。**由此有一条不变式：`title` 只能由用户在面板里填**——规则、模型、抓来的页面标题等任何自动路径都不许往 `title` 写（那正是"列表把密文当标题"这条老漏洞的成因；抓来的标题进 `linkTitle`，`model.ts` 只 patch `category`/`categorySource`）。
 4. **图片与证件**：分类时**允许把图片发给模型判断**（2026-09-19 用户授权——手机拍的证件照比例就是普通照片，靠宽高判不出来）；对话里默认只回 `[attachment:<id>]` 标记，字节不进对话。**唯一的例外**（2026-09-20 用户授权）：`inbox_get` 显式带 `withImage: true` 时，把该记录的那张图作为 content part 发给模型——用于"帮我看这张图是什么"，**每次调用都要显式要**、默认永不发。类目结论里，只有**用户亲口说的**才算确定证件；模型判的标 `categorySource: model`，可以随时被用户改掉。模型调用受预算闸门约束（见 `docs/help/…` 与 `src/host/classify/model.ts`）。
 5. **上下文红线**：不自动把 inbox 摘要注入模型上下文；模型只有主动调工具时才看到仓库内容。
 6. **用户描述 = 权威分类**：用户给的描述/类目优先于任何模型判断，模型不得覆盖。
 7. **同步红线（2026-09-20 用户拍板改）**：**上云的密文只有账密正文**——账密的 `secret` 本来就是密文，别的字段（文本、链接、标题、备注、类目、标签、时间）和附件**字节**都按明文上云。因此 **远端必须有访问控制**（README 写明"别用公开桶"），并且：主密码与派生密钥永不上传、永不同步；冲突**直接按 `updatedAt` 覆盖**（不留冲突副本）；删除以墓碑同步，清空回收站连远端一起删；附件随同步走。**清空回收站还要在本机 `graves` 表留一条 `{id, purgedAt}`**（2026-09-21）：定向删除只覆盖本机那棵同步树，别的树里的副本靠这条墓碑挡住——merge 对本机没有的 id 只收"比 `purgedAt` 更新"的副本；机制与实测见 `docs/help/sync.md`。
-8. **数据事实只认实测**：dsh 处于 rc 阶段（本机 0.1.5-rc.2），API 会变。写 dsh 相关代码前先查 `docs/help/dsh-plugin-platform.md`；该文档与代码冲突时以 `.research/` 里的官方源码为准，并回改文档。
+8. **数据事实只认实测**：dsh 处于 rc 阶段，API 会变。**这台机器上有两个运行时**（PATH 上的 `dsh` 是 0.1.5-rc.2，桌面端 `D:\deepseek` 是 0.2.0-rc.2，各自一条 CLI），问事实先问对哪一个。写 dsh 相关代码前先查 `docs/help/dsh-plugin-platform.md`；该文档与代码冲突时以官方分发的源码为准（CLI 版在 `.research/`，桌面端在 `app.asar` 里），并回改文档。
 9. **文档语言**：代码与标识符英文，代码注释中文；文档中英双份（`README.md` + `README.zh.md`），`AGENTS.md`/`docs/` 用中文。
 10. **持久化只走 `ctx.storageDomain`**：不自己开文件、SQLite 或别的存储；域 spec 的 schema 演进见 `docs/help/vault-data-model.md`。
 11. **客户端半边不许引入宿主依赖**：`src/client/**` 只能 import React、平台静态模块表里的包，以及 `src/shared/` 下的纯常量（不许 zod、不许 `node:*`、不许 `@deepseek-ai/dsh-*`），否则浏览器产物会在加载期炸。
@@ -64,8 +65,9 @@ docs/
 | 起隔离开发 profile | `dsh --profile inbox --no-open --port 3102` |
 | 挂载本仓库到 profile | `dsh plugin --profile inbox add <仓库路径>` |
 | 验证模型能调到工具 | `dsh --profile inbox-m0 "<让模型调用工具的提示>"`（headless 派生 profile） |
+| 用桌面端的运行时验证 | `D:\deepseek\resources\runtime\cli\bin\dsh.cmd`（0.2.0-rc.2；先把 `DSH_HOME` 指到仓库里的 scratch 目录） |
 
-本机 dsh 不在 PATH 上，完整命令（含 Node 22 路径）见 `docs/help/dev-setup.md`。构建需要提权（esbuild 要 spawn 子进程）。
+完整命令（含两个运行时的路径与 Node 版本）见 `docs/help/dev-setup.md`。构建需要提权（esbuild 要 spawn 子进程）。
 
 ## 知识文档索引
 

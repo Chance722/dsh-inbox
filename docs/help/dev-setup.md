@@ -12,6 +12,12 @@
 | dsh CLI | `0.1.5-rc.2`，npm 全局装好之后 `dsh` 就在 PATH 上，直接敲 |
 | PATH 没配好时 | `node <全局 node_modules>\@deepseek-ai\dsh\lib\bin.js <参数>`（全局 root 问 `npm root -g`） |
 
+**2026-09-30 起这台机器上有第二个运行时**：桌面端 DeepSeek Harness `0.2.0-rc.2`（装在 `D:\deepseek`），
+自带一条 CLI `D:\deepseek\resources\runtime\cli\bin\dsh.cmd`，跑的是 `app.asar` 里的运行时。
+两条 CLI 的 profile 目录是同一个 `%DSH_HOME%\profiles`，但**运行时版本不同**（`--version` 各问一次最稳）。
+拿桌面端那条验证时，先把 `DSH_HOME` 指到一个仓库里的 scratch 目录，别碰日常那套；机制与实测见
+`docs/help/dsh-plugin-platform.md` 的「0.2.0-rc.2（DeepSeek Harness 桌面端）实测」。
+
 ## 命令
 
 ```powershell
@@ -62,25 +68,30 @@ dsh --profile inbox --no-open --port 3102
 
 ## 验证模型能调到工具（headless 路线）
 
-**2026-09-20 起用这个配方**（它复现的正是用户真实的组合：插件既是 profile bundle、又由会话 preset 带进来，也就是那个
-"域被打开两次"的场景。少了 preset 那一半，`dsh_inbox` 只 open 一次，测试会假通过）：
-
 ```powershell
 dsh --profile inbox-check --from-default-profile headless --dump-config   # 派生一个 headless profile
-dsh plugin --profile inbox-check add <仓库路径>              # ① profile 那半边
-# ② 会话那半边：用户级默认 preset 已经是收件箱 preset（init 写过 agent-presets.default），无需额外操作
+dsh plugin --profile inbox-check add <仓库路径>
 dsh --profile inbox-check "调用 inbox_status 工具，把它的原始结果原样贴给我。"
-# 期望：dsh-inbox v0.1.0: vault open, 7 record(s).
+# 期望：dsh-inbox v0.2.9: vault open, N record(s).
 # 顺带验命中：dsh --profile inbox-check "我的个人仓库里有哪些还没看的链接？"（应调用 inbox_search）
 ```
 
 跑完把临时 profile 删掉（`%DSH_HOME%\profiles\inbox-check`）。**注意** `pnpm build` 之后才会带上最新代码：headless 启动时装载 `lib/`。
 
-早期（还没有 preset 的 M0 阶段）用过 `inbox-m0` 那种"只挂 profile、工具行直接可见"的写法，现在**不足以验证**上面那条双加载场景。
+**2026-09-30 订正**：以前这里写着"少了 preset 那一半，`dsh_inbox` 只 open 一次，测试会假通过"。现在实测相反——
+profile 那一行注册的工具**会话直接看得见**，preset 挂不挂都一样（0.2.0-rc.2 上真模型验过两次，见
+`docs/help/dsh-plugin-platform.md`）。这条 headless 配方因此是完整的，不需要再补 preset。
 
-## 在 web 里验证需要 agent preset
+用桌面端那条 CLI（0.2.0-rc.2）跑同一套时，先把 `D:\deepseek\resources\runtime\cli\bin` 放到 PATH 前面，
+并把 `DSH_HOME` 指到仓库里的 scratch 目录；它跑的是 `app.asar` 里的运行时。
 
-用户级 preset 根：`%DSH_HOME%\.agent-presets\<preset-id>\`（**当前这台机器上这个目录还不存在**，要自己建），两个文件：
+## preset：只在 0.1.x 上还要自己搭
+
+**先确认你面对的是哪个载体**——0.2.0 起 preset 是 bundle patch 里的**声明行**（`@deepseek-ai/dsh-agent-preset-registry`
+解析），`$DSH_HOME\.agent-presets\<id>\` 那个目录**没有任何代码再读**，`@deepseek-ai/dsh-agent-presets`
+这个包也不存在了。判断方法：`dsh --version`，或看 `init` 第①步回显的版本。
+
+0.1.x 上仍然是目录，两个文件：
 
 - `preset.yml` —— `name` / `description` / `order`
 - `agent.cordis.yml` —— 组合；把 `profiles\node_modules\@deepseek-ai\dsh-agent-presets\presets\standard\` 整个复制过来，再追加自己的行：
