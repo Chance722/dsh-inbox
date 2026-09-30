@@ -168,10 +168,14 @@ window.__ModuleLoader__.load({
 
 pnpm 11 在跑任何脚本前会先做依赖状态检查，一看到「ignored build scripts」就**非零退出**——`pnpm build` / `pnpm test` / `pnpm typecheck` 全部失效。`pnpm-workspace.yaml` 里要同时写两条：
 
-- `onlyBuiltDependencies: [esbuild]`——允许构建脚本（`package.json` 里的 `pnpm` 字段已不再被读取）
-- `verifyDepsBeforeRun: false`——关掉那个前置检查
+- `allowBuilds: { esbuild: true }`——**值必须是布尔**（2026-09-30 实测）：pnpm 11.10 把这张表当开关读，
+  非布尔值**静默忽略**，而 `approve-builds` 留给你的那行占位文本（`esbuild: set this to true or false`）
+  正好就是非布尔值 ⇒ `pnpm install` 照样以 `ERR_PNPM_IGNORED_BUILDS: esbuild@0.25.12, esbuild@0.28.2` 非零退出
+  （正是 git 安装那条路要先跑的 `pnpm install`，见上面 git 一节）。键只写包名即放行所有版本，也可以写 `name@<version>`。
+- `onlyBuiltDependencies: [esbuild]`——留着给还读旧键的 pnpm 10。
+- `verifyDepsBeforeRun: false`——关掉那个前置检查（11.10 上没重测，先留着）。
 
-实测即使提示被拦，esbuild 的二进制照样能用（`node scripts/build.mjs` 直接跑是成功的），所以拦住的是检查本身，不是工具。两条都补上之后 README 里写的 `pnpm build/test/typecheck` 才真的可用。
+实测即使提示被拦，esbuild 的二进制照样能用（`node scripts/build.mjs` 直接跑是成功的），所以拦住的是检查本身，不是工具。三条齐了之后 `pnpm install` 与 README 里写的 `pnpm build/test/typecheck` 才真的可用（实测：改前 `pnpm install` 退出 1，改后 0，两个 esbuild 的 postinstall 都跑了）。
 
 ## M1 实测补充（存储栈，2026-09-19）
 
@@ -340,8 +344,49 @@ slot 注册里是否可用、以及 `ctx.effect` 的释放是否按官方样例�
   必须手输**确切版本**，否则就是"静默降级到上一版 + 门禁报旧版不兼容"那一幕（0.2.9 发布当天就是这么中招的）。
 - **一次只能装一个**；**只管理组合包**（没有 `dsh.bundle.patch` 的依赖在安装前就被拒）。
 - 失败的**行只显示阶段、不显示原因**（原因在 Host 日志里）；"要等重启的变更"是一条会自己消失的 toast。
-- 那个输入框收的是 pnpm 认的 spec：包名 / GitHub 地址 / 本地目录。**GitHub 地址对本包没用**——仓库里
-  没有 `lib/`（`.gitignore` 里就有它），而 `prepare` 也没写，所以从 git 装出来是个没有构建产物的空壳。
+- 那个输入框收的是 pnpm 认的 spec：包名 / GitHub 地址 / 本地目录。**GitHub 地址是现场构建的另一条路**：
+  `prepare` 补上（4649b0b）之后能用，但要消费者先放行构建脚本，代价见下一节。
+
+### GitHub 地址安装：源码快照 + `files` 白名单，不构建就是空壳（2026-09-30 实测）
+
+用户报「用包名装一切正常，用 `https://github.com/Chance722/dsh-inbox` 装入口不显示」。这不是安装器的 bug，
+而是 git 那一路与 npm 那一路**根本不是同一种东西**：
+
+- pnpm 不 `git clone`，取的是 **codeload 归档** `https://codeload.github.com/<owner>/<repo>/tar.gz/<sha>`
+  （`pnpm-lock.yaml` 就是这么记的），解包后**按 `package.json` 的 `files` 白名单打包**再装 —— 装下来的是
+  「那个 commit 的源码快照，减去没进白名单的文件」。
+- **只有 manifest 里有非空 `prepare` 才会构建**（pnpm 源码 `exec/prepare-package`：`scripts.prepare` 非空即构建；
+  否则要 `prepublish`/`prepack`/`publish` 之一存在**且** `main` 文件缺失才构建）。**`prepublishOnly` 不在那张名单里。**
+- 于是 4649b0b 之前（有 `prepublishOnly`、没有 `prepare`、`lib/` 又在 `.gitignore` 里）装出来是
+  **5 个文件 / 28,444 字节**：`cordis.patch.yml`、`package.json`、LICENSE、两份 README ——
+  `lib/index.js`（宿主半边）与 `lib/client.js`（客户端半边）都不存在。在 profile 目录里一句
+  `node -e "import('@chance722/dsh-inbox')"` 就能验：`ERR_MODULE_NOT_FOUND …\lib\index.js`。
+
+**症状和"装错了"分不开**：依赖与 `dsh.profile.bundles` 都写进了 profile，插件管理器据此显示"已安装"，
+侧栏只是空着；宿主也不崩（这一行加载失败被隔离，market 的 toggle 日志里那行仍是 `fiber=true`）。
+dshmarket 对这种情况有守卫（`lib/profile.js` 的 `entryArtifactExists`，注释写的就是 "github source checkouts of
+build-required plugins ship no lib/"；`lib/install.js` 的 `validateAddedPlugins` 据此把它当坏插件摘掉，issue #18/#103），
+**但官方插件管理器的 GitHub 安装路径不跑这道守卫**，于是它留在 profile 里、什么都没起。
+
+**现在这条路能走（4649b0b 起）**，代价都实测过：
+
+| 步骤 | 实测 |
+|---|---|
+| `dsh plugin --profile gl add github:Chance722/dsh-inbox`（无放行） | 4.7 s 失败：`ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`，报错里带**要写的那一行键**；dsh 自己也补一句"加进 profile 的 `pnpm-workspace.yaml` 再重跑" |
+| 放行后重跑 | 14.2 s 成功：先在抓下来的仓库里跑 `pnpm install`（8.5 s、93 个包、**devDeps 全下**：esbuild / typescript / vitest / react / `@deepseek-ai/*`…），再跑我们的 `prepare` 构建，最后按 `files` 打包 |
+| 装出来的树 | 47 个文件；`lib/` 43 个（含 40 个 `.d.ts`）；三个 JS 与本地 `pnpm build` 的产物 **sha256 逐一相同** |
+
+- 那个键的形状是 `'<包名>@https://codeload.github.com/<owner>/<repo>/tar.gz/<sha>': true` —— **带 commit**，
+  所以浮动目标（`github:owner/repo`）每换一个 commit 就要重新放行一次。照 pnpm 打印的那行抄；
+  `createAllowBuildFunction` 里名字键（我们给 esbuild 用的 `esbuild: true` 那种）走的是"注册表依赖"那条匹配分支，
+  对归档依赖到不了（读源码判断，未单独实测）。
+- **同一个 commit 只付一次**：准备好的包按解析 id 进了内容寻址仓，换个 profile 再装同一 commit 时
+  `added 0`、1.9 s 就完，连放行都不需要（实测：另一个 profile 一行 `allowBuilds` 都没写，照样装上）。
+- pnpm 说的那次 `pnpm install` 用的是**仓库自己的** `pnpm-lock.yaml` 与 `pnpm-workspace.yaml`：本仓库那份
+  `allowBuilds` 曾经是 pnpm 的占位文本（非布尔值被静默忽略），`pnpm install` 直接非零退出
+  （`ERR_PNPM_IGNORED_BUILDS: esbuild@0.25.12, esbuild@0.28.2`）—— git 安装会撞在同一堵墙上，随 4649b0b 一起修掉。
+
+**给读者的结论**：npm 那一路（包名）永远是首选；git 那一路现在能构建，但要你先放行、要下整棵 devDeps、比 npm 慢。
 
 ### 插件兼容门禁就是 peer 区间（这是"版本不一致"报错的全部真相）
 

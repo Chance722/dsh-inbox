@@ -75,6 +75,8 @@ dsh plugin --profile web add @chance722/dsh-inbox@latest
 
 Open **Plugins** in the sidebar → install → enter `@chance722/dsh-inbox@latest` (within 24h of a release, `@0.2.10`) → restart when it asks.
 
+That field also takes a GitHub URL, but that is a different path: pnpm installs dependencies and builds inside the fetched repository first (and you have to allow it via `allowBuilds` in the profile's `pnpm-workspace.yaml`, using the key pnpm prints). Far slower than the package name. **Install by name.**
+
 The same from the desktop's own CLI:
 
 ```powershell

@@ -75,6 +75,8 @@ dsh plugin --profile web add @chance722/dsh-inbox@latest
 
 侧栏打开**插件** → 安装 → 填 `@chance722/dsh-inbox@latest`（刚发布 24 小时内填 `@0.2.10`）→ 按提示重启。
 
+那个输入框也收 GitHub 地址，但那是另一条路：pnpm 要在抓下来的仓库里装依赖并现场构建（还得按报错给的键在 profile 的 `pnpm-workspace.yaml` 里放行 `allowBuilds`），比包名慢得多。**用包名装。**
+
 命令行等价（用桌面版自带的那条 `dsh`）：
 
 ```powershell

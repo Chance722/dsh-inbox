@@ -54,6 +54,8 @@ docs/
 12. **面板跟随宿主主题，别写死**：配色方案从宿主读（`<html>` 的 `color-scheme`，读不到再按继承来的文字色亮度判），实现在 `src/client/scheme.ts`，判定与三个坑见 `docs/help/panel-theme.md`。**禁止**再出现硬编码的 `color-scheme`，也别读面板自己的（那是自我回声）。
 13. **客户端文案必须走词典，别写死在组件里**：面板 / dock / 对话卡片的文案一律进 `src/client/messages.ts`（`zh` 与 `en` 同键集），经 `t()` 渲染；面板要跟随 dsh 的语言（接官方 `ctx.locale`，服务缺席时退到 `<html lang>`），**别自造语言开关**。宿主发给模型的文字是另一层（`src/shared/vocabulary.ts` 等保持中文），两者别混。`test/i18n.test.ts` 会拦下客户端里的中文字面量；机制、边界与"为什么句内碎片要整句成 key"见 `docs/help/panel-i18n.md`。
 
+14. **两条安装路不等价**：npm 包名那条是发布时构建好的 tarball；**GitHub 地址那条是源码快照 + `files` 白名单，靠 `prepare` 现场构建**（pnpm 取 codeload 归档，构建前还要消费者在 profile 里按 pnpm 打印的那行键放行 `allowBuilds`）。所以 `prepare` 不许删，也别想用"把 `lib/` 提交进 git"来绕；机制、代价与实测见 `docs/help/dsh-plugin-platform.md`。
+
 ## 常用命令
 
 | 用途 | 命令 |
