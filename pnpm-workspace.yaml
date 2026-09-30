@@ -1,11 +1,15 @@
 # pnpm settings live here (the `pnpm` field in package.json is no longer read).
-# esbuild needs its postinstall to place the platform binary; without an explicit
-# allowance pnpm blocks it and every `pnpm run` fails the dependency check.
 packages:
   - .
 
+# Dependency build scripts are gated, and the value has to be a boolean: pnpm
+# hands you this key as a placeholder line ("set this to true or false"), and a
+# non-boolean is silently ignored — the build stays blocked and `pnpm install`
+# exits non-zero with ERR_PNPM_IGNORED_BUILDS. esbuild is the one this repo needs
+# (its postinstall places the platform binary), and a bare name covers every
+# version, 0.28.x included — the one vitest drags in.
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
 
 # pnpm's default `minimumReleaseAge` (24h) refuses a package published minutes
 # ago. This repo tracks dsh's rc line on purpose, so the age gate is lifted for
