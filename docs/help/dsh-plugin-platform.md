@@ -344,54 +344,49 @@ slot 注册里是否可用、以及 `ctx.effect` 的释放是否按官方样例�
   必须手输**确切版本**，否则就是"静默降级到上一版 + 门禁报旧版不兼容"那一幕（0.2.9 发布当天就是这么中招的）。
 - **一次只能装一个**；**只管理组合包**（没有 `dsh.bundle.patch` 的依赖在安装前就被拒）。
 - 失败的**行只显示阶段、不显示原因**（原因在 Host 日志里）；"要等重启的变更"是一条会自己消失的 toast。
-- 那个输入框收的是 pnpm 认的 spec：包名 / GitHub 地址 / 本地目录。**GitHub 地址是现场构建的另一条路**：
-  `prepare` 补上（4649b0b）之后能用，但要消费者先放行构建脚本，代价见下一节。
+- 那个输入框收的是 pnpm 认的 spec：包名 / GitHub 地址 / 本地目录。**GitHub 地址这条现在不需要任何前置步骤** ——
+  仓库里带着构建产物，pnpm 判定它"不需要构建"，也就不会问你要许可（见下一节）。
 
-### GitHub 地址安装：源码快照 + `files` 白名单，不构建就是空壳（2026-09-30 实测）
+### GitHub 地址安装：产物必须提交进 git，因为用户没法让 pnpm 构建它（2026-09-30 实测）
 
-用户报「用包名装一切正常，用 `https://github.com/Chance722/dsh-inbox` 装入口不显示」。这不是安装器的 bug，
-而是 git 那一路与 npm 那一路**根本不是同一种东西**：
+用户报「用包名装一切正常，用 `https://github.com/Chance722/dsh-inbox` 装入口不显示」。结论分两层。
 
-- pnpm 不 `git clone`，取的是 **codeload 归档** `https://codeload.github.com/<owner>/<repo>/tar.gz/<sha>`
-  （`pnpm-lock.yaml` 就是这么记的），解包后**按 `package.json` 的 `files` 白名单打包**再装 —— 装下来的是
-  「那个 commit 的源码快照，减去没进白名单的文件」。
-- **只有 manifest 里有非空 `prepare` 才会构建**（pnpm 源码 `exec/prepare-package`：`scripts.prepare` 非空即构建；
-  否则要 `prepublish`/`prepack`/`publish` 之一存在**且** `main` 文件缺失才构建）。**`prepublishOnly` 不在那张名单里。**
-- 于是 4649b0b 之前（有 `prepublishOnly`、没有 `prepare`、`lib/` 又在 `.gitignore` 里）装出来是
-  **5 个文件 / 28,444 字节**：`cordis.patch.yml`、`package.json`、LICENSE、两份 README ——
-  `lib/index.js`（宿主半边）与 `lib/client.js`（客户端半边）都不存在。在 profile 目录里一句
-  `node -e "import('@chance722/dsh-inbox')"` 就能验：`ERR_MODULE_NOT_FOUND …\lib\index.js`。
+**① 空壳是怎么来的**：pnpm 不 `git clone`，取的是 **codeload 归档** `https://codeload.github.com/<owner>/<repo>/tar.gz/<sha>`
+（`pnpm-lock.yaml` 就是这么记的），解包后**按 `package.json` 的 `files` 白名单打包**再装——装下来的是
+「那个 commit 的快照，减去没进白名单的文件」。当时代的清单只有 `lib/**`（**在 `.gitignore` 里、从未提交**）、
+`cordis.patch.yml` 与两份 README ⇒ 装进去 **5 个文件 / 28,444 字节**，宿主半边与客户端半边都不存在
+（`node -e "import('@chance722/dsh-inbox')"` → `ERR_MODULE_NOT_FOUND …\lib\index.js`）。依赖与
+`dsh.profile.bundles` 都写进了 profile，所以插件管理器显示"已安装"、侧栏空着、宿主不崩（那一行加载失败被隔离）。
+dshmarket 对这种"源码检出没有产物"有守卫（`lib/profile.js` 的 `entryArtifactExists`；`lib/install.js` 的
+`validateAddedPlugins` 据此把它当坏插件摘掉，issue #18/#103），**但官方插件管理器的 GitHub 安装路径不跑这道守卫**。
 
-**症状和"装错了"分不开**：依赖与 `dsh.profile.bundles` 都写进了 profile，插件管理器据此显示"已安装"，
-侧栏只是空着；宿主也不崩（这一行加载失败被隔离，market 的 toggle 日志里那行仍是 `fiber=true`）。
-dshmarket 对这种情况有守卫（`lib/profile.js` 的 `entryArtifactExists`，注释写的就是 "github source checkouts of
-build-required plugins ship no lib/"；`lib/install.js` 的 `validateAddedPlugins` 据此把它当坏插件摘掉，issue #18/#103），
-**但官方插件管理器的 GitHub 安装路径不跑这道守卫**，于是它留在 profile 里、什么都没起。
+**② 正解不是给包加 `prepare`**（那次尝试当天就回退了）。pnpm 的判定一共三条路：
 
-**现在这条路能走（4649b0b 起）**，代价都实测过：
+| manifest | pnpm `packageShouldBeBuilt`（源码 `exec/prepare-package`） | 用户得做什么 |
+|---|---|---|
+| 有非空 `prepare` | `true`，无条件 | 先放行 `allowBuilds`，键是 `'<包名>@<归档URL>'`、**按 commit 变**，而且只写包名的键**实测无效** ⇒ 每个用户、每次提交都要手动改 profile |
+| 有 `prepublish`/`prepack`/`publish` 且自己的 `main` 文件缺失 | `true` | 同上 |
+| **两个都没有**（本包现在） | `false` | **什么都不用做**：不构建、不门禁，直接按白名单解包 |
 
-| 步骤 | 实测 |
-|---|---|
-| `dsh plugin --profile gl add github:Chance722/dsh-inbox`（无放行） | 4.7 s 失败：`ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`，报错里带**要写的那一行键**；dsh 自己也补一句"加进 profile 的 `pnpm-workspace.yaml` 再重跑" |
-| 放行后重跑 | 14.2 s 成功：先在抓下来的仓库里跑 `pnpm install`（8.5 s、93 个包、**devDeps 全下**：esbuild / typescript / vitest / react / `@deepseek-ai/*`…），再跑我们的 `prepare` 构建，最后按 `files` 打包 |
-| 装出来的树 | 47 个文件；`lib/` 43 个（含 40 个 `.d.ts`）；三个 JS 与本地 `pnpm build` 的产物 **sha256 逐一相同** |
+所以正解是**把构建产物提交进 git，并且不写 `prepare`**：`lib/` 已从 `.gitignore` 移出（那份文件里写清了理由），
+`package.json` 只留 `prepublishOnly`（**不在** pnpm 那张名单里，所以不触发门禁）——npm 发布仍会重建，git 安装直接拿现成产物。
 
-- **真实 profile 上也验过（同一台机器，宿主正在运行）**：把报错打印的那行键加进 `profiles/desktop/pnpm-workspace.yaml`
-  再重跑同一条 spec 就成功（热 store 下 8.1 s），装出来的 `lib/` 与本地构建 sha256 相同，`dsh.profile.bundles` 里的行照旧 ——
-  也就是说这条路不只能在空 scratch home 上成立。
-- 那个键的形状是 `'<包名>@https://codeload.github.com/<owner>/<repo>/tar.gz/<sha>': true` —— **带 commit**，照 pnpm 打印的那行抄；
-  `createAllowBuildFunction` 里名字键（我们给 esbuild 用的 `esbuild: true` 那种）走的是"注册表依赖"那条匹配分支，
-  对归档依赖到不了 —— **实测**：只写 `'@chance722/dsh-inbox': true` 再跑，pnpm 用同一个错误拒绝（exit 1、没有 `lib/`）。
-- **每换一个 commit 就要重来一次**（2026-09-30 用户在同一台机器上撞了两次：装成并重启生效之后，卸载重装时 `main`
-  已经前进了两个提交，同一个键失效——报错里现成的就是新 sha 的键）。三条出路，按推荐度排：
-  ① 用 npm 包名那条，没有这一档；② 把 spec 固定到 commit（`github:owner/repo#<sha>`，键随之稳定，代价是升级要手动改两处）；
-  ③ **不推荐**：profile 里写 `dangerouslyAllowAllBuilds: true` —— pnpm 的应急开关（`createAllowBuildFunction` 见到它
-  就 `() => true`，实测能过门禁），但等于放行**所有**依赖的构建脚本，任何从 git 装的插件都能在你机器上跑代码。
-- **同一个 commit 只付一次**：准备好的包按解析 id 进了内容寻址仓，换个 profile 再装同一 commit 时
-  `added 0`、1.9 s 就完，连放行都不需要（实测：另一个 profile 一行 `allowBuilds` 都没写，照样装上）。
-- pnpm 说的那次 `pnpm install` 用的是**仓库自己的** `pnpm-lock.yaml` 与 `pnpm-workspace.yaml`：本仓库那份
-  `allowBuilds` 曾经是 pnpm 的占位文本（非布尔值被静默忽略），`pnpm install` 直接非零退出
-  （`ERR_PNPM_IGNORED_BUILDS: esbuild@0.25.12, esbuild@0.28.2`）—— git 安装会撞在同一堵墙上，随 4649b0b 一起修掉。
+**陌生用户实测（全新 scratch `DSH_HOME`、新建 profile、profile 里一行 `allowBuilds` 都没有，而且用 GUI 里粘的那种 URL 形式）**：
+
+```
+& dsh.cmd plugin --profile u1 add https://github.com/Chance722/dsh-inbox
+→ 4.4 s，exit 0；lib/ 43 个文件（含 40 个 .d.ts）；三个 JS 与本地 pnpm build 的 sha256 逐一相同
+```
+
+没有构建、没有放行、没有 devDeps 下载。代价与守门：产物进 git 之后唯一的失败模式是**漂移**——改了 `src` 忘了
+`pnpm build` 就提交，那么所有 git 安装会静默用上一份构建。所以 `scripts/build.mjs` 支持 `--out <dir>`，
+`scripts/check-lib.mjs` 把新构建与已提交的 `lib/` 逐路径逐字节比对（手动跑：`pnpm check:lib`），
+`test/lib-artifacts.test.ts` 跑它 ⇒ 忘了重建是**红测试**，不是用户装到的包坏掉。
+
+上一版方案（`prepare` + `allowBuilds`）里实测到的三条旁证，留着避免重犯：只写包名的键对归档依赖**无效**
+（同一个错误再拒，exit 1、没有 `lib/`）；`dangerouslyAllowAllBuilds: true` 能绕过门禁（等于放行**一切**依赖的
+构建脚本，任何从 git 装的插件都能在你机器上跑代码）；同一个 commit 若在别处被构建过一次，内容寻址仓会按解析 id
+复用（`added 0`、不再过门禁）。
 
 **给读者的结论**：npm 那一路（包名）永远是首选；git 那一路现在能构建，但要你先放行、要下整棵 devDeps、比 npm 慢。
 

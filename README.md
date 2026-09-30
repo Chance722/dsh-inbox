@@ -75,7 +75,7 @@ dsh plugin --profile web add @chance722/dsh-inbox@latest
 
 Open **Plugins** in the sidebar → install → enter `@chance722/dsh-inbox@latest` (within 24h of a release, `@0.2.10`) → restart when it asks.
 
-That field also takes a GitHub URL, but that is a different path: pnpm installs dependencies and builds inside the fetched repository first (and you have to allow it via `allowBuilds` in the profile's `pnpm-workspace.yaml`, using the key pnpm prints). Far slower than the package name. **Install by name.**
+That field also takes a GitHub URL (`https://github.com/Chance722/dsh-inbox`): the built plugin ships in the repository, so it installs the same way with nothing extra to do. Reinstalling is how you upgrade; the package name is still the smoother path day to day.
 
 The same from the desktop's own CLI:
 

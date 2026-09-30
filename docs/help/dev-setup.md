@@ -22,14 +22,16 @@
 
 ```powershell
 cd <仓库路径>
-pnpm install        # 装依赖；收尾会跑一次 prepare = 构建，所以 clone 完就有 lib/
-pnpm build          # esbuild → lib/index.js + lib/client.js + lib/cli.js，再 tsc 出 lib/types/**
+pnpm install        # 装依赖（不构建）
+pnpm build          # esbuild → lib/index.js + lib/client.js + lib/cli.js，再 tsc 出 lib/types/**；改完要连 lib/ 一起提交
 pnpm typecheck      # tsc --noEmit
-pnpm test           # vitest
+pnpm test           # vitest；其中一条拿 src 的新构建与提交的 lib/ 逐字节比对
+pnpm check:lib      # 只跑那条比对（调试用）
 ```
 
-> 同一个 `prepare` 也是 GitHub 地址安装那条路的构建步骤（pnpm 会先在抓下来的仓库里跑 `pnpm install`），
-> 所以别删它——机制与实测见 `docs/help/dsh-plugin-platform.md` 的「GitHub 地址安装」。
+> `lib/` 是**提交进 git** 的产物：GitHub 地址那条安装路拿不到构建步骤（pnpm 只在有 `prepare` 时才构建，
+> 而那要求每个用户按 commit 手动放行）。所以产物必须跟着提交，忘了 `pnpm build` 会被测试拦下——
+> 机制与实测见 `docs/help/dsh-plugin-platform.md` 的「GitHub 地址安装」。
 
 > 文档里的 `<仓库路径>` / `%DSH_HOME%` 是占位：读的时候按自己机器上的实际位置替换。
 
