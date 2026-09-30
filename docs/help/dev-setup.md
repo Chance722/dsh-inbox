@@ -22,10 +22,14 @@
 
 ```powershell
 cd <仓库路径>
-pnpm build          # esbuild → lib/index.js + lib/client.js
+pnpm install        # 装依赖；收尾会跑一次 prepare = 构建，所以 clone 完就有 lib/
+pnpm build          # esbuild → lib/index.js + lib/client.js + lib/cli.js，再 tsc 出 lib/types/**
 pnpm typecheck      # tsc --noEmit
 pnpm test           # vitest
 ```
+
+> 同一个 `prepare` 也是 GitHub 地址安装那条路的构建步骤（pnpm 会先在抓下来的仓库里跑 `pnpm install`），
+> 所以别删它——机制与实测见 `docs/help/dsh-plugin-platform.md` 的「GitHub 地址安装」。
 
 > 文档里的 `<仓库路径>` / `%DSH_HOME%` 是占位：读的时候按自己机器上的实际位置替换。
 
