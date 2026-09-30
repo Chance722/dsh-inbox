@@ -426,3 +426,54 @@ pnpm 11 默认 `minimumReleaseAge: 1440`（24 小时）：发布不满 24 小时
 **结论**：刚发布之后一律写**确切版本**，别写 `@latest`；等满 24 小时再回到 `@latest`。
 本仓库自己（开发侧）用一行 `minimumReleaseAgeExclude: ['@deepseek-ai/*']` 把这条产品线整个开口子，
 其它依赖照样要过 24 小时。
+
+### 设置服务换了形状：0.2.0 上没有"命名空间"这回事（2026-09-30 实测，写错形状会带走整个宿主）
+
+两个运行时的 `ctx.get('settings')` 是**同一个服务的两代**，形状不兼容：
+
+| | 0.1.5-rc.2 | 0.2.0-rc.2 |
+|---|---|---|
+| 声明 | `settings.register(namespace, schema, { base })` | 插件自己 `export const Config`，字段标 `volatile()` |
+| 读 | `settings.get(namespace)` | `settings.describe()` → `[{ ns, value, ... }]`，`ns` 是**profile 行 id** |
+| 写 | `settings.update(namespace, patch)`（同步） | `settings.update(rowId, patch)`（**async**，只收 volatile 字段） |
+
+证据：`app.asar` 里 `dsh/node_modules/@deepseek-ai/dsh-settings/lib/index.js`（对外只有
+`describe/update/replace/mutate/write/configure`，**没有 `register`、也没有 `get`**；`write()` 找不到行时原话是
+`No configurable plugin entry "<ns>"`，不是行里的字段时是 `Config field "x" is not volatile`）。
+行 id 用 `loader` 自己的记录拿：`ctx.fiber.entry.options.id`（`Entry.key = Symbol.for("cordis.entry")`，
+fiber 的 `entry` 由 `cordis-plugin-loader` 的 `internal/plugin` 钩子设置，就是 profile 那行的 `id`），
+所以用户改行 id 也还成立。写下去的落点是 profile 的 `cordis.patch.yml`，形状与官方主题插件那行一模一样
+（本包实测：`- id: dsh-inbox` / `name: @chance722/dsh-inbox` / `config: { listMode: compact }`，
+基座默认值不会被抄进文件）。
+
+**为什么必须认真挑门（用户 2026-09-30 报的那条"点一下列表模式，整个桌面端退出"）**：0.2.0 的 `update()` 是
+async，用 0.1.x 的命名空间调它 = 一个**没人 await 的 rejected promise**，而 dsh 把 unhandled rejection 当
+致命错误（那句 `dsh: fatal load failure: Error: No configurable plugin entry "dsh-inbox-ui"` 下面跟着
+`at process.processTicksAndRejections`，宿主随即 `exited with 1`）。修法在 `src/host/settings.ts`：
+能力探测（有 `register` 走命名空间门，否则 `describe`+`update` 走行门）、写一律 await 并把拒绝转成
+`{ ok:false, reason }`，读也**永不抛**（`describe()` 会读 profile 目录，读不动就当没有）。
+
+**怎么在不碰真实环境的前提下验完这条链**（这次用的配方，可复用）：
+
+```powershell
+$env:DSH_HOME="$env:TEMP\dsh-inbox-lab"                       # 仓库外的 scratch 家目录
+dsh --profile lab --from-default-profile web --dump-config    # 建 profile
+dsh plugin --profile lab add D:\Workspace\dsh-inbox           # link 装本包（不需要网络）
+dsh --profile lab --no-open --port 3199                       # 起宿主，别用真实 profile
+```
+
+面板的 Fetch 路由要浏览器 cookie，**没有浏览器也能点**：`dsh-client-connection` 签 cookie 用的密钥就存在
+`$DSH_HOME/.credentials.yaml` 的 `client-connection/browser-session` 记录里，照它的规则自己签一个
+（`dsh-auth-<base64url(sha256('127.0.0.1:3199'))>` = `v1.<payload>.<sig>`，payload 里
+`issuedAt/expiresAt` 是**毫秒**、`issuedAt <= now < expiresAt`、间隔 ≤ `cookieMaxAgeDays`，HMAC 的键是
+**base64url 解码后的** secret），然后 `POST /api/inbox/ui`：
+
+```jsonc
+{"action":"read"} → {"ok":true,"value":{"listMode":"grid","settingsAvailable":true}}
+{"action":"save","listMode":"compact"} → 重启宿主后再 read，仍是 compact（写到了 profile patch 里）
+```
+
+**反面控制**（同一套配方跑的）：在 `$DSH_HOME/cordis.patch.yml` 里覆盖我们那行的 `config`，同一句 save
+就回 `{"ok":false,"error":{"code":"inbox/ui-unsaved","message":"Configuration for \"dsh-inbox\" is
+overridden by a home patch or command-line overlay"}}`，接着再 read 照常 200 —— **宿主活着**，
+而这条路正是修前会死的那条。

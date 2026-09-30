@@ -644,9 +644,9 @@ function InboxPanel(): React.ReactElement {
   /**
    * The layout the panel remembers for next time.
    *
-   * Read once on mount and written on every change: this is a preference, not
-   * state the host needs to be told about immediately, so a failed write only
-   * means the choice does not survive a reload.
+   * Read once on mount and written on every change. The panel keeps the choice
+   * either way, so a refused write has to be *said*: staying quiet would read
+   * as "it remembered" right up to the next reload.
    */
   React.useEffect(() => {
     void (async () => {
@@ -660,7 +660,13 @@ function InboxPanel(): React.ReactElement {
   const chooseListMode = React.useCallback(
     (mode: ListMode): void => {
       setListMode(mode)
-      void call(INBOX_ENDPOINT_UI, { action: 'save', listMode: mode } satisfies UiRequest)
+      void (async () => {
+        const answer = await call(INBOX_ENDPOINT_UI, {
+          action: 'save',
+          listMode: mode,
+        } satisfies UiRequest)
+        if (!answer.ok) setNotice(t('notice.listModeUnsaved', { reason: answer.error.message }))
+      })()
     },
     [call],
   )

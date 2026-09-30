@@ -67,13 +67,13 @@ npx @chance722/dsh-inbox init --profile web --install-pnpm
 # 全新机器（还没跑过 dsh、没有这个 profile）多带一个 --create-profile
 npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
 
-# 更新（刚发布 24 小时内把 @latest 换成确切版本，如 @0.2.9）
+# 更新（刚发布 24 小时内把 @latest 换成确切版本，如 @0.2.10）
 dsh plugin --profile web add @chance722/dsh-inbox@latest
 ```
 
 **桌面端（DeepSeek Harness 桌面版）**
 
-侧栏打开**插件** → 安装 → 填 `@chance722/dsh-inbox@latest`（刚发布 24 小时内填 `@0.2.9`）→ 按提示重启。
+侧栏打开**插件** → 安装 → 填 `@chance722/dsh-inbox@latest`（刚发布 24 小时内填 `@0.2.10`）→ 按提示重启。
 
 命令行等价（用桌面版自带的那条 `dsh`）：
 

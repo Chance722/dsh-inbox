@@ -16,11 +16,12 @@ import z from '@deepseek-ai/schemastery'
 
 import type { WebdavSettings, WebdavStatus } from '../../shared/panel-wire.js'
 import { DEFAULT_USER_AGENT } from '../../shared/constants.js'
+import { legacySettings, settingsStore, type SettingsSection } from '../settings.js'
 import type { Vault } from '../vault/vault.js'
 
 export type { WebdavSettings, WebdavStatus } from '../../shared/panel-wire.js'
 
-/** Namespace this plugin owns in the settings service. */
+/** Namespace this plugin owns in the 0.1.x settings service. */
 export const SETTINGS_NAMESPACE = 'dsh-inbox-webdav'
 
 /** The credential key holding the password. */
@@ -45,8 +46,12 @@ export const DEFAULT_SETTINGS: WebdavSettings = {
   webdavUserAgent: '',
 }
 
-/** The namespace's schema: every field optional, so a partial user layer is valid. */
-export const WebdavSettingsSchema = z.object({
+/**
+ * The fields the sync endpoint is made of, in one place: the 0.1.x namespace
+ * schema and the 0.2.x config row are both built from this map, and the row
+ * needs only the names (see `../settings.js`).
+ */
+export const WEBDAV_FIELDS = {
   protocol: z.union(['webdav', 's3']).default('webdav'),
   baseUrl: z.string().default(''),
   directory: z.string().default('/inbox'),
@@ -59,23 +64,15 @@ export const WebdavSettingsSchema = z.object({
   accessKeyId: z.string().default(''),
   userAgent: z.string().default(''),
   webdavUserAgent: z.string().default(''),
-})
-
-/** The slice of the settings service this file uses. */
-interface SettingsScope {
-  get(): WebdavSettings
-  update(patch: Partial<WebdavSettings>): void
 }
 
-interface SettingsLike {
-  register(
-    namespace: string,
-    schema: unknown,
-    options: { base: WebdavSettings },
-  ): SettingsScope
-  get(namespace: string): WebdavSettings | undefined
-  /** Namespace-addressed write: no scope object required. */
-  update(namespace: string, patch: Partial<WebdavSettings>): void
+/** The namespace's schema: every field optional, so a partial user layer is valid. */
+export const WebdavSettingsSchema = z.object(WEBDAV_FIELDS)
+
+/** Where the sync endpoint lives, under either settings service shape. */
+export const WEBDAV_SECTION: SettingsSection = {
+  namespace: SETTINGS_NAMESPACE,
+  fields: Object.keys(WEBDAV_FIELDS),
 }
 
 /** The slice of the credentials service this file uses. */
@@ -87,9 +84,9 @@ interface CredentialsLike {
 
 /** Resolve the current settings, falling back to the composed defaults. */
 export function readSettings(ctx: Context): WebdavSettings {
-  const settings = ctx.get('settings') as SettingsLike | undefined
-  if (settings === undefined) return DEFAULT_SETTINGS
-  return settings.get(SETTINGS_NAMESPACE) ?? DEFAULT_SETTINGS
+  const store = settingsStore(ctx)
+  if (store === undefined) return DEFAULT_SETTINGS
+  return { ...DEFAULT_SETTINGS, ...store.read(WEBDAV_SECTION) } as WebdavSettings
 }
 
 /**
@@ -105,7 +102,7 @@ export function readSettings(ctx: Context): WebdavSettings {
  * @param base - composed defaults for this deployment.
  */
 export function installWebdavSettings(ctx: Context, base: WebdavSettings = DEFAULT_SETTINGS): void {
-  const settings = ctx.get('settings') as SettingsLike | undefined
+  const settings = legacySettings(ctx)
   if (settings === undefined) return
   try {
     settings.register(SETTINGS_NAMESPACE, WebdavSettingsSchema, { base })
@@ -221,7 +218,6 @@ export async function saveWebdav(
   base: WebdavSettings,
   patch: WebdavPatch,
 ): Promise<{ ok: boolean; reason?: string }> {
-  const settings = ctx.get('settings') as SettingsLike | undefined
   const credentials = ctx.get('credentials') as CredentialsLike | undefined
 
   const config: Partial<WebdavSettings> = {}
@@ -257,14 +253,16 @@ export async function saveWebdav(
   }
 
   if (Object.keys(config).length > 0) {
-    if (settings === undefined) {
-      return { ok: false, reason: '这个组合里没有设置服务，改不了地址' }
-    }
-    // The namespace is declared at load time; here we only write. `update()`
-    // merges into the *user* layer and persists, leaving the composed base the
+    // Declaration happened at load time; here we only write. Either door merges
+    // into the *user* layer and persists, leaving the composed base the
     // deployment's — which is what makes a shipped default work.
     installWebdavSettings(ctx, base)
-    settings.update(SETTINGS_NAMESPACE, config)
+    const store = settingsStore(ctx)
+    if (store === undefined) {
+      return { ok: false, reason: '这个组合里没有设置服务，改不了地址' }
+    }
+    const written = await store.write(WEBDAV_SECTION, config)
+    if (!written.ok) return { ok: false, reason: `地址没存进去：${written.reason}` }
   }
 
   if (patch.password !== undefined) {

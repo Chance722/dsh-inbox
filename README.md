@@ -67,13 +67,13 @@ npx @chance722/dsh-inbox init --profile web --install-pnpm
 # never run dsh on this machine? create the profile in the same command
 npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
 
-# update (within 24h of a release, swap @latest for the exact version, e.g. @0.2.9)
+# update (within 24h of a release, swap @latest for the exact version, e.g. @0.2.10)
 dsh plugin --profile web add @chance722/dsh-inbox@latest
 ```
 
 **Desktop app (DeepSeek Harness)**
 
-Open **Plugins** in the sidebar → install → enter `@chance722/dsh-inbox@latest` (within 24h of a release, `@0.2.9`) → restart when it asks.
+Open **Plugins** in the sidebar → install → enter `@chance722/dsh-inbox@latest` (within 24h of a release, `@0.2.10`) → restart when it asks.
 
 The same from the desktop's own CLI:
 

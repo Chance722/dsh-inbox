@@ -1,21 +1,46 @@
 import type { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 import { PACKAGE_NAME, VERSION } from '../shared/constants.js'
 import { registerInboxCommand } from './command.js'
 import { registerInboxRpc } from './rpc.js'
+import { markLive } from './settings.js'
 import { registerInboxTools } from './tools.js'
-import { installUiSettings } from './ui/config.js'
+import { installUiSettings, UI_FIELDS } from './ui/config.js'
 import { leaseVault } from './vault/lease.js'
 import { Vault } from './vault/vault.js'
 import { runPull } from './webdav/run.js'
-import { installWebdavSettings } from './webdav/config.js'
+import { installWebdavSettings, WEBDAV_FIELDS } from './webdav/config.js'
 
 /** Stable Cordis plugin name for the host half. */
 export const name = 'dsh-inbox'
 
 /** Tool registry, command surface, and the storage domain form we persist through. */
 export const inject = ['tools', 'commands', 'storageDomain']
+
+/**
+ * What a profile may configure on our row.
+ *
+ * Both halves of this are settings the user changes *in the panel* — the list
+ * density it opens with, and where the sync endpoint lives — so this schema is
+ * not decoration: on dsh 0.2.x it is the only thing that makes those fields
+ * writable at all. That service keeps no namespaces, so a setting's address is
+ * the profile row of the plugin (`dsh-inbox`, see `cordis.patch.yml`), and it
+ * refuses to write a field the plugin's own `Config` has not marked live
+ * (`volatile()`), which `markLive` does and 0.1.x's schemastery simply ignores.
+ */
+export const Config = z.object({
+  ...liveFields(UI_FIELDS),
+  ...liveFields(WEBDAV_FIELDS),
+})
+
+/** The same fields, marked live where the runtime knows that question. */
+function liveFields<T extends Record<string, unknown>>(fields: T): T {
+  return Object.fromEntries(
+    Object.entries(fields).map(([name, field]) => [name, markLive(field)]),
+  ) as T
+}
 
 /**
  * Claim the vault and publish the tools.

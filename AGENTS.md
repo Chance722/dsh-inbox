@@ -6,7 +6,7 @@
 
 - **一句话**：dsh-inbox 是 DeepSeek Harness（dsh）的插件，把日常复制粘贴的链接、图片、文本、账密收进一个本地仓库，自动分类、可在侧栏浏览、可在 dsh 对话里检索取回。
 - **面向谁**：公开 npm 包 `@chance722/dsh-inbox`，任何人都能像装社区插件一样安装。
-- **当前阶段**：**M0–M8 已验收**（阶段、验收标准与记录见 `docs/feature/dev-bus.md`）；此后按模块继续（面板中英双语等）。当前版本 `0.2.9`（`package.json` 是版本的单一源，这里只是回显）。
+- **当前阶段**：**M0–M8 已验收**（阶段、验收标准与记录见 `docs/feature/dev-bus.md`）；此后按模块继续（面板中英双语等）。当前版本 `0.2.10`（`package.json` 是版本的单一源，这里只是回显）。
 - **平台**：代码跨平台；**v1 只在 Windows 实测验收**，macOS/Linux 未验证（README 需如实写明）。
 - **包名**：`@chance722/dsh-inbox`。
 
@@ -49,7 +49,7 @@ docs/
 7. **同步红线（2026-09-20 用户拍板改）**：**上云的密文只有账密正文**——账密的 `secret` 本来就是密文，别的字段（文本、链接、标题、备注、类目、标签、时间）和附件**字节**都按明文上云。因此 **远端必须有访问控制**（README 写明"别用公开桶"），并且：主密码与派生密钥永不上传、永不同步；冲突**直接按 `updatedAt` 覆盖**（不留冲突副本）；删除以墓碑同步，清空回收站连远端一起删；附件随同步走。**清空回收站还要在本机 `graves` 表留一条 `{id, purgedAt}`**（2026-09-21）：定向删除只覆盖本机那棵同步树，别的树里的副本靠这条墓碑挡住——merge 对本机没有的 id 只收"比 `purgedAt` 更新"的副本；机制与实测见 `docs/help/sync.md`。
 8. **数据事实只认实测**：dsh 处于 rc 阶段，API 会变。**这台机器上有两个运行时**（PATH 上的 `dsh` 是 0.1.5-rc.2，桌面端 `D:\deepseek` 是 0.2.0-rc.2，各自一条 CLI），问事实先问对哪一个。写 dsh 相关代码前先查 `docs/help/dsh-plugin-platform.md`；该文档与代码冲突时以官方分发的源码为准（CLI 版在 `.research/`，桌面端在 `app.asar` 里），并回改文档。
 9. **文档语言**：代码与标识符英文，代码注释中文；文档中英双份（`README.md` + `README.zh.md`），`AGENTS.md`/`docs/` 用中文。
-10. **持久化只走 `ctx.storageDomain`**：不自己开文件、SQLite 或别的存储；域 spec 的 schema 演进见 `docs/help/vault-data-model.md`。
+10. **持久化只走 `ctx.storageDomain`**：不自己开文件、SQLite 或别的存储；域 spec 的 schema 演进见 `docs/help/vault-data-model.md`。**设置值不走这条线**（面板偏好、同步端点在 dsh 的设置服务里），而那服务的两代形状不兼容、写错会带走整个宿主——写这类代码前先读 `docs/help/dsh-plugin-platform.md` 的「设置服务换了形状」一节。
 11. **客户端半边不许引入宿主依赖**：`src/client/**` 只能 import React、平台静态模块表里的包，以及 `src/shared/` 下的纯常量（不许 zod、不许 `node:*`、不许 `@deepseek-ai/dsh-*`），否则浏览器产物会在加载期炸。
 12. **面板跟随宿主主题，别写死**：配色方案从宿主读（`<html>` 的 `color-scheme`，读不到再按继承来的文字色亮度判），实现在 `src/client/scheme.ts`，判定与三个坑见 `docs/help/panel-theme.md`。**禁止**再出现硬编码的 `color-scheme`，也别读面板自己的（那是自我回声）。
 13. **客户端文案必须走词典，别写死在组件里**：面板 / dock / 对话卡片的文案一律进 `src/client/messages.ts`（`zh` 与 `en` 同键集），经 `t()` 渲染；面板要跟随 dsh 的语言（接官方 `ctx.locale`，服务缺席时退到 `<html lang>`），**别自造语言开关**。宿主发给模型的文字是另一层（`src/shared/vocabulary.ts` 等保持中文），两者别混。`test/i18n.test.ts` 会拦下客户端里的中文字面量；机制、边界与"为什么句内碎片要整句成 key"见 `docs/help/panel-i18n.md`。
