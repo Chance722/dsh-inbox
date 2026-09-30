@@ -376,6 +376,9 @@ build-required plugins ship no lib/"；`lib/install.js` 的 `validateAddedPlugin
 | 放行后重跑 | 14.2 s 成功：先在抓下来的仓库里跑 `pnpm install`（8.5 s、93 个包、**devDeps 全下**：esbuild / typescript / vitest / react / `@deepseek-ai/*`…），再跑我们的 `prepare` 构建，最后按 `files` 打包 |
 | 装出来的树 | 47 个文件；`lib/` 43 个（含 40 个 `.d.ts`）；三个 JS 与本地 `pnpm build` 的产物 **sha256 逐一相同** |
 
+- **真实 profile 上也验过（同一台机器，宿主正在运行）**：把报错打印的那行键加进 `profiles/desktop/pnpm-workspace.yaml`
+  再重跑同一条 spec 就成功（热 store 下 8.1 s），装出来的 `lib/` 与本地构建 sha256 相同，`dsh.profile.bundles` 里的行照旧 ——
+  也就是说这条路不只能在空 scratch home 上成立。
 - 那个键的形状是 `'<包名>@https://codeload.github.com/<owner>/<repo>/tar.gz/<sha>': true` —— **带 commit**，
   所以浮动目标（`github:owner/repo`）每换一个 commit 就要重新放行一次。照 pnpm 打印的那行抄；
   `createAllowBuildFunction` 里名字键（我们给 esbuild 用的 `esbuild: true` 那种）走的是"注册表依赖"那条匹配分支，
