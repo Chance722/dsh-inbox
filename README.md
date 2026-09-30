@@ -66,11 +66,13 @@ npx @chance722/dsh-inbox init --profile web --install-pnpm
 npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
 
 # update (init only installs and wires things up — re-running it never upgrades;
-# minutes after a release, write the exact version instead: @0.2.9)
+# within 24h of a release, write the exact version — see below)
 dsh plugin --profile web add @chance722/dsh-inbox@latest
 ```
 
 `dsh plugin add` checks the dsh version range this plugin declares and refuses to install (rolling the profile back) when they disagree. From **0.2.9** this plugin declares both the `0.1.5-rc.2` and the `0.2.0-rc.2` line. If your dsh is outside that, update the plugin first; the `allow-version` line in the error is an "I accept the risk" switch that turns the check off — it does not fix a real incompatibility.
+
+**Right after a release, write the exact version** (`@chance722/dsh-inbox@0.2.9`, not `@latest`): pnpm does not install a version published less than 24 hours ago, and with a range it **silently installs an older one** — the compatibility error then names that older version and looks like the fix did not work, when the new version was never installed. An exact version goes in, and pnpm records it in the profile's `minimumReleaseAgeExclude` itself.
 
 **Restart dsh** afterwards, then start it as usual. **Inbox** is in the left rail, and a new session's assistant can look things up ("what links in my inbox haven't I read yet?").
 

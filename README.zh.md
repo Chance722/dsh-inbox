@@ -65,11 +65,13 @@ npx @chance722/dsh-inbox init --profile web --install-pnpm
 # 全新机器（还没跑过 dsh、没有这个 profile）多带一个 --create-profile
 npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
 
-# 更新（init 只管装和接线，重复跑不会升级；刚发布的几分钟内请写确切版本：@0.2.9）
+# 更新（init 只管装和接线，重复跑不会升级；刚发布的 24 小时内要写确切版本，见下）
 dsh plugin --profile web add @chance722/dsh-inbox@latest
 ```
 
 `dsh plugin add` 会核对本插件声明的 dsh 版本区间，对不上就拒绝安装（并回滚 profile）。本插件 **0.2.9** 起同时声明 `0.1.5-rc.2` 与 `0.2.0-rc.2` 两条线。版本对不上时先更新插件；报错里那条 `allow-version` 是"我知道风险、照样装"的开关，它只关掉检查，不解决真正的不兼容。
+
+**刚发布之后请写确切版本**（`@chance722/dsh-inbox@0.2.9`，不是 `@latest`）：pnpm 默认不装发布不满 24 小时的版本，而写范围时它会**静默装上一个旧版**——于是门禁报错会指向那个旧版，看起来像兼容性没修好，其实是新版本压根没装上。写确切版本 pnpm 会直接装（它自己会把这一条加进 profile 的 `minimumReleaseAgeExclude`）。
 
 装完**重启 dsh**，然后照旧启动。左栏出现 **Inbox**；新会话里问「我的收件箱里有哪些还没看的链接」，助手就会去查。
 

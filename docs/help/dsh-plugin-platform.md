@@ -394,8 +394,22 @@ scratch profile，报错应当逐字复现；改回 `|| ^0.2.0-rc.2` 则装上�
 profile，先把桌面端的 CLI 放到 PATH 前面：`D:\deepseek\resources\runtime\cli\bin`。
 0.2.9 起 `init` 在第①步回显它问到的版本（`（用 dsh 0.2.0-rc.2）`），这类错配不再静默。
 
-### pnpm 的 `minimumReleaseAge` 会挡住刚发布的 rc
+### pnpm 的 `minimumReleaseAge`：**范围**被静默降级，**确切版本**才会自己豁免
 
-pnpm 11 默认 `minimumReleaseAge: 1440`（24 小时），刚发出来的 rc 直接被拒；`pnpm install` 会自作主张往
-`pnpm-workspace.yaml` 里追加一长串 `minimumReleaseAgeExclude: <pkg>@<ver>`。本仓库改成一行
-`minimumReleaseAgeExclude: ['@deepseek-ai/*']`——只给这一条产品线开口子，其它依赖照样要过 24 小时。
+pnpm 11 默认 `minimumReleaseAge: 1440`（24 小时）：发布不满 24 小时的版本不许装。后果分两种，
+而它们长得完全不一样（2026-09-30 用桌面端自带的 pnpm 11.7.0 实测；起因是用户发完 0.2.9 之后
+用 `@latest` 装不上）：
+
+- **写范围（`@latest`、`^0.2.8`）→ 静默降级。** pnpm 在范围里挑"够老"的最新版，于是刚发布的
+  0.2.9 被跳过，装下去的是 **0.2.8**。**没有任何警告**，而且 `dsh plugin add` 后面那句门禁报错会指向
+  **0.2.8**（`@chance722/dsh-inbox@0.2.8 与 DSH 0.2.0-rc.2 不兼容（要求 … ^0.1.5-rc.2）`）——
+  看起来像兼容性没修好，其实是新版本压根没装上。桌面端插件管理器的信息卡读的是 registry 的
+  `latest` 标签（0.2.9），所以**界面显示 0.2.9、报错说 0.2.8**，更迷惑。
+  证据：`~/.dsh/profiles/desktop/.plugin-manager/logs/operation-*/pnpm.log` 里那行
+  `+ @chance722/dsh-inbox ^0.2.8`。
+- **写确切版本（`@0.2.9`）→ 自动豁免。** pnpm 照装，并自己往 `pnpm-workspace.yaml` 追加一条
+  `minimumReleaseAgeExclude: <pkg>@<ver>`（会打 "Added 1 entry to minimumReleaseAgeExclude"）。
+
+**结论**：刚发布之后一律写**确切版本**，别写 `@latest`；等满 24 小时再回到 `@latest`。
+本仓库自己（开发侧）用一行 `minimumReleaseAgeExclude: ['@deepseek-ai/*']` 把这条产品线整个开口子，
+其它依赖照样要过 24 小时。
