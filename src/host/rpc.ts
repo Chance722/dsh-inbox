@@ -742,7 +742,7 @@ async function handleUi(ctx: Context, payload: unknown): Promise<InboxRpcResult<
   if (!parsed.success) return failure('inbox/bad-ui-request', parsed.error.message)
 
   if (parsed.data.action === 'save' && parsed.data.listMode !== undefined) {
-    const saved = saveUiPrefs(ctx, { listMode: parsed.data.listMode })
+    const saved = await saveUiPrefs(ctx, { listMode: parsed.data.listMode })
     if (!saved.ok) return failure('inbox/ui-unsaved', saved.reason ?? '存不进去')
   }
   return { ok: true, value: readUiPrefs(ctx) }

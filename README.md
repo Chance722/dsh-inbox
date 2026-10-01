@@ -56,7 +56,9 @@ Two questions in the same conversation, on a real machine:
 
 ## Install
 
-Needs Node ≥ 22 and a working `dsh`; the installer brings pnpm along when your machine does not have it. **Windows only so far** — macOS and Linux are unverified.
+Needs Node ≥ 22 and a working `dsh` (the installer brings pnpm along when your machine does not have it). **Windows only so far** — macOS and Linux are unverified.
+
+**Web (command line)**
 
 ```powershell
 # install (`dsh web` is `dsh --profile web`, so this is the profile you already start)
@@ -65,14 +67,23 @@ npx @chance722/dsh-inbox init --profile web --install-pnpm
 # never run dsh on this machine? create the profile in the same command
 npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
 
-# update (init only installs and wires things up — re-running it never upgrades;
-# minutes after a release, write the exact version instead: @0.2.8)
+# update (within 24h of a release, swap @latest for the exact version, e.g. @0.2.10)
 dsh plugin --profile web add @chance722/dsh-inbox@latest
 ```
 
-**Restart dsh** afterwards, then start it as usual. **Inbox** is in the left rail, and a new session's assistant can look things up ("what links in my inbox haven't I read yet?").
+**Desktop app (DeepSeek Harness)**
 
-`init` also copies dsh's shipped `standard` preset to `~/.dsh/.agent-presets/inbox/` with this plugin added, and points your default preset at it — that is what lets the assistant see the inbox tools. It becomes a snapshot that will not follow later dsh upgrades; both it and the profile are reversible (see Uninstall).
+Open **Plugins** in the sidebar → install → enter `@chance722/dsh-inbox@latest` (within 24h of a release, `@0.2.10`) → restart when it asks.
+
+That field also takes a GitHub URL (`https://github.com/Chance722/dsh-inbox`): the built plugin ships in the repository, so it installs the same way with nothing extra to do. Reinstalling is how you upgrade; the package name is still the smoother path day to day.
+
+The same from the desktop's own CLI:
+
+```powershell
+"<desktop install dir>\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add @chance722/dsh-inbox@latest
+```
+
+**Restart** afterwards. **Inbox** is in the left rail, and a new session's assistant can look things up ("what links in my inbox haven't I read yet?").
 
 To keep your daily dsh untouched, give the plugin its own profile and port: `npx @chance722/dsh-inbox init --create-profile`, then `dsh --profile inbox --no-open --port 3102`.
 
@@ -91,9 +102,10 @@ node lib/cli.js init --package <absolute path to this repo>
 ```powershell
 # 1. remove the package from the profile you installed it into
 #    (also drops it from dsh.profile.bundles)
+#    desktop app: uninstall it in the Plugins panel — same thing
 dsh plugin --profile <that profile> remove @chance722/dsh-inbox
 
-# 2. delete what init created
+# 2. delete what init created (**dsh 0.1.x only**; from 0.2 init skips this)
 rm -r ~/.dsh/.agent-presets/inbox      # the preset copy
 # default preset: delete agent-presets.default in ~/.dsh/settings.yaml (falls back to the
 # deployment default) or set it to standard; every init left a settings.yaml.bak-* backup

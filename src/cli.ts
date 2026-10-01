@@ -20,6 +20,12 @@
  *   3. point the user-level default preset at it (backing the settings file up
  *      first, because that file is the user's, not ours)
  *
+ * Steps ② and ③ belong to the preset carrier dsh 0.1.x reads. From 0.2.0 the
+ * carrier is a declaration row inside a bundle patch and nothing reads the
+ * directory any more, so `init` skips both there and says why — the tools reach
+ * the model from the profile row alone (measured on 0.2.0-rc.2, see
+ * `presetMechanism` below and `docs/help/dsh-plugin-platform.md`).
+ *
  * The copy is the user's to edit afterwards: re-running adds the row when it is
  * missing, and otherwise leaves the file alone — the one exception being that
  * row's package name, which is ours to keep pointing at the real package (see
@@ -107,6 +113,7 @@ function usage(): string {
 
 做三件事：① 把插件装进 profile；② 复制 standard preset 到
 <DSH_HOME>/.agent-presets/<id> 并追加本插件；③ 把用户级默认 preset 指向它。
+dsh 0.2 起 preset 换了载体（目录不再被读），②③ 自动跳过——那一版不需要它们。
 重复运行是安全的：已经做过的不会重复做。`
 }
 
@@ -334,6 +341,56 @@ function dshPrefixes(): string[] {
 }
 
 /**
+ * Which carrier the running dsh reads user presets from.
+ *
+ * - `directory` — 0.1.x：`$DSH_HOME/.agent-presets/<id>/`，里面是 `preset.yml`
+ *   （显示名/描述/顺序）和 `agent.cordis.yml`（组合）。
+ * - `declaration` — 0.2.0 起：preset 是 bundle patch 里的一行声明，交给
+ *   `@deepseek-ai/dsh-agent-preset-registry`；那个目录**没有任何代码再读它**，
+ *   而且 `@deepseek-ai/dsh-agent-presets` 这个包在 0.2.0 上已经不存在了
+ *   （2026-09-30 实测：npm 上最高 0.1.6-alpha.2，桌面端 `app.asar` 里连字符串都搜不到）。
+ * - `unknown` — 问不出来（PATH 上没有 dsh、版本号看不懂）：按老行为走。不猜——
+ *   猜错的代价要么是"该做的没做且不出声"，要么是"在一个根本不读那个目录的版本上
+ *   白跑一趟然后以 1 退出"，后者至少是看得见的。
+ */
+export type PresetMechanism = 'directory' | 'declaration' | 'unknown'
+
+/**
+ * Read a dsh version as "which preset carrier is this".
+ *
+ * 只有 major.minor 参与判断：rc 号、alpha 号和构建元数据都不改变载体。
+ *
+ * @param version - `dsh --version` 的输出，或 undefined（没问出来）。
+ * @returns the carrier to assume.
+ */
+export function presetMechanism(version: string | undefined): PresetMechanism {
+  const match = /(\d+)\.(\d+)\./.exec(version ?? '')
+  if (match === null) return 'unknown'
+  const major = Number(match[1])
+  const minor = Number(match[2])
+  if (major > 0) return 'declaration'
+  return minor >= 2 ? 'declaration' : 'directory'
+}
+
+/**
+ * Ask dsh what it is.
+ *
+ * `--version` needs no profile and prints one line, so it is the cheapest way to
+ * tell the two preset carriers apart. A failure is not fatal: the caller treats
+ * "no answer" as the old behaviour.
+ *
+ * @returns stdout+stderr of `dsh --version`, or undefined when it cannot be run.
+ */
+function dshVersion(): string | undefined {
+  const probe = spawnSync('dsh', ['--version'], {
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  })
+  if (probe.error !== undefined || probe.status !== 0) return undefined
+  return `${probe.stdout ?? ''}${probe.stderr ?? ''}`
+}
+
+/**
  * Point the user-level default preset at this one.
  *
  * A line-based merge, not a YAML library: the settings file is the user's, it is
@@ -451,7 +508,17 @@ function main(argv: readonly string[]): number {
     process.stdout.write(`   建好了 ${profileDir}\n`)
   }
 
-  process.stdout.write(`① 把 ${options.source} 装进 profile「${profile}」${chosen}…\n`)
+  /*
+    Which dsh answers matters, and on a machine with both a CLI install and the
+    desktop app it is easy to talk to the wrong one: `init` installs with the
+    `dsh` on PATH, so a 0.1.x CLI would wire up a profile the 0.2 desktop boots.
+    Printing the version it found turns that from silent into visible.
+  */
+  const version = dshVersion()
+  process.stdout.write(
+    `① 把 ${options.source} 装进 profile「${profile}」${chosen}` +
+      `（用 dsh ${version === undefined ? '（版本问不出来）' : version.trim()}）…\n`,
+  )
   const added = spawnSync('dsh', ['plugin', '--profile', profile, 'add', options.source], {
     stdio: 'inherit',
     shell: process.platform === 'win32',
@@ -464,54 +531,73 @@ function main(argv: readonly string[]): number {
     return 1
   }
 
-  const standard = shippedStandard(home, profileDir)
-  if (standard === undefined) {
-    process.stderr.write('找不到随 dsh 附带的 standard preset，无法创建 agent preset。\n')
-    return 1
-  }
-  const presetDir = join(home, '.agent-presets', options.preset)
-  if (existsSync(join(presetDir, 'agent.cordis.yml'))) {
-    process.stdout.write(`② preset 「${options.preset}」已存在，只补上缺失的插件行\n`)
-  } else {
-    process.stdout.write(`② 从 standard 复制一份 preset 到 ${presetDir}\n`)
-    mkdirSync(dirname(presetDir), { recursive: true })
-    cpSync(standard, presetDir, { recursive: true })
-    const manifest = join(presetDir, 'preset.yml')
-    if (existsSync(manifest)) {
-      const text = readFileSync(manifest, 'utf8')
-      writeFileSync(
-        manifest,
-        text
-          .replace(/^name:.*$/m, 'name: 收件箱（带 dsh-inbox）')
-          .replace(
-            /^description:.*$/m,
-            'description: 标准模式 + dsh-inbox：助手可以直接查你的收件箱（叫它仓库 / inbox 也行）并把内容取回来。',
-          ),
-        'utf8',
-      )
-    }
-  }
-  const composition = join(presetDir, 'agent.cordis.yml')
-  const body = readFileSync(composition, 'utf8')
-  const outcome = ensurePresetRow(body)
-  if (outcome.change === 'added') {
-    writeFileSync(composition, outcome.body, 'utf8')
-    process.stdout.write(`   已把 ${PACKAGE_NAME} 追加进 preset 的组合\n`)
-  } else if (outcome.change === 'renamed') {
-    writeFileSync(composition, outcome.body, 'utf8')
-    process.stdout.write(`   preset 里那一行的来源从 ${String(outcome.from)} 改成 ${PACKAGE_NAME}\n`)
-  } else {
-    process.stdout.write('   preset 里已经有这个插件，跳过\n')
-  }
+  /*
+    0.2.0 换掉了 preset 的载体：目录不再被读，改成 bundle patch 里的声明行。
 
-  if (options.defaultPreset) {
-    const changed = setDefaultPreset(join(home, 'settings.yaml'), options.preset)
-    process.stdout.write(`③ 默认 preset：${changed}\n`)
+    这里**不做**那一步，而不是"做一半"——原因是实测：装进 profile 的那一行，
+    它注册的工具会话直接看得见（2026-09-30 在 0.2.0-rc.2 上用真模型验过两次：
+    一次会话里挂着 standard preset、一次没有，两次模型都调到了 inbox_status）。
+    声明行只在该版本的会话组合**不**继承进程级工具时才需要，而那没有发生。
+
+    顺带一提，硬做也做不动：声明要复述整份 standard 的 plugins 列表，而桌面端
+    那份 `presets/standard.patch.yml` 在 `app.asar` 里——一个 npx 跑的 CLI 打不开它。
+  */
+  const mechanism = presetMechanism(version)
+  if (mechanism === 'declaration') {
+    process.stdout.write(
+      '② 跳过 preset：这一版 dsh 不再读 ~/.dsh/.agent-presets/（preset 改成了随 bundle 声明的行）。\n' +
+        '   也**不需要**它——装进 profile 的那一行，工具对会话直接可见（0.2.0-rc.2 实测）。\n',
+    )
+  } else {
+    const standard = shippedStandard(home, profileDir)
+    if (standard === undefined) {
+      process.stderr.write('找不到随 dsh 附带的 standard preset，无法创建 agent preset。\n')
+      return 1
+    }
+    const presetDir = join(home, '.agent-presets', options.preset)
+    if (existsSync(join(presetDir, 'agent.cordis.yml'))) {
+      process.stdout.write(`② preset 「${options.preset}」已存在，只补上缺失的插件行\n`)
+    } else {
+      process.stdout.write(`② 从 standard 复制一份 preset 到 ${presetDir}\n`)
+      mkdirSync(dirname(presetDir), { recursive: true })
+      cpSync(standard, presetDir, { recursive: true })
+      const manifest = join(presetDir, 'preset.yml')
+      if (existsSync(manifest)) {
+        const text = readFileSync(manifest, 'utf8')
+        writeFileSync(
+          manifest,
+          text
+            .replace(/^name:.*$/m, 'name: 收件箱（带 dsh-inbox）')
+            .replace(
+              /^description:.*$/m,
+              'description: 标准模式 + dsh-inbox：助手可以直接查你的收件箱（叫它仓库 / inbox 也行）并把内容取回来。',
+            ),
+          'utf8',
+        )
+      }
+    }
+    const composition = join(presetDir, 'agent.cordis.yml')
+    const body = readFileSync(composition, 'utf8')
+    const outcome = ensurePresetRow(body)
+    if (outcome.change === 'added') {
+      writeFileSync(composition, outcome.body, 'utf8')
+      process.stdout.write(`   已把 ${PACKAGE_NAME} 追加进 preset 的组合\n`)
+    } else if (outcome.change === 'renamed') {
+      writeFileSync(composition, outcome.body, 'utf8')
+      process.stdout.write(`   preset 里那一行的来源从 ${String(outcome.from)} 改成 ${PACKAGE_NAME}\n`)
+    } else {
+      process.stdout.write('   preset 里已经有这个插件，跳过\n')
+    }
+
+    if (options.defaultPreset) {
+      const changed = setDefaultPreset(join(home, 'settings.yaml'), options.preset)
+      process.stdout.write(`③ 默认 preset：${changed}\n`)
+    }
   }
 
   process.stdout.write(
     `\n完成。接下来：\n` +
-      `  · 重启 dsh（preset 在启动时扫描）\n` +
+      `  · 重启 dsh（profile 的插件行在启动时加载）\n` +
       `  · 用你平时那条命令启动它：${profile === 'web' ? 'dsh web' : `dsh --profile ${profile}`}\n` +
       `  · 新建一个会话，它就会带上收件箱工具；想让助手查仓库，直接问「我的收件箱里有哪些还没看的链接」\n` +
       `  · 面板（侧栏 Inbox）不需要 preset，装完就在\n` +

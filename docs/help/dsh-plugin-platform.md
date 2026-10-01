@@ -166,12 +166,16 @@ window.__ModuleLoader__.load({
 
 ### pnpm 11 的构建脚本白名单
 
-pnpm 11 在跑任何脚本前会先做依赖状态检查，一看到「ignored build scripts」就**非零退出**——`pnpm build` / `pnpm test` / `pnpm typecheck` 全部失效。`pnpm-workspace.yaml` 里要同时写两条：
+pnpm 11 在跑任何脚本前会先做依赖状态检查，一看到「ignored build scripts」就**非零退出**——`pnpm build` / `pnpm test` / `pnpm typecheck` 全部失效。`pnpm-workspace.yaml` 里要写三条：
 
-- `onlyBuiltDependencies: [esbuild]`——允许构建脚本（`package.json` 里的 `pnpm` 字段已不再被读取）
-- `verifyDepsBeforeRun: false`——关掉那个前置检查
+- `allowBuilds: { esbuild: true }`——**值必须是布尔**（2026-09-30 实测）：pnpm 11.10 把这张表当开关读，
+  非布尔值**静默忽略**，而 `approve-builds` 留给你的那行占位文本（`esbuild: set this to true or false`）
+  正好就是非布尔值 ⇒ `pnpm install` 照样以 `ERR_PNPM_IGNORED_BUILDS: esbuild@0.25.12, esbuild@0.28.2` 非零退出
+  （正是 git 安装那条路要先跑的 `pnpm install`，见上面 git 一节）。键只写包名即放行所有版本，也可以写 `name@<version>`。
+- `onlyBuiltDependencies: [esbuild]`——留着给还读旧键的 pnpm 10。
+- `verifyDepsBeforeRun: false`——关掉那个前置检查（11.10 上没重测，先留着）。
 
-实测即使提示被拦，esbuild 的二进制照样能用（`node scripts/build.mjs` 直接跑是成功的），所以拦住的是检查本身，不是工具。两条都补上之后 README 里写的 `pnpm build/test/typecheck` 才真的可用。
+实测即使提示被拦，esbuild 的二进制照样能用（`node scripts/build.mjs` 直接跑是成功的），所以拦住的是检查本身，不是工具。三条齐了之后 `pnpm install` 与 README 里写的 `pnpm build/test/typecheck` 才真的可用（实测：改前 `pnpm install` 退出 1，改后 0，两个 esbuild 的 postinstall 都跑了）。
 
 ## M1 实测补充（存储栈，2026-09-19）
 
@@ -308,3 +312,215 @@ const rev  = info.tab.navigation.revision // 每次导航 +1，参数没变也�
 **接之前先做小 spike**（rc 期 API 会变）：我们的客户端 bundle 能否 require 到它（`package.json` 的
 `dsh.client.inject` 要加这一条，和现有的 connection/ui-layout/ui-sidebar 并列）、`t` 席位在我们自己的
 slot 注册里是否可用、以及 `ctx.effect` 的释放是否按官方样例走。
+
+## 0.2.0-rc.2（DeepSeek Harness 桌面端）实测（2026-09-30）
+
+本机多了一个运行时：桌面端 `DeepSeek Harness 0.2.0-rc.2`（注册表项 `InstallLocation: D:\deepseek`），
+而 PATH/nvm 上的 `@deepseek-ai/dsh` 仍是 `0.1.5-rc.2`。**两个运行时并存**，`docs/help/dev-setup.md`
+里的老命令只对后者成立。
+
+### 桌面端的 dsh 在哪、怎么当命令行用
+
+- 桌面端自带 CLI：`D:\deepseek\resources\runtime\cli\bin\dsh.cmd`。它把 Electron 当 node 用
+  （`ELECTRON_RUN_AS_NODE=1`），跑 `app.asar\dsh\node_modules\@deepseek-ai\dsh-desktop-host\lib\cli.js`。
+  `--version` 回 `0.2.0-rc.2`，`dsh --help` / `dsh plugin --profile <p> …` 与 CLI 版同形。
+- **运行时包在 `app.asar` 里**（121 MB 的归档，shell 工具打不开，官方文档也这么写）。要在里面找事实
+  （README、`lib/types`、patch 行 id）只能把 asar 当字节流搜：`[IO.File]::ReadAllBytes` + 全文 `IndexOf`，
+  或用 `--expose-internals` 跑一段脚本。**profile 仍在 `%DSH_HOME%\profiles`**，桌面端自己那个叫 `desktop`。
+- 于是可以完全不碰真实环境地验证：`$env:DSH_HOME=<仓库里的 scratch 目录>` 之后
+  `dsh --profile X --from-default-profile web --dump-config` 建 profile、
+  `dsh plugin --profile X add <路径>` 装插件、`dsh --profile X --no-open --port <n>` 起 web。
+  实测 0.2.0-rc.2 会照常把我们的 client bundle 挂上
+  （页面里出现 `plugins/??@chance722/dsh-inbox/client.js&rev=…`，那个 URL 直接 GET 回
+  `200 text/javascript`、21 万字节、内容是 `window.__ModuleLoader__.load({ id: "@chance722/dsh-inbox", … })`）。
+
+### 桌面端的插件面板（用户装插件走的那条路）
+
+侧栏的**插件**面板（`@deepseek-ai/dsh-client-ui-plugin-manager`，root 页面，不属于任何会话）是桌面端装插件的正道。
+它和 `dsh plugin add` 跑的是**同一套 pnpm、同一道门禁**，所以上面那些坑在这里一模一样。官方自陈的边界
+（`app.asar` 里该包的 README「已知限制」）：
+
+- **没有版本选择器，也没有升级按钮**——spec 按 pnpm 接受的写法手输，升级＝卸载后重装。⇒ 刚发布 24 小时内
+  必须手输**确切版本**，否则就是"静默降级到上一版 + 门禁报旧版不兼容"那一幕（0.2.9 发布当天就是这么中招的）。
+- **一次只能装一个**；**只管理组合包**（没有 `dsh.bundle.patch` 的依赖在安装前就被拒）。
+- 失败的**行只显示阶段、不显示原因**（原因在 Host 日志里）；"要等重启的变更"是一条会自己消失的 toast。
+- 那个输入框收的是 pnpm 认的 spec：包名 / GitHub 地址 / 本地目录。**GitHub 地址这条现在不需要任何前置步骤** ——
+  仓库里带着构建产物，pnpm 判定它"不需要构建"，也就不会问你要许可（见下一节）。
+
+### GitHub 地址安装：产物必须提交进 git，因为用户没法让 pnpm 构建它（2026-09-30 实测）
+
+用户报「用包名装一切正常，用 `https://github.com/Chance722/dsh-inbox` 装入口不显示」。结论分两层。
+
+**① 空壳是怎么来的**：pnpm 不 `git clone`，取的是 **codeload 归档** `https://codeload.github.com/<owner>/<repo>/tar.gz/<sha>`
+（`pnpm-lock.yaml` 就是这么记的），解包后**按 `package.json` 的 `files` 白名单打包**再装——装下来的是
+「那个 commit 的快照，减去没进白名单的文件」。当时代的清单只有 `lib/**`（**在 `.gitignore` 里、从未提交**）、
+`cordis.patch.yml` 与两份 README ⇒ 装进去 **5 个文件 / 28,444 字节**，宿主半边与客户端半边都不存在
+（`node -e "import('@chance722/dsh-inbox')"` → `ERR_MODULE_NOT_FOUND …\lib\index.js`）。依赖与
+`dsh.profile.bundles` 都写进了 profile，所以插件管理器显示"已安装"、侧栏空着、宿主不崩（那一行加载失败被隔离）。
+dshmarket 对这种"源码检出没有产物"有守卫（`lib/profile.js` 的 `entryArtifactExists`；`lib/install.js` 的
+`validateAddedPlugins` 据此把它当坏插件摘掉，issue #18/#103），**但官方插件管理器的 GitHub 安装路径不跑这道守卫**。
+
+**② 正解不是给包加 `prepare`**（那次尝试当天就回退了）。pnpm 的判定一共三条路：
+
+| manifest | pnpm `packageShouldBeBuilt`（源码 `exec/prepare-package`） | 用户得做什么 |
+|---|---|---|
+| 有非空 `prepare` | `true`，无条件 | 先放行 `allowBuilds`，键是 `'<包名>@<归档URL>'`、**按 commit 变**，而且只写包名的键**实测无效** ⇒ 每个用户、每次提交都要手动改 profile |
+| 有 `prepublish`/`prepack`/`publish` 且自己的 `main` 文件缺失 | `true` | 同上 |
+| **两个都没有**（本包现在） | `false` | **什么都不用做**：不构建、不门禁，直接按白名单解包 |
+
+所以正解是**把构建产物提交进 git，并且不写 `prepare`**：`lib/` 已从 `.gitignore` 移出（那份文件里写清了理由），
+`package.json` 只留 `prepublishOnly`（**不在** pnpm 那张名单里，所以不触发门禁）——npm 发布仍会重建，git 安装直接拿现成产物。
+
+**陌生用户实测（全新 scratch `DSH_HOME`、新建 profile、profile 里一行 `allowBuilds` 都没有，而且用 GUI 里粘的那种 URL 形式）**：
+
+```
+& dsh.cmd plugin --profile u1 add https://github.com/Chance722/dsh-inbox
+→ 4.4 s，exit 0；lib/ 43 个文件（含 40 个 .d.ts）；三个 JS 与本地 pnpm build 的 sha256 逐一相同
+```
+
+没有构建、没有放行、没有 devDeps 下载。代价与守门：产物进 git 之后唯一的失败模式是**漂移**——改了 `src` 忘了
+`pnpm build` 就提交，那么所有 git 安装会静默用上一份构建。所以 `scripts/build.mjs` 支持 `--out <dir>`，
+`scripts/check-lib.mjs` 把新构建与已提交的 `lib/` 逐路径逐字节比对（手动跑：`pnpm check:lib`），
+`test/lib-artifacts.test.ts` 跑它 ⇒ 忘了重建是**红测试**，不是用户装到的包坏掉。
+
+上一版方案（`prepare` + `allowBuilds`）里实测到的三条旁证，留着避免重犯：只写包名的键对归档依赖**无效**
+（同一个错误再拒，exit 1、没有 `lib/`）；`dangerouslyAllowAllBuilds: true` 能绕过门禁（等于放行**一切**依赖的
+构建脚本，任何从 git 装的插件都能在你机器上跑代码）；同一个 commit 若在别处被构建过一次，内容寻址仓会按解析 id
+复用（`added 0`、不再过门禁）。
+
+**给读者的结论**：npm 那一路（包名）永远是首选；git 那一路现在能构建，但要你先放行、要下整棵 devDeps、比 npm 慢。
+
+### 插件兼容门禁就是 peer 区间（这是"版本不一致"报错的全部真相）
+
+报错原文 `Plugin <pkg>@<v> is incompatible with dsh <runtime>: peerDependencies {…}` 来自
+`@deepseek-ai/dsh-app-boot` 的 `evaluatePluginCompatibility`（证据：`app.asar` 里该包的 lib 源码）：
+
+- 只看 peerDependencies 里名字是 `@deepseek-ai/dsh` 或 `@deepseek-ai/dsh-*` 的项，
+  **`@deepseek-ai/cordis` 之类不在检查范围**（名字不匹配）。
+- 判定是 `semver.satisfies(runtimeVersion, range, { includePrerelease: true })`——**预发布版参与区间比较**，
+  没有"rc 一律放行"的宽容。
+- `workspace:^` / `workspace:~` / `workspace:*` 三个写法被当作"等于当前运行时版本"。
+- **坑在 semver 对 0.x 的规矩**：`^0.1.5-rc.2` = `>=0.1.5-rc.2 <0.2.0`，所以 0.2.0-rc.2 **天然落在区间外**。
+  不是 dsh 0.2 "改了接口"，是 `^0.1.x` 从不允许 `0.2.x`。修法是把区间写成
+  `^0.1.5-rc.2 || ^0.2.0-rc.2`（本包 0.2.9 起这么写）。
+- 时机：`dsh plugin add` **先把包装完**（pnpm 正常跑），再校验**已安装的** package.json，不合格就
+  `dsh: installation rejected: …` 并把 `package.json` / `pnpm-lock.yaml` / `node_modules` **一起回滚**
+  （证据：`~/.dsh/profiles/<p>/\.plugin-manager\logs\operation-*/pnpm.log`）。
+- 逃生门（应急，不是解法）：`dsh plugin --profile <p> allow-version <pkg>@<ver> --dsh-version <exact> --accept-risk`。
+  **豁免是"精确包版本 × 精确运行时版本"的一对**，落在 profile 的 `compatibility.json` 里；它只关掉门禁，
+  不解决任何真实不兼容。
+
+**验证这套结论的办法**（别只看一次成功）：拿同一份代码、只把 peer 区间改回 `^0.1.5-rc.2` 装进另一个
+scratch profile，报错应当逐字复现；改回 `|| ^0.2.0-rc.2` 则装上。0.2.9 的这次就是这么验的。
+
+### 预设不再是目录（0.2.0 起，`init` 的第②③步因此是死路）
+
+0.1.5-rc.2 的用户级 preset 是目录 `$DSH_HOME/.agent-presets/<id>/`（`preset.yml` + `agent.cordis.yml`）。
+0.2.0-rc.2 改成**声明行**，官方原话（`app.asar` 里的 authoring 文档）：
+
+> Before declaration rows, a user preset was a directory `$DSH_HOME/.agent-presets/<id>/` … **Nothing reads
+> that directory any more.**
+
+- 现在一份 preset 是 bundle patch 里的一行：
+  `- id: preset-<id>` / `name: '@deepseek-ai/dsh-agent-preset'` / `config: { id, name?, description?, order?, plugins: [...] }`。
+  默认 preset 归 `@deepseek-ai/dsh-agent-preset-registry`：`config.default` 是部署默认，用户的选择存在它的
+  易变字段 `selectedDefault` 里；**registry 不扫目录、也不接受 preset 路径**。
+- 对本包的含义：`src/cli.ts` 里"复制 standard 目录 + 追加 `agent.cordis.yml` 一行"这条路在 0.2.0-rc.2 上
+  **是死的**（不报错，只是没人读；而 `@deepseek-ai/dsh-agent-presets` 这个包在 0.2.0 上根本不存在——
+  npm 上最高 `0.1.6-alpha.2`，桌面端 `app.asar` 里连字符串都搜不到，所以老 `init` 会卡在第②步
+  "找不到随 dsh 附带的 standard preset" 并以 1 退出）。
+
+### 但工具**不需要** preset 就能到模型面前（2026-09-30 用真模型实测，这条推翻了 AGENTS 的老说法）
+
+在 `hl` profile（`dsh-base` + `dsh-headless` + 本插件，**没有** preset 声明）上问
+「我的收件箱里有哪些还没看的链接？没有相关工具就说没有」，模型直接调了 `inbox_status`
+（回显 `dsh-inbox v0.2.9`、仓库已打开）。再把**官方那份 `standard` 的 plugins 列表原样**塞进
+`--patch` 覆盖层（`agent-preset-registry` + `preset-standard`，两次运行都确认没有
+"1 entry did not activate" 警告，即 preset 真的挂上了）重跑，模型照样调到 `inbox_status` / `inbox_search`。
+
+**结论**：`ctx.tools.register` 在 **profile 组合**里注册的工具，会话直接看得见，preset 挂不挂都一样。
+"工具必须挂进 agent preset 才可见"是错的（`docs/help/dsh-plugin-platform.md` 的 M4 一节早就这么测过，
+只是 AGENTS 那条一直没改）。**声明式 preset 因此不是必需品**，`init` 在 0.2.x 上直接跳过第②③步
+（`presetMechanism()`，0.1.x 仍走目录那条路）。
+
+**硬做也做不动**：声明一行要**复述整份** standard 的 `plugins` 列表（覆盖是整体替换），而桌面端那份
+`presets/standard.patch.yml` 在 `app.asar` 里——一个 `npx` 跑的 CLI 打不开它。真要走声明式，
+只能先 `dsh --profile <p> --dump-config` 把组合打出来再从文本里抠出那段，收益（实测为零）不抵这个脆弱度。
+
+### `init` 用的是 PATH 上那个 dsh，不是目标 profile 的运行时
+
+`dsh plugin add` 转发给 PATH 上的 `dsh`，所以这台机器上（PATH 是 0.1.5-rc.2、桌面端是 0.2.0-rc.2）
+`npx @chance722/dsh-inbox init` 会**用 0.1.5 去装**、并走**目录式 preset** 那条分支。要装进桌面端那个
+profile，先把桌面端的 CLI 放到 PATH 前面：`D:\deepseek\resources\runtime\cli\bin`。
+0.2.9 起 `init` 在第①步回显它问到的版本（`（用 dsh 0.2.0-rc.2）`），这类错配不再静默。
+
+### pnpm 的 `minimumReleaseAge`：**范围**被静默降级，**确切版本**才会自己豁免
+
+pnpm 11 默认 `minimumReleaseAge: 1440`（24 小时）：发布不满 24 小时的版本不许装。后果分两种，
+而它们长得完全不一样（2026-09-30 用桌面端自带的 pnpm 11.7.0 实测；起因是用户发完 0.2.9 之后
+用 `@latest` 装不上）：
+
+- **写范围（`@latest`、`^0.2.8`）→ 静默降级。** pnpm 在范围里挑"够老"的最新版，于是刚发布的
+  0.2.9 被跳过，装下去的是 **0.2.8**。**没有任何警告**，而且 `dsh plugin add` 后面那句门禁报错会指向
+  **0.2.8**（`@chance722/dsh-inbox@0.2.8 与 DSH 0.2.0-rc.2 不兼容（要求 … ^0.1.5-rc.2）`）——
+  看起来像兼容性没修好，其实是新版本压根没装上。桌面端插件管理器的信息卡读的是 registry 的
+  `latest` 标签（0.2.9），所以**界面显示 0.2.9、报错说 0.2.8**，更迷惑。
+  证据：`~/.dsh/profiles/desktop/.plugin-manager/logs/operation-*/pnpm.log` 里那行
+  `+ @chance722/dsh-inbox ^0.2.8`。
+- **写确切版本（`@0.2.9`）→ 自动豁免。** pnpm 照装，并自己往 `pnpm-workspace.yaml` 追加一条
+  `minimumReleaseAgeExclude: <pkg>@<ver>`（会打 "Added 1 entry to minimumReleaseAgeExclude"）。
+
+**结论**：刚发布之后一律写**确切版本**，别写 `@latest`；等满 24 小时再回到 `@latest`。
+本仓库自己（开发侧）用一行 `minimumReleaseAgeExclude: ['@deepseek-ai/*']` 把这条产品线整个开口子，
+其它依赖照样要过 24 小时。
+
+### 设置服务换了形状：0.2.0 上没有"命名空间"这回事（2026-09-30 实测，写错形状会带走整个宿主）
+
+两个运行时的 `ctx.get('settings')` 是**同一个服务的两代**，形状不兼容：
+
+| | 0.1.5-rc.2 | 0.2.0-rc.2 |
+|---|---|---|
+| 声明 | `settings.register(namespace, schema, { base })` | 插件自己 `export const Config`，字段标 `volatile()` |
+| 读 | `settings.get(namespace)` | `settings.describe()` → `[{ ns, value, ... }]`，`ns` 是**profile 行 id** |
+| 写 | `settings.update(namespace, patch)`（同步） | `settings.update(rowId, patch)`（**async**，只收 volatile 字段） |
+
+证据：`app.asar` 里 `dsh/node_modules/@deepseek-ai/dsh-settings/lib/index.js`（对外只有
+`describe/update/replace/mutate/write/configure`，**没有 `register`、也没有 `get`**；`write()` 找不到行时原话是
+`No configurable plugin entry "<ns>"`，不是行里的字段时是 `Config field "x" is not volatile`）。
+行 id 用 `loader` 自己的记录拿：`ctx.fiber.entry.options.id`（`Entry.key = Symbol.for("cordis.entry")`，
+fiber 的 `entry` 由 `cordis-plugin-loader` 的 `internal/plugin` 钩子设置，就是 profile 那行的 `id`），
+所以用户改行 id 也还成立。写下去的落点是 profile 的 `cordis.patch.yml`，形状与官方主题插件那行一模一样
+（本包实测：`- id: dsh-inbox` / `name: @chance722/dsh-inbox` / `config: { listMode: compact }`，
+基座默认值不会被抄进文件）。
+
+**为什么必须认真挑门（用户 2026-09-30 报的那条"点一下列表模式，整个桌面端退出"）**：0.2.0 的 `update()` 是
+async，用 0.1.x 的命名空间调它 = 一个**没人 await 的 rejected promise**，而 dsh 把 unhandled rejection 当
+致命错误（那句 `dsh: fatal load failure: Error: No configurable plugin entry "dsh-inbox-ui"` 下面跟着
+`at process.processTicksAndRejections`，宿主随即 `exited with 1`）。修法在 `src/host/settings.ts`：
+能力探测（有 `register` 走命名空间门，否则 `describe`+`update` 走行门）、写一律 await 并把拒绝转成
+`{ ok:false, reason }`，读也**永不抛**（`describe()` 会读 profile 目录，读不动就当没有）。
+
+**怎么在不碰真实环境的前提下验完这条链**（这次用的配方，可复用）：
+
+```powershell
+$env:DSH_HOME="$env:TEMP\dsh-inbox-lab"                       # 仓库外的 scratch 家目录
+dsh --profile lab --from-default-profile web --dump-config    # 建 profile
+dsh plugin --profile lab add D:\Workspace\dsh-inbox           # link 装本包（不需要网络）
+dsh --profile lab --no-open --port 3199                       # 起宿主，别用真实 profile
+```
+
+面板的 Fetch 路由要浏览器 cookie，**没有浏览器也能点**：`dsh-client-connection` 签 cookie 用的密钥就存在
+`$DSH_HOME/.credentials.yaml` 的 `client-connection/browser-session` 记录里，照它的规则自己签一个
+（`dsh-auth-<base64url(sha256('127.0.0.1:3199'))>` = `v1.<payload>.<sig>`，payload 里
+`issuedAt/expiresAt` 是**毫秒**、`issuedAt <= now < expiresAt`、间隔 ≤ `cookieMaxAgeDays`，HMAC 的键是
+**base64url 解码后的** secret），然后 `POST /api/inbox/ui`：
+
+```jsonc
+{"action":"read"} → {"ok":true,"value":{"listMode":"grid","settingsAvailable":true}}
+{"action":"save","listMode":"compact"} → 重启宿主后再 read，仍是 compact（写到了 profile patch 里）
+```
+
+**反面控制**（同一套配方跑的）：在 `$DSH_HOME/cordis.patch.yml` 里覆盖我们那行的 `config`，同一句 save
+就回 `{"ok":false,"error":{"code":"inbox/ui-unsaved","message":"Configuration for \"dsh-inbox\" is
+overridden by a home patch or command-line overlay"}}`，接着再 read 照常 200 —— **宿主活着**，
+而这条路正是修前会死的那条。

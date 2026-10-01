@@ -1,7 +1,8 @@
 /**
  * The panel's own preferences: a namespace of their own, a bad value refused,
  * and a composition without a settings service degrading to defaults instead of
- * throwing.
+ * throwing — on either of the settings services dsh ships (a namespace one on
+ * 0.1.x, the plugin's own config row on 0.2.x).
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -44,26 +45,69 @@ function fakeSettings(initial?: { listMode?: string }) {
 const context = (settings?: unknown): Context =>
   ({ get: (name: string) => (name === 'settings' ? settings : undefined) }) as unknown as Context
 
+/**
+ * The 0.2.x service: no namespaces, one config row per plugin, and `update()`
+ * is async. `rowId` lets a test check the address it was called with.
+ */
+function modernSettings(initial?: { listMode?: string }) {
+  let current = { ...DEFAULT_UI_PREFS, ...initial }
+  return {
+    current: () => current,
+    describe: () => [{ ns: 'dsh-inbox', value: { ...current } }],
+    update: vi.fn(async (_id: string, patch: { listMode?: string }) => {
+      current = { ...current, ...patch }
+    }),
+  }
+}
+
+/** A context loaded from the profile row `dsh-inbox`, as the loader records it. */
+const loadedContext = (settings?: unknown): Context =>
+  ({
+    get: (name: string) => (name === 'settings' ? settings : undefined),
+    fiber: { entry: { options: { id: 'dsh-inbox' } } },
+  }) as unknown as Context
+
 describe('panel preferences', () => {
   it('falls back to the default layout with no settings service', () => {
     expect(readUiPrefs(context())).toEqual({ ...DEFAULT_UI_PREFS, settingsAvailable: false })
     expect(readUiPrefs(context(fakeSettings())).listMode).toBe('grid')
   })
 
-  it('remembers the chosen layout', () => {
+  it('remembers the chosen layout', async () => {
     const settings = fakeSettings()
     const ctx = context(settings)
 
-    expect(saveUiPrefs(ctx, { listMode: 'grid' }).ok).toBe(true)
+    expect((await saveUiPrefs(ctx, { listMode: 'grid' })).ok).toBe(true)
     expect(settings.current().listMode).toBe('grid')
     expect(readUiPrefs(ctx).listMode).toBe('grid')
 
-    expect(saveUiPrefs(ctx, { listMode: 'compact' }).ok).toBe(true)
+    expect((await saveUiPrefs(ctx, { listMode: 'compact' })).ok).toBe(true)
     expect(readUiPrefs(ctx).listMode).toBe('compact')
   })
 
-  it('refuses a layout it does not have, and says which ones it does', () => {
-    const result = saveUiPrefs(context(fakeSettings()), { listMode: 'masonry' })
+  it('remembers the chosen layout on the 0.2.x service too', async () => {
+    const settings = modernSettings()
+    const ctx = loadedContext(settings)
+
+    expect((await saveUiPrefs(ctx, { listMode: 'compact' })).ok).toBe(true)
+    expect(settings.update).toHaveBeenCalledWith('dsh-inbox', { listMode: 'compact' })
+    expect(readUiPrefs(ctx).listMode).toBe('compact')
+  })
+
+  it('answers a refused write instead of throwing it at the host', async () => {
+    // Regression, measured on the desktop 2026-09-30: 0.2.x's `update()` is
+    // async, so the 0.1.x namespace call left an unawaited rejection behind and
+    // dsh's fatal handler took the whole host down over a list-layout toggle.
+    const settings = modernSettings()
+    settings.update.mockRejectedValueOnce(new Error('No configurable plugin entry "dsh-inbox-ui"'))
+
+    const result = await saveUiPrefs(loadedContext(settings), { listMode: 'compact' })
+    expect(result.ok).toBe(false)
+    expect(result.reason).toContain('No configurable plugin entry')
+  })
+
+  it('refuses a layout it does not have, and says which ones it does', async () => {
+    const result = await saveUiPrefs(context(fakeSettings()), { listMode: 'masonry' })
     expect(result.ok).toBe(false)
     expect(result.reason).toContain('grid')
     expect(result.reason).toContain('masonry')
@@ -76,8 +120,8 @@ describe('panel preferences', () => {
     expect(readUiPrefs(context(settings)).listMode).toBe(DEFAULT_UI_PREFS.listMode)
   })
 
-  it('refuses to remember anything when there is nowhere to remember it', () => {
-    const result = saveUiPrefs(context(), { listMode: 'grid' })
+  it('refuses to remember anything when there is nowhere to remember it', async () => {
+    const result = await saveUiPrefs(context(), { listMode: 'grid' })
     expect(result.ok).toBe(false)
     expect(result.reason).toContain('设置服务')
   })

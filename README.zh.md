@@ -56,22 +56,34 @@
 
 ## 安装
 
-前置：Node ≥ 22 和一个能用的 `dsh`；没装 pnpm 时安装命令会顺手装好。**目前只在 Windows 上验收过**，macOS / Linux 未验证。
+前置：Node ≥ 22 和一个能用的 `dsh`（没装 pnpm 时安装命令会顺手装好）。**只在 Windows 上验收过**，macOS / Linux 未验证。
+
+**Web（命令行）**
 
 ```powershell
-# 安装（`dsh web` 就是 `dsh --profile web`，所以装进你日常启动的那个 profile）
+# 安装（`dsh web` 就是 `dsh --profile web`，装进你日常启动的那个 profile）
 npx @chance722/dsh-inbox init --profile web --install-pnpm
 
 # 全新机器（还没跑过 dsh、没有这个 profile）多带一个 --create-profile
 npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
 
-# 更新（init 只管装和接线，重复跑不会升级；刚发布的几分钟内请写确切版本：@0.2.8）
+# 更新（刚发布 24 小时内把 @latest 换成确切版本，如 @0.2.10）
 dsh plugin --profile web add @chance722/dsh-inbox@latest
 ```
 
-装完**重启 dsh**，然后照旧启动。左栏出现 **Inbox**；新会话里问「我的收件箱里有哪些还没看的链接」，助手就会去查。
+**桌面端（DeepSeek Harness 桌面版）**
 
-`init` 还会把 dsh 自带的 `standard` preset 复制到 `~/.dsh/.agent-presets/inbox/` 并加上本插件、把默认 preset 指向它——助手能看见收件箱工具就是靠这一步。那份快照不会跟着 dsh 以后升级 `standard` 一起变；它和 profile 都能退掉（见「卸载」）。
+侧栏打开**插件** → 安装 → 填 `@chance722/dsh-inbox@latest`（刚发布 24 小时内填 `@0.2.10`）→ 按提示重启。
+
+输入框也收 GitHub 地址（`https://github.com/Chance722/dsh-inbox`）：仓库里带着构建产物，装起来和包名一样直接、不需要任何额外步骤；升级时重装即可，日常仍建议用包名。
+
+命令行等价（用桌面版自带的那条 `dsh`）：
+
+```powershell
+"<桌面版安装目录>\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add @chance722/dsh-inbox@latest
+```
+
+装完**重启**。左栏出现 **Inbox**；新会话里问「我的收件箱里有哪些还没看的链接」，助手就会去查。
 
 想让日常 dsh 保持干净：`npx @chance722/dsh-inbox init --create-profile`，然后 `dsh --profile inbox --no-open --port 3102`。
 
@@ -89,9 +101,10 @@ node lib/cli.js init --package <本仓库的绝对路径>
 
 ```powershell
 # 1. 从你装进去的那个 profile 里摘掉（同时会从 dsh.profile.bundles 移除）
+#    桌面端：在插件面板里卸载，等价于这一条
 dsh plugin --profile <你装的 profile> remove @chance722/dsh-inbox
 
-# 2. 删掉 init 建的东西
+# 2. 删掉 init 建的东西（**只有 dsh 0.1.x 会建**；0.2 起 init 会跳过这步）
 rm -r ~/.dsh/.agent-presets/inbox      # 那个 preset 副本
 # 默认 preset：把 ~/.dsh/settings.yaml 里 agent-presets.default 删掉（继承部署默认），
 # 或改成 standard；init 每次都留了 settings.yaml.bak-* 备份，也可以直接还原
