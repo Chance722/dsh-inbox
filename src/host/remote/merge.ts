@@ -164,6 +164,34 @@ function masterOf(bytes: Uint8Array): MasterParams | undefined {
 }
 
 /**
+ * The remote's published key parameters, as a path `read` will accept.
+ *
+ * **Through the listing, never hand-built.** `SyncTree.read` takes the path the
+ * *listing* handed out, because the two protocols disagree about what a path is:
+ * S3 answers with the key (`inbox/sync/master.json`), WebDAV with the server's
+ * own href (`/dav/inbox/sync/master.json`). A constructed `inbox/sync/master.json`
+ * is neither a URL nor a key for WebDAV — the fetch dies on "Failed to parse
+ * URL" and the user's one way out of the stuck state goes with it (caught by
+ * writing the test below, not by the type checker).
+ *
+ * @param tree - the remote, as two questions.
+ * @param prefix - the sync root being merged.
+ * @returns the path to read, or undefined when the remote has not published one.
+ */
+async function findMasterObject(tree: SyncTree, prefix: string): Promise<string | undefined> {
+  const wanted = `${prefix}/master.json`
+  for (const object of await tree.list(`${prefix}/`)) {
+    if (nameOf(object.path) !== 'master.json') continue
+    // Compared without decoding: neither the prefix nor the file name has
+    // anything in it that a URL-escaped href would spell differently, and
+    // `decodeURIComponent` throws on a stray `%` that a real href can carry.
+    if (!object.path.replace(/\/+$/, '').endsWith(wanted)) continue
+    return object.path
+  }
+  return undefined
+}
+
+/**
  * Take the remote's key parameters when this machine is holding ciphertext it
  * cannot open.
  *
@@ -192,11 +220,16 @@ async function adoptMasterParams(
   const state = vault.lockState
   if (state.configured || state.sealedRecords === 0) return { adopted: false }
 
-  const path = `${prefix}/master.json`
-  let bytes: Uint8Array
+  let path: string | undefined
   try {
-    bytes = await tree.read(path)
+    path = await findMasterObject(tree, prefix)
   } catch (error) {
+    return {
+      adopted: false,
+      note: `本机有 ${String(state.sealedRecords)} 条密文，但列远端同步目录失败（${reasonOf(error)}）：稍后再拉一次`,
+    }
+  }
+  if (path === undefined) {
     /*
       Worth a sentence rather than a silent skip: this is the state the user is
       stuck in, and "the vault has 7 sealed records and no way to open them" is
@@ -207,8 +240,18 @@ async function adoptMasterParams(
     return {
       adopted: false,
       note:
-        `本机有 ${String(state.sealedRecords)} 条密文，但远端没有取到主密码参数` +
-        `（${reasonOf(error)}）：先在原来那台机器上推一次，再回来拉取`,
+        `本机有 ${String(state.sealedRecords)} 条密文，但远端还没有主密码参数：` +
+        '先在原来那台机器上推一次（它要升到带 `master.json` 的版本），再回来拉取',
+    }
+  }
+
+  let bytes: Uint8Array
+  try {
+    bytes = await tree.read(path)
+  } catch (error) {
+    return {
+      adopted: false,
+      note: `本机有 ${String(state.sealedRecords)} 条密文，但远端的主密码参数取不下来（${reasonOf(error)}）：稍后再拉一次`,
     }
   }
 

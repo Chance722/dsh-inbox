@@ -417,6 +417,55 @@ describe('mergeOnce', () => {
     expect(await vault.unlock('本机的密码')).toBe(true)
   })
 
+  it('finds the parameters through the listing, because a hand-built path is not a URL', async () => {
+    /*
+      WebDAV answers a listing with the server's own href, and `SyncTree.read`
+      only accepts that shape. Building `inbox/sync/master.json` by hand reads
+      fine and works on S3, then dies on WebDAV with "Failed to parse URL" —
+      taking the user's only way out of the stuck state with it. So the path has
+      to come from the listing; this is the test that says so.
+    */
+    const id = '55555555-5555-4555-8555-555555555555'
+    const stamp = '2026-09-20T05:00:00.000Z'
+    await vault.import({
+      id,
+      kind: 'text',
+      category: 'secret',
+      source: 'webdav',
+      createdAt: stamp,
+      updatedAt: stamp,
+      tags: [],
+      attachmentIds: [],
+      secret: 'v1:a:b:c',
+      secretDigest: 'a'.repeat(64),
+    } as Item)
+
+    const href = 'https://dav.example.com/dav/inbox/sync/master.json'
+    const asked: string[] = []
+    const remote: SyncTree = {
+      // Only the one object: the sealed record is already in the vault, and the
+      // question under test is which path the parameters are read through.
+      list: async (prefix) => (href.includes(prefix) ? [{ path: href }] : []),
+      read: async (path) => {
+        asked.push(path)
+        if (path !== href) throw new Error('Failed to parse URL')
+        return new TextEncoder().encode(
+          JSON.stringify({
+            format: 'dsh-inbox-master/1',
+            master: { version: 1, salt: 'c2FsdA==', kdf: { n: 32768, r: 8, p: 1 }, verifier: 'v1:a:b:c' },
+          }),
+        )
+      },
+    }
+
+    const outcome = await mergeOnce(vault, remote, 'inbox/sync', admit)
+
+    expect(outcome.masterAdopted).toBe(true)
+    expect(asked).toContain(href)
+    expect(asked).not.toContain('inbox/sync/master.json')
+    expect(vault.master?.salt).toBe('c2FsdA==')
+  })
+
   describe('imports are validated, because one bad record closes the vault', () => {
     it('refuses an attachment row the domain would choke on', async () => {
       // The shape that caused this test: a pushed row without `createdAt`. The
