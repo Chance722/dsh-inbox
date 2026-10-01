@@ -147,6 +147,30 @@ export const graveSchema = z.object({
 })
 
 /**
+ * How to recognise a master password, and nothing more.
+ *
+ * The salt and work factors are not secret — a KDF's parameters are the part a
+ * password is stretched *with*, and knowing them is not the same as knowing the
+ * password. The `verifier` is a sealed constant, so a wrong password fails the
+ * same way a tampered envelope does. The password itself is never written
+ * anywhere, and neither is the derived key — that lives in memory for as long as
+ * the process does.
+ *
+ * These three fields are the only part of a vault that has to be *shared* for a
+ * second machine to open a credential it pulled: without the salt, the same
+ * password derives a different key. They travel with sync (`sync/master.json`,
+ * see `../remote/push.ts` and `../remote/merge.ts`), never the password.
+ */
+export const masterSchema = z.object({
+  version: z.number().int().positive(),
+  salt: z.string(),
+  kdf: z.object({ n: z.number().int().positive(), r: z.number().int().positive(), p: z.number().int().positive() }),
+  verifier: z.string(),
+})
+
+export type MasterParams = z.infer<typeof masterSchema>
+
+/**
  * One global slot per domain. Sync state lives here because it belongs to the
  * vault as a whole, not to any item; M6 fills it in.
  */
@@ -157,22 +181,7 @@ export const vaultGlobalSchema = z.object({
     lastPushAt: z.string().optional(),
     cursor: z.string().optional(),
   }),
-  /**
-   * How to recognise a master password, and nothing more.
-   *
-   * The salt and work factors are not secret; the `verifier` is a sealed
-   * constant, so a wrong password fails the same way a tampered envelope does.
-   * The password itself is never written anywhere, and neither is the derived
-   * key — that lives in memory for as long as the process does.
-   */
-  master: z
-    .object({
-      version: z.number().int().positive(),
-      salt: z.string(),
-      kdf: z.object({ n: z.number().int().positive(), r: z.number().int().positive(), p: z.number().int().positive() }),
-      verifier: z.string(),
-    })
-    .optional(),
+  master: masterSchema.optional(),
   /** Today's model-fallback spend, so a restart cannot reset the meter. */
   model: z
     .object({
@@ -224,6 +233,12 @@ export const vaultSpec = defineDomain({
    * every restart (measured 2026-09-21). A new table, so no record shape
    * changes; an older vault simply has no graves, and there is nothing to
    * protect until the next purge.
+   *
+   * Still version 8 after the master password's *parameters* started travelling
+   * with sync (2026-10-01): that is one more object in the vault's sync tree
+   * (`sync/master.json`), not a change to any stored shape — an older build
+   * ignores a name it does not know, and a newer build over a version-8 vault
+   * finds `global.master` exactly where it always was.
    */
   version: 8,
   compatibleVersions: [1, 2, 3, 4, 5, 6, 7],

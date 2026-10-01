@@ -112,6 +112,8 @@ export declare const zh: {
     'settings.locked': string;
     'settings.lockedNote': string;
     'settings.noPassword': string;
+    'settings.sealedNoParams': string;
+    'settings.sealedNoParamsBody': string;
     'settings.passwordJustSet': string;
     'settings.passwordSealed': string;
     'settings.ingest': string;
@@ -377,6 +379,8 @@ export declare const MESSAGES: {
         'settings.locked': string;
         'settings.lockedNote': string;
         'settings.noPassword': string;
+        'settings.sealedNoParams': string;
+        'settings.sealedNoParamsBody': string;
         'settings.passwordJustSet': string;
         'settings.passwordSealed': string;
         'settings.ingest': string;

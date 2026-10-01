@@ -1832,7 +1832,17 @@ function warningsOf(result: PullResult, verbose: boolean): string {
     result.failed > 0
       ? t('sync.pullFailures', { count: result.failed, reason: result.reason ?? '' })
       : ''
-  return `${foreign}${failed}`
+  /*
+    And the sentence about the key parameters, when there is one.
+
+    It is a line from the host rather than a template: it names how many records
+    are waiting and what to do next, both of which only the host knows. The two
+    cases it covers — "they came over, unlock with the password from the other
+    machine" and "they did not come over, push from the other machine first" —
+    are the difference between a user who is done and a user who is stuck.
+  */
+  const master = result.masterNote === undefined ? '' : ` · ${result.masterNote}`
+  return `${foreign}${failed}${master}`
 }
 
 /**
@@ -1922,6 +1932,18 @@ function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
   const [notice, setNotice] = React.useState<string>()
   const [busy, setBusy] = React.useState(false)
 
+  /*
+    "Locked with nothing to unlock it" is its own state.
+
+    A machine that pulled another machine's credentials has the ciphertext and
+    none of the parameters that turn a password into its key. Reading only
+    `configured` made that state say 「还没设主密码」 — and the button that word
+    invites cannot work, because a fresh password would seal *new* records while
+    the ones already here stayed closed forever. The panel says what is actually
+    missing instead (measured 2026-10-01, the bug this fixes).
+  */
+  const stranded = status !== undefined && !status.unlocked && !status.configured && status.sealedRecords > 0
+
   const send = React.useCallback(
     async (action: 'status' | 'set' | 'unlock' | 'lock'): Promise<void> => {
       setBusy(true)
@@ -1973,10 +1995,14 @@ function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
               ? t('settings.unlocked')
               : status.configured
                 ? t('settings.locked')
-                : t('settings.noPassword')}
+                : stranded
+                  ? t('settings.sealedNoParams', { count: status.sealedRecords })
+                  : t('settings.noPassword')}
         </span>
       </div>
-      <p style={{ margin: '0 0 8px', opacity: 0.7, fontSize: 12 }}>{t('settings.secretsBody')}</p>
+      <p style={{ margin: '0 0 8px', opacity: 0.7, fontSize: 12 }}>
+        {stranded ? t('settings.sealedNoParamsBody') : t('settings.secretsBody')}
+      </p>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <input
           type="password"
@@ -1985,7 +2011,11 @@ function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
           autoComplete="new-password"
           onChange={(event) => setPassword(event.target.value)}
           aria-label={t('settings.masterPassword')}
-          placeholder={status?.configured === true ? t('settings.masterPasswordSet') : t('settings.masterPasswordNew')}
+          placeholder={
+            status?.configured === true || stranded
+              ? t('settings.masterPasswordSet')
+              : t('settings.masterPasswordNew')
+          }
           style={{ ...inputStyle, flex: 1, minWidth: 160 }}
         />
         <button

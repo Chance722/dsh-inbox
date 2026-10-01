@@ -73,6 +73,10 @@ export interface MergeOutcome {
     kept: number;
     /** Attachment objects pulled down (bytes plus their row). */
     attachments: number;
+    /** The remote's key parameters were taken over; see `adoptMasterParams`. */
+    masterAdopted: boolean;
+    /** One sentence about the key parameters, when they are the reason to act. */
+    masterNote?: string;
     /** Things that went wrong, one line each. */
     failures: string[];
 }

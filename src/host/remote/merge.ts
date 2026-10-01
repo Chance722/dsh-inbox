@@ -11,7 +11,7 @@
  * machine". A record this device has never seen is simply a local miss.
  */
 
-import type { Attachment, Item } from '../vault/spec.js'
+import { masterSchema, type Attachment, type Item, type MasterParams } from '../vault/spec.js'
 import type { Vault } from '../vault/vault.js'
 import { admitEncodedFile, admitEncodedImages, type AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import type { Context } from '@deepseek-ai/cordis'
@@ -82,6 +82,10 @@ export interface MergeOutcome {
   kept: number
   /** Attachment objects pulled down (bytes plus their row). */
   attachments: number
+  /** The remote's key parameters were taken over; see `adoptMasterParams`. */
+  masterAdopted: boolean
+  /** One sentence about the key parameters, when they are the reason to act. */
+  masterNote?: string
   /** Things that went wrong, one line each. */
   failures: string[]
 }
@@ -96,6 +100,12 @@ interface PackedItem {
 interface PackedAttachment {
   format?: unknown
   attachment?: unknown
+}
+
+/** The wrapper the master password's parameters travel in. */
+interface PackedMaster {
+  format?: unknown
+  master?: unknown
 }
 
 /** The file name out of a remote path. */
@@ -138,6 +148,83 @@ function attachmentOf(bytes: Uint8Array): Omit<Attachment, 'storeId'> | undefine
     return row
   } catch {
     return undefined
+  }
+}
+
+/** Parse one published set of key parameters, refusing anything that is not one. */
+function masterOf(bytes: Uint8Array): MasterParams | undefined {
+  try {
+    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as PackedMaster
+    if (parsed.format !== 'dsh-inbox-master/1') return undefined
+    const result = masterSchema.safeParse(parsed.master)
+    return result.success ? result.data : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Take the remote's key parameters when this machine is holding ciphertext it
+ * cannot open.
+ *
+ * The other half of "the password works on every machine". The push publishes
+ * `sync/master.json`; this picks it up, and only ever in the one state where it
+ * is both needed and safe to take: **no parameters of our own, but sealed
+ * records to open**. A machine that already has a master keeps its own (those
+ * parameters seal its own records — swapping them would trade one unreadable
+ * vault for another), and a machine with nothing sealed has nothing to unlock,
+ * so the read is not even attempted.
+ *
+ * Note what this cannot do: open anything. It moves the salt, the work factors
+ * and the sealed constant; the key still has to be derived from a password
+ * somebody types.
+ *
+ * @param vault - the open vault.
+ * @param tree - the remote, as two questions.
+ * @param prefix - the sync root being merged.
+ * @returns whether they were taken, and the sentence the panel should show.
+ */
+async function adoptMasterParams(
+  vault: Vault,
+  tree: SyncTree,
+  prefix: string,
+): Promise<{ adopted: boolean; note?: string }> {
+  const state = vault.lockState
+  if (state.configured || state.sealedRecords === 0) return { adopted: false }
+
+  const path = `${prefix}/master.json`
+  let bytes: Uint8Array
+  try {
+    bytes = await tree.read(path)
+  } catch (error) {
+    /*
+      Worth a sentence rather than a silent skip: this is the state the user is
+      stuck in, and "the vault has 7 sealed records and no way to open them" is
+      exactly what they cannot see from the panel. Most often the cause is
+      mundane — the other machine has not pushed since it was updated, so
+      `master.json` is not out there yet.
+    */
+    return {
+      adopted: false,
+      note:
+        `本机有 ${String(state.sealedRecords)} 条密文，但远端没有取到主密码参数` +
+        `（${reasonOf(error)}）：先在原来那台机器上推一次，再回来拉取`,
+    }
+  }
+
+  const parsed = masterOf(bytes)
+  if (parsed === undefined) {
+    return {
+      adopted: false,
+      note: `远端的 ${path} 不是本插件的密钥参数格式，本机的 ${String(state.sealedRecords)} 条密文暂时解不开`,
+    }
+  }
+  if (!(await vault.adoptMaster(parsed))) return { adopted: false }
+  return {
+    adopted: true,
+    note:
+      `已取回主密码参数：本机的 ${String(state.sealedRecords)} 条密文现在可以用原来那台机器的` +
+      '主密码解锁（参数不含密码，密码还是得在本机输一次）',
   }
 }
 
@@ -209,7 +296,6 @@ export async function mergeOnce(
   let purged = 0
   let kept = 0
   let attachments = 0
-
   let objects: SyncObject[]
   try {
     objects = await tree.list(`${prefix}/items/`)
@@ -221,6 +307,7 @@ export async function mergeOnce(
       purged: 0,
       kept: 0,
       attachments: 0,
+      masterAdopted: false,
       failures: [`列远端同步目录失败：${reasonOf(error)}`],
     }
   }
@@ -302,7 +389,28 @@ export async function mergeOnce(
     }
   }
 
-  return { merged, added, deletions, purged, kept, attachments, failures }
+  /*
+    The key parameters, and only now.
+
+    After the records, not before: the whole reason to read them is to open what
+    this pull just filed, and "does this vault hold ciphertext it cannot open"
+    is a question whose answer is zero until the loop above has run. Reading them
+    first would take a second pull to have any effect — which is exactly the
+    kind of one-pull-late bug the user would read as "sync does not work".
+  */
+  const master = await adoptMasterParams(vault, tree, prefix)
+
+  return {
+    merged,
+    added,
+    deletions,
+    purged,
+    kept,
+    attachments,
+    masterAdopted: master.adopted,
+    ...(master.note === undefined ? {} : { masterNote: master.note }),
+    failures,
+  }
 }
 
 function extensionOfName(path: string): string {
@@ -346,7 +454,16 @@ export async function mergeRemote(
         ? await s3Tree(ctx, settings)
         : await webdavTree(ctx, settings)
     if (tree === undefined) {
-      return { merged: 0, added: 0, deletions: 0, purged: 0, kept: 0, attachments: 0, failures: [] }
+      return {
+        merged: 0,
+        added: 0,
+        deletions: 0,
+        purged: 0,
+        kept: 0,
+        attachments: 0,
+        masterAdopted: false,
+        failures: [],
+      }
     }
     const admit = admitWith(attachments)
     const outcome = await mergeOnce(vault, tree, prefix, admit)
@@ -359,6 +476,17 @@ export async function mergeRemote(
       outcome.purged += extra.purged
       outcome.kept += extra.kept
       outcome.attachments += extra.attachments
+      /*
+        A tree that had the parameters decides for the whole pull — the first one
+        that is read is the one that matters, because after taking them this
+        vault is configured and every later tree's parameters are refused. The
+        note travels on the same rule: the first sentence about them is the one
+        the user has not already read.
+      */
+      outcome.masterAdopted = outcome.masterAdopted || extra.masterAdopted
+      if (outcome.masterNote === undefined && extra.masterNote !== undefined) {
+        outcome.masterNote = extra.masterNote
+      }
       outcome.failures.push(...extra.failures)
     }
     return outcome
@@ -370,6 +498,7 @@ export async function mergeRemote(
       purged: 0,
       kept: 0,
       attachments: 0,
+      masterAdopted: false,
       failures: [reasonOf(error)],
     }
   }

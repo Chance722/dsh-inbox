@@ -18,7 +18,7 @@ import type { Context } from '@deepseek-ai/cordis'
 
 import type { PushResult } from '../../shared/panel-wire.js'
 import { CATEGORY_LABELS, KIND_LABELS } from '../../shared/vocabulary.js'
-import type { Attachment, Item } from '../vault/spec.js'
+import type { Attachment, Item, MasterParams } from '../vault/spec.js'
 import type { Vault } from '../vault/vault.js'
 import { remoteWriter, syncRoot } from './writer.js'
 
@@ -76,6 +76,22 @@ async function bytesOf(
 function packItem(item: Item): Uint8Array {
   return new TextEncoder().encode(
     JSON.stringify({ format: 'dsh-inbox-item/1', record: item }, undefined, 0),
+  )
+}
+
+/**
+ * The JSON the master password's parameters become on the remote.
+ *
+ * Their own wrapper and their own name, so a reader opening the bucket sees one
+ * small file that is *not* a record, and the merge can tell the two apart
+ * without guessing.
+ *
+ * @param master - salt, work factors and verifier, straight from the vault.
+ * @returns the bytes to upload.
+ */
+function packMaster(master: MasterParams): Uint8Array {
+  return new TextEncoder().encode(
+    JSON.stringify({ format: 'dsh-inbox-master/1', master }, undefined, 0),
   )
 }
 
@@ -275,6 +291,30 @@ export async function pushOnce(
   // Attachments are pushed once per push, however many records reference them:
   // the store is content-addressed, so the same bytes are the same object.
   const seenAttachments = new Set<string>()
+
+  /*
+    The key parameters first, before the records they open.
+
+    A machine that pulls a sealed record without these can never open it: the
+    salt is half of what turns a password into the key, and until 2026-10-01 it
+    only ever existed in the domain of the machine that set the password. That
+    is the bug this write fixes — "the bytes travelled, the meaning did not",
+    which is not a security property but a dead end (measured: 7 records pulled
+    onto a second machine, panel said 「还没设主密码」, the button refused, and the
+    user was stuck between the two).
+
+    Written on every pass rather than tracked by a cursor: it is a couple of
+    hundred bytes, it is idempotent, and the failure mode of skipping it once is
+    a machine that cannot unlock until the next push.
+  */
+  const master = vault.master
+  if (master !== undefined) {
+    try {
+      await writer(`${basePath}/master.json`, packMaster(master), 'application/json')
+    } catch (error) {
+      failures.push(`主密码参数：${reasonOf(error)}`)
+    }
+  }
 
   for (const item of items) {
     // A record the user has since emptied out of the bin is gone from the

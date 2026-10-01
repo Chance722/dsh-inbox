@@ -34,8 +34,10 @@ const RETIRED_TAG = '待看'
 import {
   type Attachment,
   type Item,
+  type MasterParams,
   attachmentSchema,
   itemSchema,
+  masterSchema,
   vaultGlobalSchema,
   type VaultGlobal,
   type VaultSpec,
@@ -88,6 +90,18 @@ export interface VaultLockState {
   configured: boolean
   /** The key is in memory: credentials can be read and written. */
   unlocked: boolean
+  /**
+   * Sealed credential bodies this vault holds, including tombstones.
+   *
+   * Non-zero while `configured` is false is the state a **second** machine lands
+   * in after pulling another machine's records: the ciphertext arrived without
+   * the parameters that turn a password into its key. It is not "no password
+   * yet" — there is nothing here a fresh password could ever open — and the
+   * panel says so instead of offering to set one (measured 2026-10-01: the
+   * panel said 「还没设主密码」, the button answered 「仓库里已有 7 条密文…」, and
+   * the user had no way forward).
+   */
+  sealedRecords: number
 }
 
 export class Vault {
@@ -162,7 +176,30 @@ export class Vault {
 
   /** Where the key state stands; what the panel shows and the tools consult. */
   get lockState(): VaultLockState {
-    return { configured: this.global.master !== undefined, unlocked: this.key !== undefined }
+    return {
+      configured: this.global.master !== undefined,
+      unlocked: this.key !== undefined,
+      sealedRecords: this.sealedRecords,
+    }
+  }
+
+  /** Credential bodies that need the key, tombstones included. */
+  get sealedRecords(): number {
+    let count = 0
+    for (const [, item] of this.items.entries()) {
+      if (item.secret !== undefined) count += 1
+    }
+    return count
+  }
+
+  /**
+   * The parameters that recognise the master password, when one has been set.
+   *
+   * Read by the push, which publishes them so another machine can open what it
+   * pulled (`../remote/push.ts`).
+   */
+  get master(): MasterParams | undefined {
+    return this.global.master
   }
 
   /**
@@ -182,11 +219,18 @@ export class Vault {
       key has to be in hand. Refusing here (rather than quietly leaving those
       records sealed with a password nobody has any more) is the difference
       between an inconvenience and losing a credential forever.
+
+      The refusal is also what a *second* machine hits, and there the advice used
+      to be a dead end: it said "unlock with the existing password first" while
+      this vault held no parameters for that password to be derived with. The
+      sentence now names the way out — pull once, and the parameters the other
+      machine published come with the records.
     */
     const sealedAlready = [...this.items.entries()].filter(([, item]) => item.secret !== undefined)
     if (sealedAlready.length > 0 && this.key === undefined) {
       throw new Error(
-        `仓库里已有 ${String(sealedAlready.length)} 条密文，但现在是锁定状态：先用现有主密码解锁，再更换主密码`,
+        `仓库里已有 ${String(sealedAlready.length)} 条密文，但本机没有解开它们的主密码参数：` +
+          '先输入「原来那台机器」的主密码解锁（这些密文是同步过来的话，先在设置里拉取一次，把主密码参数取回来），再来换密码',
       )
     }
 
@@ -205,6 +249,27 @@ export class Vault {
     })
     this.key = key
     return (await this.resealSecrets(previous)) + (await this.sealLegacySecrets())
+  }
+
+  /**
+   * Take over another machine's key parameters.
+   *
+   * The half of sync that turns "the bytes arrived" into "the password you
+   * already know opens them" (see `../remote/merge.ts`). Nothing here can read
+   * the records: the parameters say *how* to derive the key, the password is
+   * still what derives it, so the vault stays locked until someone types it.
+   *
+   * Refused when this machine already has parameters of its own — those seal
+   * local records, and silently swapping them would make the local records
+   * unreadable in exchange for the remote ones.
+   *
+   * @param master - the parameters the remote published, already parsed.
+   * @returns whether they were taken.
+   */
+  async adoptMaster(master: MasterParams): Promise<boolean> {
+    if (this.global.master !== undefined) return false
+    await this.setGlobal({ ...this.global, master: masterSchema.parse(master) })
+    return true
   }
 
   /**

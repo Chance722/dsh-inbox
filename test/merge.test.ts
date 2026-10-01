@@ -17,8 +17,36 @@ import * as storageJson from '@deepseek-ai/dsh-storage-json'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { mergeOnce, type SyncTree } from '../src/host/remote/merge.js'
+import { captureText } from '../src/host/capture.js'
 import type { Item } from '../src/host/vault/spec.js'
 import { Vault } from '../src/host/vault/vault.js'
+
+/** The credential these tests paste. */
+const CREDENTIAL = 'secretId=AKIDexample secretKey=abcdef123456'
+
+/**
+ * A second, empty vault on its own root: "another machine".
+ *
+ * Its own `Context` and its own directory, because the point of these tests is
+ * two machines — one that sealed a record and one that pulled it.
+ *
+ * @returns the vault and a cleanup that closes it and removes its directory.
+ */
+async function otherMachine(): Promise<{ vault: Vault; dispose: () => Promise<void> }> {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-inbox-merge-b-'))
+  const ctx = new Context()
+  await ctx.plugin(Storage).await()
+  await ctx.plugin(storageJson, { root }).await()
+  await ctx.plugin(storageDomain, { backend: 'json' }).await()
+  const vault = await Vault.open(ctx)
+  return {
+    vault,
+    dispose: async () => {
+      await vault.close()
+      await rm(root, { recursive: true, force: true })
+    },
+  }
+}
 
 /** One `sync/` tree held in memory, exactly the shape the merge reads. */
 function tree(files: Record<string, string | Uint8Array>): SyncTree {
@@ -307,13 +335,86 @@ describe('mergeOnce', () => {
       }),
     })
 
-    await mergeOnce(vault, remote, 'inbox/sync', admit)
+    const outcome = await mergeOnce(vault, remote, 'inbox/sync', admit)
 
     const imported = vault.get(id)
     expect(imported?.secret).toBe('v1:iv:tag:ciphertext')
     // Locked here, so it cannot be read — which is the point of pulling it
     // without a master password: the bytes travel, the meaning does not.
     expect(vault.secretText(imported!)).toBeUndefined()
+    // And the panel is told *why* it cannot be read, in the one state where the
+    // answer is actionable: the parameters that would open it are not here yet.
+    // Silence here is what made the user's stuck state look like a normal pull
+    // (2026-10-01).
+    expect(outcome.masterAdopted).toBe(false)
+    expect(outcome.masterNote).toContain('主密码参数')
+  })
+
+  it('takes the remote key parameters, so a pulled credential opens with the password that sealed it', async () => {
+    /*
+      The end of the path the user was stuck on. Machine A seals a credential
+      and pushes its parameters beside it; machine B pulls both, and the password
+      it never had typed here opens the record.
+    */
+    await vault.setMasterPassword('原来那台的主密码')
+    const filed = await captureText(vault, CREDENTIAL, 'panel')
+    const source = vault.get(filed.item.id)!
+    const params = vault.master!
+
+    const remote = tree({
+      'inbox/sync/master.json': JSON.stringify({ format: 'dsh-inbox-master/1', master: params }),
+      [`inbox/sync/items/${source.id}.json`]: JSON.stringify({
+        format: 'dsh-inbox-item/1',
+        record: source,
+      }),
+    })
+
+    const second = await otherMachine()
+    try {
+      const outcome = await mergeOnce(second.vault, remote, 'inbox/sync', admit)
+
+      expect(outcome).toMatchObject({
+        merged: 1,
+        masterAdopted: true,
+        masterNote: expect.stringContaining('已取回主密码参数'),
+      })
+      expect(second.vault.lockState).toMatchObject({
+        configured: true,
+        unlocked: false,
+        sealedRecords: 1,
+      })
+      // Still locked — the parameters say how to derive the key, the password is
+      // what derives it — and then the password from the other machine opens it.
+      expect(await second.vault.unlock('原来那台的主密码')).toBe(true)
+      expect(second.vault.secretText(second.vault.get(source.id)!)).toBe(CREDENTIAL)
+    } finally {
+      await second.dispose()
+    }
+  })
+
+  it('leaves the parameters of a machine that already has a password alone', async () => {
+    // Trading them would make the *local* records unreadable in exchange for the
+    // remote ones, so this machine keeps its own and says nothing.
+    await vault.setMasterPassword('本机的密码')
+    const before = vault.master
+    const remote = tree({
+      'inbox/sync/master.json': JSON.stringify({
+        format: 'dsh-inbox-master/1',
+        master: {
+          version: 1,
+          salt: 'AAAAAAAAAAAAAAAAAAAAAA==',
+          kdf: { n: 32768, r: 8, p: 1 },
+          verifier: 'v1:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAA==:AAAA',
+        },
+      }),
+    })
+
+    const outcome = await mergeOnce(vault, remote, 'inbox/sync', admit)
+
+    expect(outcome.masterAdopted).toBe(false)
+    expect(outcome.masterNote).toBeUndefined()
+    expect(vault.master).toEqual(before)
+    expect(await vault.unlock('本机的密码')).toBe(true)
   })
 
   describe('imports are validated, because one bad record closes the vault', () => {

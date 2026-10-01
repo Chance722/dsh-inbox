@@ -118,6 +118,8 @@ async function withMerge(
     ...(outcome.purged === 0 ? {} : { purged: outcome.purged }),
     kept: outcome.kept,
     attachments: outcome.attachments,
+    ...(outcome.masterAdopted ? { masterAdopted: true } : {}),
+    ...(outcome.masterNote === undefined ? {} : { masterNote: outcome.masterNote }),
     failed: pulled.failed + outcome.failures.length,
     ...(troubles.length === 0 ? {} : { reason: troubles.slice(0, 3).join('；') }),
   }

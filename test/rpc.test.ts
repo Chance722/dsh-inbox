@@ -428,6 +428,7 @@ describe('credentials at rest', () => {
     expect(value<SecretStatus>(await post(INBOX_ENDPOINT_SECRET, { action: 'status' }))).toEqual({
       configured: false,
       unlocked: false,
+      sealedRecords: 0,
     })
 
     const refused = await post(INBOX_ENDPOINT_CAPTURE, { text: 'password=hunter2' })

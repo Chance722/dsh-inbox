@@ -112,6 +112,41 @@ describe('pushOnce', () => {
     })
   })
 
+  it('publishes the key parameters beside the records, and nothing else about the key', async () => {
+    /*
+      Without this object a second machine can pull a credential and never open
+      it: the salt is half of what turns a password into the key, and it used to
+      live only in the machine that set the password (the 2026-10-01 report).
+    */
+    const password = '主密码'
+    await vault.setMasterPassword(password)
+    await captureText(vault, 'secretid=AKIDexample secretkey=abcdef123456', 'panel')
+    const { written, write } = recorder()
+
+    await pushOnce(vault, fakeAttachments(new Map()), write, 'inbox/sync')
+
+    const object = written.get('inbox/sync/master.json')
+    expect(object).toBeDefined()
+    const packed = JSON.parse(new TextDecoder().decode(object?.bytes)) as {
+      format: string
+      master: { version: number; salt: string; kdf: { n: number }; verifier: string }
+    }
+    expect(packed.format).toBe('dsh-inbox-master/1')
+    expect(packed.master.salt).toBe(vault.master?.salt)
+    expect(packed.master.verifier).toBe(vault.master?.verifier)
+    // A recipe, not a secret: the password is nowhere in anything that travels.
+    expect(JSON.stringify(packed)).not.toContain(password)
+  })
+
+  it('publishes no key parameters at all while there is no master password', async () => {
+    await captureText(vault, '还没设主密码', 'panel')
+    const { written, write } = recorder()
+
+    await pushOnce(vault, fakeAttachments(new Map()), write, 'inbox/sync')
+
+    expect(written.has('inbox/sync/master.json')).toBe(false)
+  })
+
   it('uploads an attachment once, even when two records point at it', async () => {
     const attachment = await vault.addAttachment({
       storeId: 'sha256:abc',

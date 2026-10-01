@@ -107,7 +107,8 @@ export const zh = {
   'detail.delete': '删除',
   'detail.removeTag': '从这条记录上移除「{tag}」',
   'detail.updated': ' · 更新 {when}',
-  'detail.sealedNote': '这条账密的正文是密文，现在解不开。到「设置 → 账密加密」解锁（或先设一个主密码）就能看到。',
+  'detail.sealedNote':
+    '这条账密的正文是密文，现在解不开。到「设置 → 账密加密」输入主密码解锁就能看到；本机还没有主密码参数时（密文是从别的机器同步来的），先点面板上的「刷新」拉取一次把它们取回来。',
   'detail.play': '播放',
   'detail.zoom': '放大查看',
   'detail.playInBrowser': '在浏览器里播放',
@@ -130,6 +131,9 @@ export const zh = {
   'settings.locked': '已锁定',
   'settings.lockedNote': '已锁定：账密正文不可读，直到再次解锁',
   'settings.noPassword': '还没设主密码',
+  'settings.sealedNoParams': '有 {count} 条密文，但本机没有主密码参数',
+  'settings.sealedNoParamsBody':
+    '这些密文是同步进来的，解开它们要用的参数还没到本机：主密码和密钥都不随同步走，只有盐值和 KDF 参数会。关掉这个设置窗口，点面板上的「刷新」拉取一次把它们取回来，再回到这里输入原来那台机器的主密码解锁。',
   'settings.passwordJustSet': '主密码已设置，账密从此加密落盘',
   'settings.passwordSealed': '主密码已设置，另有 {count} 条旧记录已从明文改为密文',
   'settings.ingest': '远端入库',
@@ -404,7 +408,8 @@ export const en: Dictionary = {
   'detail.delete': 'Delete',
   'detail.removeTag': 'Remove “{tag}” from this record',
   'detail.updated': ' · updated {when}',
-  'detail.sealedNote': 'This credential’s body is ciphertext and cannot be read right now. Unlock it under Settings → Credential encryption (or set a master password first).',
+  'detail.sealedNote':
+    'This credential’s body is ciphertext and cannot be read right now. Unlock it under Settings → Credential encryption — if this machine has no master-password parameters yet (the records came from another machine), hit Refresh in the panel once to bring them over.',
   'detail.play': 'Play',
   'detail.zoom': 'Zoom in',
   'detail.playInBrowser': 'Play in the browser',
@@ -427,6 +432,9 @@ export const en: Dictionary = {
   'settings.locked': 'Locked',
   'settings.lockedNote': 'Locked: credential bodies stay unreadable until you unlock again',
   'settings.noPassword': 'No master password yet',
+  'settings.sealedNoParams': '{count} sealed records, but no key parameters on this machine',
+  'settings.sealedNoParamsBody':
+    'These ciphertexts were synced in and the parameters that open them have not arrived: the master password and the key never travel, only the salt and the KDF work factors. Close this sheet and hit Refresh in the panel to pull once, then come back and unlock with the master password from the machine that sealed them.',
   'settings.passwordJustSet': 'Master password set — credentials are now encrypted at rest',
   'settings.passwordSealed': 'Master password set, and {count} old records went from plain text to ciphertext',
   'settings.ingest': 'Drop folder',

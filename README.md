@@ -150,12 +150,12 @@ With a remote configured and `/inbox` as the directory:
 
 ## Privacy and security
 
-- **Credential bodies are encrypted at rest** (AES-256-GCM, key derived from your master password). Neither the password nor the key is written down: the vault locks on every restart and you unlock it under 设置 → 账密加密, and a forgotten password means unrecoverable ciphertext. With no master password set, a credential is **refused rather than stored in the clear**.
+- **Credential bodies are encrypted at rest** (AES-256-GCM, key derived from your master password). Neither the password nor the key is written down: the vault locks on every restart and you unlock it under 设置 → 账密加密, and a forgotten password means unrecoverable ciphertext. With no master password set, a credential is **refused rather than stored in the clear**. **On a second machine**, synced credentials open with the master password you set on the first one — the derivation parameters travel, the password does not.
 - **That covers the body only**: notes, categories, tags, timestamps and attachment **bytes** are not encrypted — a key inside a pasted file is still a key inside a file.
 - **Masked where it matters**: a credential is listed by the name you gave it, and its plain text never reaches a conversation or a model.
 - **Pictures**: classification does send an image to the model, and the conversation gets an `[attachment:id]` marker — that one image is sent only when you explicitly ask the assistant to look at it.
 - **The model cannot see your vault** unless you ask it to look, and classification requests are redacted first.
-- **Your remote needs access control**: only credential bodies are ciphertext up there — text, links, notes and attachment bytes are in the clear, and the master password and key never sync.
+- **Your remote needs access control**: only credential bodies are ciphertext up there — text, links, notes and attachment bytes are in the clear, and the master password and key never sync. One extra file, `sync/master.json`, holds the **non-secret** derivation parameters (salt, work factors, a check value) so the **same master password opens synced credentials on any machine** — on a second machine, enter the password you set on the first.
 - **One thing the install changes outside the panel**: reading a pasted link's headline is the plugin's only outbound request (one GET, only for links captured on this machine, never for links that came through sync). It goes out with a **browser-shaped** identity, an override of `web-fetch-http.userAgent` shipped in this package's `cordis.patch.yml`. That identity is the whole profile's, the model's own web tools included; **your own `cordis.patch.yml` overrides it**. Details: [docs/help/link-title-fetch.md](docs/help/link-title-fetch.md).
 
 ## Development

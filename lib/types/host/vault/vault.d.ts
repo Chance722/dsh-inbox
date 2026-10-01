@@ -9,7 +9,7 @@ import { type ItemQuery } from './query.js';
 export declare class VaultLockedError extends Error {
     constructor();
 }
-import { type Attachment, type Item, type VaultGlobal } from './spec.js';
+import { type Attachment, type Item, type MasterParams, type VaultGlobal } from './spec.js';
 /** Everything a caller supplies when filing something new. */
 export interface NewItem {
     kind: Kind;
@@ -54,6 +54,18 @@ export interface VaultLockState {
     configured: boolean;
     /** The key is in memory: credentials can be read and written. */
     unlocked: boolean;
+    /**
+     * Sealed credential bodies this vault holds, including tombstones.
+     *
+     * Non-zero while `configured` is false is the state a **second** machine lands
+     * in after pulling another machine's records: the ciphertext arrived without
+     * the parameters that turn a password into its key. It is not "no password
+     * yet" — there is nothing here a fresh password could ever open — and the
+     * panel says so instead of offering to set one (measured 2026-10-01: the
+     * panel said 「还没设主密码」, the button answered 「仓库里已有 7 条密文…」, and
+     * the user had no way forward).
+     */
+    sealedRecords: number;
 }
 export declare class Vault {
     private readonly ctx;
@@ -99,6 +111,15 @@ export declare class Vault {
     private get graves();
     /** Where the key state stands; what the panel shows and the tools consult. */
     get lockState(): VaultLockState;
+    /** Credential bodies that need the key, tombstones included. */
+    get sealedRecords(): number;
+    /**
+     * The parameters that recognise the master password, when one has been set.
+     *
+     * Read by the push, which publishes them so another machine can open what it
+     * pulled (`../remote/push.ts`).
+     */
+    get master(): MasterParams | undefined;
     /**
      * Set (or replace) the master password, and seal everything that needs it.
      *
@@ -111,6 +132,22 @@ export declare class Vault {
      * @returns how many records were sealed in the process.
      */
     setMasterPassword(password: string): Promise<number>;
+    /**
+     * Take over another machine's key parameters.
+     *
+     * The half of sync that turns "the bytes arrived" into "the password you
+     * already know opens them" (see `../remote/merge.ts`). Nothing here can read
+     * the records: the parameters say *how* to derive the key, the password is
+     * still what derives it, so the vault stays locked until someone types it.
+     *
+     * Refused when this machine already has parameters of its own — those seal
+     * local records, and silently swapping them would make the local records
+     * unreadable in exchange for the remote ones.
+     *
+     * @param master - the parameters the remote published, already parsed.
+     * @returns whether they were taken.
+     */
+    adoptMaster(master: MasterParams): Promise<boolean>;
     /**
      * Derive the key from the stored salt and check it against the verifier.
      *

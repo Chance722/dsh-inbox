@@ -136,7 +136,7 @@ describe('credentials in a real vault', () => {
     const filed = await captureText(vault, CREDENTIAL, 'panel')
     vault.lock()
 
-    expect(vault.lockState).toEqual({ configured: true, unlocked: false })
+    expect(vault.lockState).toEqual({ configured: true, unlocked: false, sealedRecords: 1 })
     expect(vault.secretText(vault.get(filed.item.id)!)).toBeUndefined()
     expect(await vault.unlock('猜的')).toBe(false)
     expect(vault.secretText(vault.get(filed.item.id)!)).toBeUndefined()
@@ -188,5 +188,61 @@ describe('credentials in a real vault', () => {
     // The record still opens with the password it was sealed with.
     expect(await vault.unlock('旧密码')).toBe(true)
     expect(vault.secretText(vault.get(filed.item.id)!)).toBe(CREDENTIAL)
+  })
+
+  it('opens a pulled credential on a second machine, once the parameters travel', async () => {
+    /*
+      The bug this path exists for (2026-10-01): a machine that pulls another
+      machine's credentials holds ciphertext it can *never* open, because the
+      salt that turns the password into the key never left the first machine.
+      The parameters are what make two machines agree on one password.
+    */
+    await vault.setMasterPassword('原来那台的主密码')
+    const filed = await captureText(vault, CREDENTIAL, 'panel')
+    const pulled = vault.get(filed.item.id)!
+    const params = vault.master
+    expect(params).toBeDefined()
+
+    const secondRoot = await mkdtemp(join(tmpdir(), 'dsh-inbox-secret-b-'))
+    const otherCtx = new Context()
+    await otherCtx.plugin(Storage).await()
+    await otherCtx.plugin(storageJson, { root: secondRoot }).await()
+    await otherCtx.plugin(storageDomain, { backend: 'json' }).await()
+    const second = await Vault.open(otherCtx)
+    try {
+      await second.import(pulled)
+
+      // The state the panel has to name: ciphertext in hand, no parameters. Not
+      // "no password yet" — a password typed here would open none of it.
+      expect(second.lockState).toEqual({ configured: false, unlocked: false, sealedRecords: 1 })
+      expect(second.secretText(second.get(pulled.id)!)).toBeUndefined()
+
+      // What the push publishes and the merge takes over.
+      expect(await second.adoptMaster(params!)).toBe(true)
+      expect(await second.unlock('原来那台的主密码')).toBe(true)
+      expect(second.secretText(second.get(pulled.id)!)).toBe(CREDENTIAL)
+
+      // The parameters are a recipe, not a secret: the password is nowhere in
+      // them, and neither is anything the password can be read out of.
+      expect(JSON.stringify(params)).not.toContain('原来那台的主密码')
+    } finally {
+      await second.close()
+      await rm(secondRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps its own parameters when it already has a master password', async () => {
+    // Taking a second machine's parameters would trade the local records' key
+    // for theirs: the local ones would stop opening. Refused instead.
+    await vault.setMasterPassword('本机的密码')
+    expect(
+      await vault.adoptMaster({
+        version: 1,
+        salt: 'AAAAAAAAAAAAAAAAAAAAAA==',
+        kdf: DEFAULT_KDF,
+        verifier: 'v1:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAA==:AAAA',
+      }),
+    ).toBe(false)
+    expect(await vault.unlock('本机的密码')).toBe(true)
   })
 })

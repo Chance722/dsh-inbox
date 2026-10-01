@@ -218,6 +218,21 @@ export interface PullResult {
   /** Attachment objects the merge had to fetch and admit locally. */
   attachments?: number
   /**
+   * The remote's master-password parameters were taken over this pull.
+   *
+   * The one piece of this result that changes what the user can *do*: records
+   * that came over as ciphertext before can now be unlocked, with the password
+   * of the machine that sealed them.
+   */
+  masterAdopted?: boolean
+  /**
+   * One sentence about the key parameters, when they are the reason something
+   * does not work — "this vault holds 7 sealed records and the parameters that
+   * would open them are not here" is otherwise indistinguishable from "the
+   * records came over fine".
+   */
+  masterNote?: string
+  /**
    * Records the cloud holds that this vault **already had** (same id, not older).
    *
    * This is the answer to "why is the cloud's copy not coming over?": it is the
@@ -565,6 +580,15 @@ export interface SecretStatus {
   configured: boolean
   /** The key is in this process's memory: credentials can be read and written. */
   unlocked: boolean
+  /**
+   * Sealed credential bodies the vault holds.
+   *
+   * Non-zero with `configured: false` means the records came from another
+   * machine and their key parameters have not arrived (or do not exist here):
+   * the panel must say "locked, bring the parameters over" rather than
+   * "no password yet", because no password typed here could open them.
+   */
+  sealedRecords: number
   /**
    * How many credentials the last unlock moved out of plain text. Zero most of
    * the time; non-zero exactly once, on the unlock after this feature arrived.
