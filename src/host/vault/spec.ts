@@ -182,6 +182,20 @@ export const vaultGlobalSchema = z.object({
     cursor: z.string().optional(),
   }),
   master: masterSchema.optional(),
+  /**
+   * The same parameters, from **other machines**.
+   *
+   * Two machines that each set their own password have two different salts, so
+   * their records need two different keys — and typing the password from the
+   * other machine is only possible if its parameters are here to derive it with
+   * (see `unlock` in `vault.ts`). Kept as a list, never merged into `master`:
+   * `master` is what this machine *seals with*, the others are what it can
+   * *open* (asked for 2026-10-02: "各解各的，密码一样就不用管").
+   *
+   * Same caveat as `master`: salt, work factors and a sealed constant, no
+   * password and no key.
+   */
+  masterOthers: z.array(masterSchema).optional(),
   /** Today's model-fallback spend, so a restart cannot reset the meter. */
   model: z
     .object({
@@ -239,6 +253,15 @@ export const vaultSpec = defineDomain({
    * (`sync/master.json`), not a change to any stored shape — an older build
    * ignores a name it does not know, and a newer build over a version-8 vault
    * finds `global.master` exactly where it always was.
+   *
+   * And still 8 after `masterOthers` joined the global slot (2026-10-02), for a
+   * blunter reason: **the stored version is compared for equality**
+   * (`dsh-storage-json/lib/index.js`: `version !== descriptor.version` throws
+   * `version-mismatch`), so bumping it would make every older build refuse to
+   * open the vault — including the one already installed on the user's other
+   * profile. A new *optional* key in the global slot is invisible to older code
+   * (zod strips what it does not know), and the worst an older build can do is
+   * write the slot back without it, which the next pull restores.
    */
   version: 8,
   compatibleVersions: [1, 2, 3, 4, 5, 6, 7],

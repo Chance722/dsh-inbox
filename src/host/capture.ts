@@ -198,7 +198,10 @@ export async function captureText(
         ? item.url !== undefined && normalizeLink(item.url) === normalizeLink(raw)
         : sealed === undefined
           ? item.text === raw
-          : item.secretDigest === sealed.secretDigest,
+          : // Every held key, not just the one that would seal this: the copy
+            // already here may have been sealed on the other machine, with a
+            // digest this machine can only reproduce with that machine's key.
+            item.secretDigest !== undefined && vault.secretDigests(raw).includes(item.secretDigest),
     )
 
   if (existing !== undefined) {

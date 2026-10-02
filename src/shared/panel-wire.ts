@@ -590,6 +590,18 @@ export interface SecretStatus {
    */
   sealedRecords: number
   /**
+   * Sealed records no key in memory can open — counted only while at least one
+   * key *is* in memory.
+   *
+   * The panel's "还有 N 条来自别的机器" line: records another machine sealed with
+   * a password this one has not been given yet. Zero while locked (everything is
+   * unreadable then, and the card says 「已锁定」) and zero once every password in
+   * play has been typed.
+   */
+  unreadable: number
+  /** Parameter sets from other machines this vault has taken in. */
+  otherMachines: number
+  /**
    * How many credentials the last unlock moved out of plain text. Zero most of
    * the time; non-zero exactly once, on the unlock after this feature arrived.
    */

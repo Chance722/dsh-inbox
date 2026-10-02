@@ -102,6 +102,10 @@ export declare const zh: {
     'detail.foreignBody': string;
     'settings.secrets': string;
     'settings.secretsBody': string;
+    'settings.lockedBody': string;
+    'settings.unlockedBody': string;
+    'settings.otherPassword': string;
+    'settings.otherPasswordNoParams': string;
     'settings.masterPassword': string;
     'settings.masterPasswordSet': string;
     'settings.masterPasswordNew': string;
@@ -191,7 +195,6 @@ export declare const zh: {
     'sync.shortPulled': string;
     'sync.shortIdle': string;
     'sync.pullFailures': string;
-    'sync.thisPage': string;
     'settings.status': string;
     'settings.statusOn': string;
     'settings.statusOff': string;
@@ -369,6 +372,10 @@ export declare const MESSAGES: {
         'detail.foreignBody': string;
         'settings.secrets': string;
         'settings.secretsBody': string;
+        'settings.lockedBody': string;
+        'settings.unlockedBody': string;
+        'settings.otherPassword': string;
+        'settings.otherPasswordNoParams': string;
         'settings.masterPassword': string;
         'settings.masterPasswordSet': string;
         'settings.masterPasswordNew': string;
@@ -458,7 +465,6 @@ export declare const MESSAGES: {
         'sync.shortPulled': string;
         'sync.shortIdle': string;
         'sync.pullFailures': string;
-        'sync.thisPage': string;
         'settings.status': string;
         'settings.statusOn': string;
         'settings.statusOff': string;

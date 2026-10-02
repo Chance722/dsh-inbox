@@ -138,6 +138,16 @@ export declare const vaultGlobalSchema: z.ZodObject<{
         }, z.core.$strip>;
         verifier: z.ZodString;
     }, z.core.$strip>>;
+    masterOthers: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        version: z.ZodNumber;
+        salt: z.ZodString;
+        kdf: z.ZodObject<{
+            n: z.ZodNumber;
+            r: z.ZodNumber;
+            p: z.ZodNumber;
+        }, z.core.$strip>;
+        verifier: z.ZodString;
+    }, z.core.$strip>>>;
     model: z.ZodOptional<z.ZodObject<{
         day: z.ZodString;
         calls: z.ZodNumber;
@@ -188,6 +198,15 @@ export declare const vaultSpec: {
      * (`sync/master.json`), not a change to any stored shape — an older build
      * ignores a name it does not know, and a newer build over a version-8 vault
      * finds `global.master` exactly where it always was.
+     *
+     * And still 8 after `masterOthers` joined the global slot (2026-10-02), for a
+     * blunter reason: **the stored version is compared for equality**
+     * (`dsh-storage-json/lib/index.js`: `version !== descriptor.version` throws
+     * `version-mismatch`), so bumping it would make every older build refuse to
+     * open the vault — including the one already installed on the user's other
+     * profile. A new *optional* key in the global slot is invisible to older code
+     * (zod strips what it does not know), and the worst an older build can do is
+     * write the slot back without it, which the next pull restores.
      */
     version: number;
     compatibleVersions: number[];
@@ -209,6 +228,16 @@ export declare const vaultSpec: {
                 }, z.core.$strip>;
                 verifier: z.ZodString;
             }, z.core.$strip>>;
+            masterOthers: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                version: z.ZodNumber;
+                salt: z.ZodString;
+                kdf: z.ZodObject<{
+                    n: z.ZodNumber;
+                    r: z.ZodNumber;
+                    p: z.ZodNumber;
+                }, z.core.$strip>;
+                verifier: z.ZodString;
+            }, z.core.$strip>>>;
             model: z.ZodOptional<z.ZodObject<{
                 day: z.ZodString;
                 calls: z.ZodNumber;

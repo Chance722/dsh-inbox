@@ -102,20 +102,39 @@ export interface VaultLockState {
    * the user had no way forward).
    */
   sealedRecords: number
+  /**
+   * Sealed records **no key in memory can open**, counted only while a key is
+   * held.
+   *
+   * What this means in practice: the records another machine sealed with a
+   * password this one has not been given yet. Zero while the vault is locked
+   * (everything is unreadable then, which the panel says with 「已锁定」), and
+   * zero once the right password has been typed — so the number is exactly
+   * "what is still waiting for a password", which is the only question the panel
+   * cannot answer any other way.
+   */
+  unreadable: number
+  /** Parameter sets from other machines this vault has taken in. */
+  otherMachines: number
 }
 
 export class Vault {
   private closed = false
 
   /**
-   * The derived key, **memory only**.
+   * The derived keys, **memory only**, keyed by the salt each was derived with.
    *
-   * Nothing on disk can be used to read a credential: the master password is
-   * never stored, the key is never stored, and a restart therefore locks the
-   * vault again. That is the trade the red line asks for ("主密码永不上传"),
-   * and it is why the panel has an explicit unlock.
+   * Nothing on disk can be used to read a credential: no password is stored, no
+   * key is stored, and a restart therefore locks the vault again. That is the
+   * trade the red line asks for ("主密码永不上传"), and it is why the panel has
+   * an explicit unlock.
+   *
+   * A machine that syncs holds **more than one** key while it is unlocked — its
+   * own password's and the other machine's — because the parameters travel and
+   * the passwords do not. Each record is then readable by whoever knows the
+   * password that sealed it, which is the whole design (2026-10-02).
    */
-  private key?: Buffer
+  private readonly keys = new Map<string, Buffer>()
 
   private constructor(
     private readonly ctx: Context,
@@ -178,9 +197,67 @@ export class Vault {
   get lockState(): VaultLockState {
     return {
       configured: this.global.master !== undefined,
-      unlocked: this.key !== undefined,
+      unlocked: this.keys.size > 0,
       sealedRecords: this.sealedRecords,
+      unreadable: this.keys.size === 0 ? 0 : this.unreadableSealed(),
+      otherMachines: this.otherParamSets().length,
     }
+  }
+
+  /**
+   * Parameter sets from other machines, minus anything that is really this one's.
+   *
+   * Filtered on the salt rather than trusted as given: the same machine showing
+   * up twice would just mean deriving the same key twice.
+   */
+  private otherParamSets(): MasterParams[] {
+    const own = this.global.master
+    return (this.global.masterOthers ?? []).filter((other) => other.salt !== own?.salt)
+  }
+
+  /** Every parameter set this vault recognises: its own first, then other machines'. */
+  private get paramSets(): MasterParams[] {
+    const own = this.global.master
+    return own === undefined ? this.otherParamSets() : [own, ...this.otherParamSets()]
+  }
+
+  /**
+   * The key new credentials are sealed with.
+   *
+   * This machine's own when it is held (that is what "my password" means), and
+   * otherwise whichever one the user did unlock with — sealing with a key whose
+   * parameters this vault knows is always recoverable, because those parameters
+   * are on disk and the same password derives the same key again.
+   */
+  private get key(): Buffer | undefined {
+    const own = this.global.master
+    const mine = own === undefined ? undefined : this.keys.get(own.salt)
+    return mine ?? this.keys.values().next().value
+  }
+
+  /** The keys to try against one record, this machine's own first. */
+  private heldKeys(): Buffer[] {
+    const held: Buffer[] = []
+    for (const params of this.paramSets) {
+      const key = this.keys.get(params.salt)
+      if (key !== undefined) held.push(key)
+    }
+    return held
+  }
+
+  /** This machine's own key — the one the local master password derives. */
+  private localKey(): Buffer | undefined {
+    const own = this.global.master
+    return own === undefined ? undefined : this.keys.get(own.salt)
+  }
+
+  /** Sealed records no held key can open. */
+  private unreadableSealed(): number {
+    let count = 0
+    for (const [, item] of this.items.entries()) {
+      if (item.secret !== undefined && this.secretText(item) === undefined) count += 1
+    }
+    return count
   }
 
   /** Credential bodies that need the key, tombstones included. */
@@ -220,21 +297,24 @@ export class Vault {
       records sealed with a password nobody has any more) is the difference
       between an inconvenience and losing a credential forever.
 
-      The refusal is also what a *second* machine hits, and there the advice used
-      to be a dead end: it said "unlock with the existing password first" while
-      this vault held no parameters for that password to be derived with. The
-      sentence now names the way out — pull once, and the parameters the other
-      machine published come with the records.
+      "The old key" means **this machine's own**, not any key in memory: another
+      machine's records are sealed with a password this machine may well hold for
+      reading, and re-sealing those would take them away from the machine that
+      owns them (asked 2026-10-02: each password opens its own records).
     */
     const sealedAlready = [...this.items.entries()].filter(([, item]) => item.secret !== undefined)
-    if (sealedAlready.length > 0 && this.key === undefined) {
+    const previous = this.localKey()
+    if (sealedAlready.length > 0 && previous === undefined) {
+      const count = String(sealedAlready.length)
       throw new Error(
-        `仓库里已有 ${String(sealedAlready.length)} 条密文，但本机没有解开它们的主密码参数：` +
-          '先输入「原来那台机器」的主密码解锁（这些密文是同步过来的话，先在设置里拉取一次，把主密码参数取回来），再来换密码',
+        this.global.master === undefined
+          ? `仓库里已有 ${count} 条密文，但本机没有解开它们的主密码参数：先点一次「同步」把参数拉回来，` +
+              '再用原来那台机器的主密码解锁，之后才能换密码'
+          : `仓库里已有 ${count} 条密文，本机现在锁着：先用本机现在的主密码解锁，` +
+              '才能把它们改封成新密码（否则它们会再也打不开）',
       )
     }
 
-    const previous = this.key
     const salt = newSalt()
     const kdf: KdfParams = DEFAULT_KDF
     const key = deriveKey(password, salt, kdf)
@@ -247,7 +327,7 @@ export class Vault {
         verifier: seal(key, VERIFIER_PLAINTEXT),
       },
     })
-    this.key = key
+    this.keys.set(salt.toString('base64'), key)
     return (await this.resealSecrets(previous)) + (await this.sealLegacySecrets())
   }
 
@@ -273,24 +353,56 @@ export class Vault {
   }
 
   /**
+   * Remember another machine's parameters, keeping this machine's own.
+   *
+   * The other half of adopting: when both machines set a password of their own,
+   * neither one's parameters may win — records on both sides must stay readable
+   * with the password that sealed them, and typing that password here has to be
+   * possible (`unlock` derives against every known set). Nothing is unlocked by
+   * this call, and nothing already readable changes.
+   *
+   * @param master - the parameters the remote published, already parsed.
+   * @returns whether they were new.
+   */
+  async adoptOtherMaster(master: MasterParams): Promise<boolean> {
+    const parsed = masterSchema.parse(master)
+    const own = this.global.master
+    if (own !== undefined && own.salt === parsed.salt) return false
+    const others = this.global.masterOthers ?? []
+    if (others.some((other) => other.salt === parsed.salt)) return false
+    await this.setGlobal({ ...this.global, masterOthers: [...others, parsed] })
+    return true
+  }
+
+  /**
    * Derive the key from the stored salt and check it against the verifier.
    *
+   * **Every** parameter set is tried, this machine's own first, and every one
+   * whose verifier opens is kept. That is what makes "type the other machine's
+   * password" work without giving up your own: two passwords, two keys, and each
+   * record readable by the one that sealed it. A password both machines share
+   * opens both sets in this single call, which is why the shared-password case
+   * needs nothing special.
+   *
    * @param password - what the user typed.
-   * @returns true when the vault is now unlocked.
+   * @returns true when the password matched at least one known set.
    */
   async unlock(password: string): Promise<boolean> {
-    const master = this.global.master
-    if (master === undefined) return false
-    const key = deriveKey(password, Buffer.from(master.salt, 'base64'), master.kdf)
-    if (open(key, master.verifier) !== VERIFIER_PLAINTEXT) return false
-    this.key = key
+    let matched = false
+    for (const params of this.paramSets) {
+      const key = deriveKey(password, Buffer.from(params.salt, 'base64'), params.kdf)
+      if (open(key, params.verifier) !== VERIFIER_PLAINTEXT) continue
+      this.keys.set(params.salt, key)
+      matched = true
+    }
+    if (!matched) return false
     await this.sealLegacySecrets()
     return true
   }
 
   /** Drop the key. Credentials stay on disk, unreadable until the next unlock. */
   lock(): void {
-    this.key = undefined
+    this.keys.clear()
   }
 
   /**
@@ -313,7 +425,25 @@ export class Vault {
    */
   secretText(item: Item): string | undefined {
     if (item.secret === undefined) return undefined
-    return this.key === undefined ? undefined : open(this.key, item.secret)
+    for (const key of this.heldKeys()) {
+      const plaintext = open(key, item.secret)
+      if (plaintext !== undefined) return plaintext
+    }
+    return undefined
+  }
+
+  /**
+   * Every digest the same plaintext would have under any held key.
+   *
+   * De-duplication reads a record's `secretDigest`, and that digest was made with
+   * whichever key sealed it — so a credential pasted on this machine must be
+   * recognised even when the copy already here came from the other one.
+   *
+   * @param plaintext - the credential as pasted.
+   * @returns the digests to match against, empty while nothing is held.
+   */
+  secretDigests(plaintext: string): string[] {
+    return this.heldKeys().map((key) => createHmac('sha256', key).update(plaintext).digest('hex'))
   }
 
   /**

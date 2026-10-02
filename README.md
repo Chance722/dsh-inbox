@@ -24,7 +24,7 @@ Everything lands on your machine, and the model only sees a record when you ask 
 | **Ask in conversation** | Ask for 收件箱 / 仓库 / inbox and the assistant searches by words, category, tag, watch-later flag or kind (ten at a time plus a count, thumbnails inline) and opens one by id (text up to 1000 characters, link, note, tags, attachments). 「打开 ↗」 under an answer jumps to that record in the 仓库 tab |
 | **Looking at a picture** | Image bytes stay out of the conversation; ask the assistant to look at one and that single image is sent — explicitly, per call |
 | **Credentials are safe** | The body is encrypted at rest, with a key derived from your master password — neither is ever written down. The list shows only the name you gave it, and plain text never reaches a conversation or a model |
-| **Two-way sync** | Point it at a WebDAV folder or an S3 bucket: changes push a few seconds later, 刷新 runs a full push-then-pull merged per record by `id` + timestamp, and emptying the recycle bin deletes the cloud copies too. Two machines see each other when they share one 「目录」 |
+| **Two-way sync** | Point it at a WebDAV folder or an S3 bucket: changes push a few seconds later, 「同步」 runs a full push-then-pull merged per record by `id` + timestamp, and emptying the recycle bin deletes the cloud copies too. Two machines see each other when they share one 「目录」 |
 | **Conversation cards** | Tool results render as dsh-inbox cards — links clickable, image markers drawn as thumbnails on your machine |
 | **Gateway quirks** | Some object-storage gateways bind each AccessKey to an "application" and identify clients by a header — so the plugin keeps **one client identity per protocol** |
 
@@ -67,13 +67,13 @@ npx @chance722/dsh-inbox init --profile web --install-pnpm
 # never run dsh on this machine? create the profile in the same command
 npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
 
-# update (within 24h of a release, swap @latest for the exact version, e.g. @0.2.11)
+# update (within 24h of a release, swap @latest for the exact version, e.g. @0.2.12)
 dsh plugin --profile web add @chance722/dsh-inbox@latest
 ```
 
 **Desktop app (DeepSeek Harness)**
 
-Open **Plugins** in the sidebar → install → enter `@chance722/dsh-inbox@latest` (within 24h of a release, `@0.2.11`) → restart when it asks.
+Open **Plugins** in the sidebar → install → enter `@chance722/dsh-inbox@latest` (within 24h of a release, `@0.2.12`) → restart when it asks.
 
 That field also takes a GitHub URL (`https://github.com/Chance722/dsh-inbox`): the built plugin ships in the repository, so it installs the same way with nothing extra to do. Reinstalling is how you upgrade; the package name is still the smoother path day to day.
 
@@ -143,7 +143,7 @@ With a remote configured and `/inbox` as the directory:
 
 ### How syncing works
 
-- **Automatic**: a push seconds after a capture or edit (debounced — several quick saves are one push); 「刷新」 is a full sync: push → pull → re-read the list.
+- **Automatic**: a push seconds after a capture or edit (debounced — several quick saves are one push); 「同步」 is a full sync: push → pull → re-read the list.
 - **Merging**: per `id` + timestamp, the newer write wins, no conflict copies; needed attachment bytes come down with the record.
 - **Two machines**: one shared 「目录」 (blank, `/` and `inbox` are the same). Records a machine left under an older directory come back if you tick **Merge other sync directories too** in the settings.
 - **Deleting**: 「删除」 only moves a record to the bin and the other devices are told it is gone; emptying the bin deletes the cloud copy as well, and it stays deleted — a copy sitting in another sync directory cannot file it back in.

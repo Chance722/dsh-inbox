@@ -192,16 +192,25 @@ async function findMasterObject(tree: SyncTree, prefix: string): Promise<string 
 }
 
 /**
- * Take the remote's key parameters when this machine is holding ciphertext it
- * cannot open.
+ * Take the remote's key parameters, keeping whatever this machine already has.
  *
  * The other half of "the password works on every machine". The push publishes
- * `sync/master.json`; this picks it up, and only ever in the one state where it
- * is both needed and safe to take: **no parameters of our own, but sealed
- * records to open**. A machine that already has a master keeps its own (those
- * parameters seal its own records — swapping them would trade one unreadable
- * vault for another), and a machine with nothing sealed has nothing to unlock,
- * so the read is not even attempted.
+ * `sync/master.json`; this picks it up, and the two cases are handled by what
+ * the vault already knows:
+ *
+ * - **Nothing of our own** → adopt: this machine then treats the other one's
+ *   password as its master, which is what "已经设了主密码（和另一台保持一致）"
+ *   means in the panel.
+ * - **A password of our own** → keep it, and remember the other's beside it
+ *   (`masterOthers`). Neither side's records are lost: each is opened by the
+ *   password that sealed it, and typing both here unlocks both. If the two
+ *   machines happen to share one password, that single password matches both
+ *   sets in one `unlock` call — nothing special to do.
+ *
+ * Read whenever this vault is holding sealed records, not only when it has no
+ * parameters: "the other machine's parameters are missing" is exactly the state
+ * where its records cannot be opened, and that state is reachable from both
+ * sides of the conflict.
  *
  * Note what this cannot do: open anything. It moves the salt, the work factors
  * and the sealed constant; the key still has to be derived from a password
@@ -218,7 +227,7 @@ async function adoptMasterParams(
   prefix: string,
 ): Promise<{ adopted: boolean; note?: string }> {
   const state = vault.lockState
-  if (state.configured || state.sealedRecords === 0) return { adopted: false }
+  if (state.sealedRecords === 0) return { adopted: false }
 
   let path: string | undefined
   try {
@@ -230,18 +239,9 @@ async function adoptMasterParams(
     }
   }
   if (path === undefined) {
-    /*
-      Worth a sentence rather than a silent skip: this is the state the user is
-      stuck in, and "the vault has 7 sealed records and no way to open them" is
-      exactly what they cannot see from the panel. Most often the cause is
-      mundane — the other machine has not pushed since it was updated, so
-      `master.json` is not out there yet.
-    */
     return {
       adopted: false,
-      note:
-        `本机有 ${String(state.sealedRecords)} 条密文，但远端还没有主密码参数：` +
-        '先在原来那台机器上推一次（它要升到带 `master.json` 的版本），再回来拉取',
+      note: `本机有 ${String(state.sealedRecords)} 条密文，远端还没有解锁参数：先在原来那台机器上同步一次`,
     }
   }
 
@@ -251,7 +251,7 @@ async function adoptMasterParams(
   } catch (error) {
     return {
       adopted: false,
-      note: `本机有 ${String(state.sealedRecords)} 条密文，但远端的主密码参数取不下来（${reasonOf(error)}）：稍后再拉一次`,
+      note: `本机有 ${String(state.sealedRecords)} 条密文，解锁参数取不下来（${reasonOf(error)}）`,
     }
   }
 
@@ -259,16 +259,22 @@ async function adoptMasterParams(
   if (parsed === undefined) {
     return {
       adopted: false,
-      note: `远端的 ${path} 不是本插件的密钥参数格式，本机的 ${String(state.sealedRecords)} 条密文暂时解不开`,
+      note: `远端的 ${path} 不是本插件的解锁参数格式，${String(state.sealedRecords)} 条密文暂时解不开`,
     }
   }
-  if (!(await vault.adoptMaster(parsed))) return { adopted: false }
-  return {
-    adopted: true,
-    note:
-      `已取回主密码参数：本机的 ${String(state.sealedRecords)} 条密文现在可以用原来那台机器的` +
-      '主密码解锁（参数不含密码，密码还是得在本机输一次）',
+  if (await vault.adoptMaster(parsed)) {
+    return {
+      adopted: true,
+      note: '已取回解锁参数：现在可以输原来那台机器的主密码',
+    }
   }
+  if (await vault.adoptOtherMaster(parsed)) {
+    return {
+      adopted: false,
+      note: '已记下另一台机器的解锁参数：它的密文可以用它的密码解开，本机的密码照旧',
+    }
+  }
+  return { adopted: false }
 }
 
 /** Whether a remote record should replace the local one, if there is one. */

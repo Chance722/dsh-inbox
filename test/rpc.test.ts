@@ -429,6 +429,8 @@ describe('credentials at rest', () => {
       configured: false,
       unlocked: false,
       sealedRecords: 0,
+      unreadable: 0,
+      otherMachines: 0,
     })
 
     const refused = await post(INBOX_ENDPOINT_CAPTURE, { text: 'password=hunter2' })

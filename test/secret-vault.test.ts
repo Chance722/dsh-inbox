@@ -22,6 +22,32 @@ import { Vault, VaultLockedError } from '../src/host/vault/vault.js'
 
 /** The credential these tests paste. */
 const CREDENTIAL = 'secretId=AKIDexample secretKey=abcdef123456'
+/** A second one, so "this machine's record" and "theirs" are tellable apart. */
+const CREDENTIAL_B = 'secretId=AKIDother secretKey=zzzzzzzzzzzz'
+
+/**
+ * A second, empty vault on its own root: the other machine.
+ *
+ * Its own `Context` and directory, because these tests are about two machines —
+ * one that sealed a record, one that pulled it.
+ *
+ * @returns the vault and a cleanup that closes it and removes its directory.
+ */
+async function otherMachine(): Promise<{ vault: Vault; dispose: () => Promise<void> }> {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-inbox-secret-other-'))
+  const ctx = new Context()
+  await ctx.plugin(Storage).await()
+  await ctx.plugin(storageJson, { root }).await()
+  await ctx.plugin(storageDomain, { backend: 'json' }).await()
+  const vault = await Vault.open(ctx)
+  return {
+    vault,
+    dispose: async () => {
+      await vault.close()
+      await rm(root, { recursive: true, force: true })
+    },
+  }
+}
 
 describe('the secret box', () => {
   it('round-trips, and never twice the same bytes', () => {
@@ -136,7 +162,13 @@ describe('credentials in a real vault', () => {
     const filed = await captureText(vault, CREDENTIAL, 'panel')
     vault.lock()
 
-    expect(vault.lockState).toEqual({ configured: true, unlocked: false, sealedRecords: 1 })
+    expect(vault.lockState).toEqual({
+      configured: true,
+      unlocked: false,
+      sealedRecords: 1,
+      unreadable: 0,
+      otherMachines: 0,
+    })
     expect(vault.secretText(vault.get(filed.item.id)!)).toBeUndefined()
     expect(await vault.unlock('猜的')).toBe(false)
     expect(vault.secretText(vault.get(filed.item.id)!)).toBeUndefined()
@@ -214,7 +246,13 @@ describe('credentials in a real vault', () => {
 
       // The state the panel has to name: ciphertext in hand, no parameters. Not
       // "no password yet" — a password typed here would open none of it.
-      expect(second.lockState).toEqual({ configured: false, unlocked: false, sealedRecords: 1 })
+      expect(second.lockState).toEqual({
+        configured: false,
+        unlocked: false,
+        sealedRecords: 1,
+        unreadable: 0,
+        otherMachines: 0,
+      })
       expect(second.secretText(second.get(pulled.id)!)).toBeUndefined()
 
       // What the push publishes and the merge takes over.
@@ -244,5 +282,106 @@ describe('credentials in a real vault', () => {
       }),
     ).toBe(false)
     expect(await vault.unlock('本机的密码')).toBe(true)
+  })
+
+  it('holds one key per password, so each machine’s records open with their own', async () => {
+    /*
+      2026-10-02, the user's rule: "如果输的自己的就只能解自己的". Machine B keeps
+      its password; the record A sealed rides over with A's parameters; typing
+      either password opens exactly that batch, and typing both — in either
+      order — leaves both readable.
+    */
+    await vault.setMasterPassword('本机的密码')
+    const mine = await captureText(vault, CREDENTIAL, 'panel')
+
+    const other = await otherMachine()
+    try {
+      await other.vault.setMasterPassword('对方的密码')
+      const theirs = await captureText(other.vault, CREDENTIAL_B, 'panel')
+      const theirsRecord = other.vault.get(theirs.item.id)!
+
+      await vault.import(theirsRecord)
+      expect(await vault.adoptOtherMaster(other.vault.master!)).toBe(true)
+      // Adopting the other machine's parameters must not become this machine's
+      // own — that would re-seal (or orphan) everything sealed here.
+      expect(vault.master?.salt).not.toBe(other.vault.master?.salt)
+      // This machine's own key is still held (it was just set), so the count of
+      // what is closed is already meaningful: the one record from the other
+      // machine, which wants *that* machine's password.
+      expect(vault.lockState).toMatchObject({ sealedRecords: 2, unreadable: 1, otherMachines: 1 })
+
+      vault.lock()
+      expect(await vault.unlock('本机的密码')).toBe(true)
+      expect(vault.secretText(vault.get(mine.item.id)!)).toBe(CREDENTIAL)
+      expect(vault.secretText(theirsRecord)).toBeUndefined()
+      // The count the panel shows: "还有 1 条来自别的机器".
+      expect(vault.lockState).toMatchObject({ unlocked: true, unreadable: 1 })
+
+      expect(await vault.unlock('对方的密码')).toBe(true)
+      expect(vault.secretText(theirsRecord)).toBe(CREDENTIAL_B)
+      expect(vault.secretText(vault.get(mine.item.id)!)).toBe(CREDENTIAL)
+      expect(vault.lockState.unreadable).toBe(0)
+
+      // A password nobody knows matches nothing, and takes nothing away.
+      expect(await vault.unlock('猜的')).toBe(false)
+      expect(vault.secretText(theirsRecord)).toBe(CREDENTIAL_B)
+    } finally {
+      await other.dispose()
+    }
+  })
+
+  it('matches both parameter sets in one unlock when the two machines share a password', async () => {
+    // Same password, two salts: one typed password derives two keys, so the
+    // shared-password case needs no special handling at all.
+    await vault.setMasterPassword('同一个密码')
+    const mine = await captureText(vault, CREDENTIAL, 'panel')
+
+    const other = await otherMachine()
+    try {
+      await other.vault.setMasterPassword('同一个密码')
+      const theirs = await captureText(other.vault, CREDENTIAL_B, 'panel')
+      await vault.import(other.vault.get(theirs.item.id)!)
+      await vault.adoptOtherMaster(other.vault.master!)
+      vault.lock()
+
+      expect(await vault.unlock('同一个密码')).toBe(true)
+
+      expect(vault.secretText(vault.get(mine.item.id)!)).toBe(CREDENTIAL)
+      expect(vault.secretText(vault.get(theirs.item.id)!)).toBe(CREDENTIAL_B)
+      expect(vault.lockState.unreadable).toBe(0)
+    } finally {
+      await other.dispose()
+    }
+  })
+
+  it('re-seals its own records on a password change, and leaves the other machine’s alone', async () => {
+    // Changing the password re-keys what *this machine's* key can open. The
+    // records sealed elsewhere are not this machine's to re-seal: taking them
+    // would lock out the machine that owns them.
+    await vault.setMasterPassword('旧密码')
+    const mine = await captureText(vault, CREDENTIAL, 'panel')
+
+    const other = await otherMachine()
+    try {
+      await other.vault.setMasterPassword('对方的密码')
+      const theirs = await captureText(other.vault, CREDENTIAL_B, 'panel')
+      const theirsRecord = other.vault.get(theirs.item.id)!
+      await vault.import(theirsRecord)
+      await vault.adoptOtherMaster(other.vault.master!)
+
+      await vault.setMasterPassword('新密码')
+      expect(vault.secretText(vault.get(mine.item.id)!)).toBe(CREDENTIAL)
+      expect(vault.secretText(theirsRecord)).toBeUndefined()
+
+      vault.lock()
+      expect(await vault.unlock('旧密码')).toBe(false)
+      expect(await vault.unlock('对方的密码')).toBe(true)
+      expect(vault.secretText(theirsRecord)).toBe(CREDENTIAL_B)
+      expect(vault.secretText(vault.get(mine.item.id)!)).toBeUndefined()
+      expect(await vault.unlock('新密码')).toBe(true)
+      expect(vault.secretText(vault.get(mine.item.id)!)).toBe(CREDENTIAL)
+    } finally {
+      await other.dispose()
+    }
   })
 })

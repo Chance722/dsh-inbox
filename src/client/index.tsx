@@ -208,6 +208,54 @@ const panelStyle: React.CSSProperties = {
 }
 
 /**
+ * The main area's geometry, in one place.
+ *
+ * The grid template and the width thresholds are built from these numbers, so
+ * "the detail stops being a column" cannot drift from what the template
+ * actually lays out (2026-10-02).
+ */
+const RAIL_WIDTH = 176
+const COLUMN_GAP = 14
+/** The detail column takes this much: 380 keeps its three action buttons on one line. */
+const DETAIL_WIDTH = 380
+/** A list card never goes below this while the detail is a column beside it. */
+const MIN_ITEM_WIDTH = 480
+/**
+ * The list card's chrome: padding 12×2 + 1px borders, plus the room its vertical
+ * scrollbar needs.
+ *
+ * The scrollbar is not decoration here: the scrolling element is the *items*
+ * container, so its content box — and therefore the `100%` in a card's minimum —
+ * shrinks by the bar. Measured 2026-10-02: a 480px floor built on `100%` came out
+ * 465 wide because Chromium reserved 15px. The panel styles its own scrollbars to
+ * 8px, and 10 covers that with a hair to spare.
+ */
+const SCROLLBAR = 10
+const LIST_CHROME = 26 + SCROLLBAR
+/** The gap between two cards in the grid list. */
+const LIST_GAP = 12
+/**
+ * Below this the filter rail folds behind its button.
+ *
+ * Derived from the card floor rather than chosen: the grid list is always two
+ * columns, so a 480px card needs `480 × 2 + 12 (gap) + 36 (chrome and scrollbar)`
+ * of list, and the rail costs another `176 + 14`. The user's own "fold it at 480"
+ * cannot hold together with "a card never goes below 480" (2026-10-02) — the rail
+ * is the one that gives way, so the number follows from the floor.
+ */
+const RAIL_FOLD_WIDTH = MIN_ITEM_WIDTH * 2 + LIST_GAP + LIST_CHROME + RAIL_WIDTH + COLUMN_GAP
+/**
+ * Below this the detail opens as a dialog, so the list can keep **two** 480px
+ * cards.
+ *
+ * The two-column grid is not negotiable (2026-10-02: "列表第一种视图是一直保持
+ * 两列的"), so this is where the detail has to stop being a column: `2 × 480 +
+ * 12 (gap) + 36 (card chrome and scrollbar)` is what the list needs, plus the
+ * rail, the two gaps and the detail column itself.
+ */
+const DETAIL_FOLD_WIDTH = RAIL_FOLD_WIDTH + COLUMN_GAP + DETAIL_WIDTH
+
+/**
  * A button that looks like one.
  *
  * The panel used one faint outline for everything, so "保存描述与标签" and
@@ -470,12 +518,10 @@ function InboxPanel(): React.ReactElement {
   /**
    * How much room the panel actually got.
    *
-   * Three columns need about 960px now: the rail is 176, the list will not go
-   * below 320, and the detail column takes 320–380 — 380 being the width that
-   * keeps its three action buttons on one line. Below that the detail becomes a
-   * sheet over the list.
+   * This is the content width (the root's own padding is already excluded), and
+   * both thresholds below are derived from it rather than guessed.
    */
-  const [panelWidth, setPanelWidth] = React.useState(1200)
+  const [panelWidth, setPanelWidth] = React.useState(1400)
   const [railOpen, setRailOpen] = React.useState(false)
   const panelRef = React.useRef<HTMLDivElement>(null)
   /**
@@ -527,8 +573,24 @@ function InboxPanel(): React.ReactElement {
     }
   }, [])
 
-  /** Narrow means: no room for a detail column, so it becomes a sheet. */
-  const narrow = panelWidth < 960
+  /*
+    Two rules, and the first one wins:
+
+    1. **The grid list is always two columns** (asked 2026-10-02: "列表第一种视图
+       是一直保持两列的"). It never drops to one card per row.
+    2. **A card keeps 480px while the panel can afford it** (same day: "小于 480
+       就不给再小了"). Since the two columns are fixed, "the panel can afford it"
+       means the list keeps `2 × 480 + 12 + 36` — and that is exactly the width
+       the detail gives way at (`DETAIL_FOLD_WIDTH`), so in practice the two rules
+       hold together: the detail becomes a dialog before a card could shrink.
+
+    So both gates are the floor, expressed along each axis: the detail yields at
+    1592 and the rail at 1198. Only below 998 of panel width — narrower than two
+    480px cards plus their chrome — does the floor itself give way, and there the
+    row shrinks rather than overflowing, because two columns are not negotiable.
+  */
+  const narrow = panelWidth < RAIL_FOLD_WIDTH
+  const detailInline = panelWidth >= DETAIL_FOLD_WIDTH
   const hairline = 'color-mix(in srgb, currentColor 12%, transparent)'
 
   /** One POST to the vault channel; see the transport note in panel-wire.ts. */
@@ -619,10 +681,19 @@ function InboxPanel(): React.ReactElement {
       if (event.key !== 'Escape') return
       setZoom(undefined)
       setSettingsOpen(false)
+      setRailOpen(false)
+      /*
+        The detail dialog is stacked over the panel too; the side column is not —
+        Escape must not throw away the record someone is reading beside the list.
+      */
+      if (!detailInline) {
+        setSelectedId(undefined)
+        setDetail(undefined)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [detailInline])
 
   /** A toast is a moment, not a state: it leaves on its own. */
   React.useEffect(() => {
@@ -698,7 +769,6 @@ function InboxPanel(): React.ReactElement {
       const pushCount = pushed.ok ? writtenBy(pushed.value as PushResult) : 0
       const pullCount = pulled.ok ? arrivedFrom(pulled.value as PullResult) : 0
       const warnings = pulled.ok ? syncWarnings(pulled.value as PullResult) : ''
-      const total = list?.matched
 
       /*
         The toast says whether it worked, in two numbers.
@@ -717,9 +787,14 @@ function InboxPanel(): React.ReactElement {
             pushFail ?? t('sync.shortPushed', { count: pushCount }),
             pullFail ?? t('sync.shortPulled', { count: pullCount }),
           ].join(' · ')
-      setNotice(
-        `${short}${warnings}${total === undefined ? '' : t('sync.thisPage', { count: total })}`,
-      )
+      /*
+        Just the two numbers, plus anything the reader has to act on.
+
+        "· 本页 13 条" used to ride along here, which made a one-glance toast read
+        like a status panel — the list header already answers it (asked
+        2026-10-02, together with the button's rename to 「同步」).
+      */
+      setNotice(`${short}${warnings}`)
       setSyncDetail(
         [
           pushed.ok
@@ -733,7 +808,7 @@ function InboxPanel(): React.ReactElement {
     } finally {
       setBusy(false)
     }
-  }, [call, list?.matched, refresh])
+  }, [call, refresh])
 
   /** Drop one tag from every record that carries it, after saying how many. */
   const removeTagEverywhere = React.useCallback(
@@ -1443,14 +1518,35 @@ function InboxPanel(): React.ReactElement {
       <div
         style={{
           display: 'grid',
+          /*
+            Anchors the folded rail's overlay (2026-10-02). When the panel is too
+            narrow for a rail column, the button in the toolbar opens the same
+            rail as a panel floating over the list's top-left corner — which is
+            where the button sits, one row above.
+          */
+          position: 'relative',
           // The list is the working surface; the detail is a reader pane beside
           // it, so it gets a width rather than half the room. 320–380 rather
           // than 250–300 because the detail's own action row ("保存描述与标签"
           // next to "标为待看" next to "删除") is only one line at that width —
-          // and below 960px the whole thing collapses to one column.
+      // and below 1180px it stops being a column at all (it becomes a dialog),
+      // which leaves the list the room instead.
           gridTemplateColumns: narrow
             ? 'minmax(0, 1fr)'
-            : '176px minmax(320px, 1fr) minmax(320px, 380px)',
+        : detailInline
+              ? `${String(RAIL_WIDTH)}px minmax(0, 1fr) ${String(DETAIL_WIDTH)}px`
+              : `${String(RAIL_WIDTH)}px minmax(0, 1fr)`,
+          /*
+            One row, exactly as tall as the panel has room for.
+
+            Without this the row is content-sized and only *stretches* by the
+            grid's default alignment, which left the rail and the list floating at
+            their own heights with dead space under them (seen in the layout
+            mirror, 2026-10-02). `minmax(0, 1fr)` states it instead: the row fills
+            the panel, both cards are the same height, and the list scrolls inside
+            its own card rather than growing the page.
+          */
+          gridTemplateRows: 'minmax(0, 1fr)',
           gap: 14,
           // Fill what the chrome above left, so the list can scroll inside it.
           flex: 1,
@@ -1458,15 +1554,68 @@ function InboxPanel(): React.ReactElement {
         }}
       >
         {(!narrow || railOpen) && (
+        <>
+        {narrow && (
+          // Click anywhere else and the panel is gone — the same wash the
+          // settings sheet uses, one layer below the rail itself.
+          <div
+            role="presentation"
+            onClick={() => setRailOpen(false)}
+            style={{ position: 'fixed', inset: 0, zIndex: 38 }}
+          />
+        )}
         <nav
           aria-label={t('app.filter')}
-          style={{
-            ...cardStyle,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
-            alignSelf: 'start',
+          // Any row inside it means "I have chosen"; the panel's job is done.
+          onClick={() => {
+            if (narrow) setRailOpen(false)
           }}
+          style={
+            narrow
+              ? {
+                  /*
+                    Folded: a panel over the list, not a third grid cell.
+
+                    Rendered inside the grid but taken out of its flow, so it
+                    cannot fight the list for a row (which is what made the button
+                    look dead — asked 2026-10-02). Opaque on purpose: `Canvas` is
+                    the host's own surface colour, so it reads as a sheet in both
+                    themes.
+                  */
+                  ...cardStyle,
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  zIndex: 39,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  minWidth: 220,
+                  maxWidth: 'min(320px, 90%)',
+                  maxHeight: '60vh',
+                  overflowY: 'auto',
+                  background: 'Canvas',
+                  boxShadow: '0 10px 30px #0006',
+                }
+              : {
+                  ...cardStyle,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  /*
+                    As tall as the list beside it.
+
+                    `alignSelf: 'start'` used to size this card to its own rows, so
+                    a two-row rail floated next to a full-height list card with a
+                    visible step at the bottom (asked 2026-10-02). Stretching is
+                    the default for a grid item, so the fix is to stop opting out —
+                    with `minHeight: 0` and a scroll so a rail with thirty
+                    categories cannot push the page.
+                  */
+                  minHeight: 0,
+                  overflowY: 'auto',
+                }
+          }
         >
           <RailRow
             active={scope === 'live' && !watchOnly && category === undefined}
@@ -1557,6 +1706,7 @@ function InboxPanel(): React.ReactElement {
             </>
           )}
         </nav>
+        </>
         )}
 
         <section
@@ -1628,8 +1778,21 @@ function InboxPanel(): React.ReactElement {
                   }
                 : {
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                    gap: 12,
+                    /*
+                      Always two columns, each with a 480px floor that yields only
+                      to the panel itself.
+
+                      `repeat(2, minmax(0, 1fr))` was the squeeze the user kept
+                      seeing: no floor at all. `repeat(2, minmax(480px, 1fr))`
+                      would be the opposite mistake — a 700px panel cannot hold
+                      960px of cards, and the row would overflow sideways
+                      (measured: a 439px panel). `min(480px, half a row)` is the
+                      floor with the panel's own limit built in, so a row is
+                      never wider than the room it has.
+                    */
+                    gridTemplateColumns:
+                      `repeat(2, minmax(min(${String(MIN_ITEM_WIDTH)}px, calc((100% - ${String(LIST_GAP)}px) / 2)), 1fr))`,
+                    gap: LIST_GAP,
                     alignContent: 'start',
                     flex: 1,
                     minHeight: 0,
@@ -1687,60 +1850,78 @@ function InboxPanel(): React.ReactElement {
         </section>
 
         {/*
-          Three columns need room. Below that the detail stops being a column
-          and becomes a sheet over the list — the alternative was three columns
-          squeezed into a phone-width panel, which is what the screenshot of a
-          narrow window showed.
+          Below 1180px the detail stops being a column and opens over the list.
+
+          Same record pane either way — the only question is whether it costs the
+          list 320–380px of working width, which is a bad trade until there is
+          room for both (2026-10-02: a desktop window showed the list squeezed to
+          about 400px because the pane was always there).
         */}
-        {narrow ? (
+        {!detailInline ? (
           detail !== undefined && (
             <div
-              role="dialog"
-              aria-label={t('app.detail')}
+              role="presentation"
               style={{
                 position: 'fixed',
-                left: 12,
-                right: 12,
-                top: '5vh',
-                bottom: '5vh',
+                inset: 0,
                 zIndex: 45,
-                // The same shape as the wide column: a bounded box, a scrolling
-                // content column inside it, and a pinned stamp — so the sheet
-                // scrolls the record rather than the whole overlay.
+                background: 'color-mix(in srgb, #000 45%, transparent)',
                 display: 'flex',
-                flexDirection: 'column',
-                minHeight: 0,
-                background: 'Canvas',
-                border: `1px solid ${hairline}`,
-                borderRadius: 12,
-                padding: 12,
-                boxShadow: '0 18px 40px #0007',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 16,
+              }}
+              // The wash behind closes; the dialog itself stops the click.
+              onClick={(event) => {
+                if (event.target !== event.currentTarget) return
+                setSelectedId(undefined)
+                setDetail(undefined)
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
-                <button
-                  type="button"
-                  style={buttonStyle}
-                  onClick={() => {
-                    setSelectedId(undefined)
-                    setDetail(undefined)
-                  }}
-                >
-                  <X size={13} /> {t('app.close')}
-                </button>
+              <div
+                role="dialog"
+                aria-label={t('app.detail')}
+                style={{
+                  width: 'min(560px, 100%)',
+                  // The same shape as the wide column: a bounded box, a
+                  // scrolling content column inside it, and a pinned stamp — so
+                  // the dialog scrolls the record rather than the whole overlay.
+                  maxHeight: '88vh',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minHeight: 0,
+                  background: 'Canvas',
+                  border: `1px solid ${hairline}`,
+                  borderRadius: 12,
+                  padding: 12,
+                  boxShadow: '0 18px 40px #0007',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+                  <button
+                    type="button"
+                    style={buttonStyle}
+                    onClick={() => {
+                      setSelectedId(undefined)
+                      setDetail(undefined)
+                    }}
+                  >
+                    <X size={13} /> {t('app.close')}
+                  </button>
+                </div>
+                <EntryPane
+                  detail={detail}
+                  busy={busy}
+                  onUpdate={(patch) => mutate(INBOX_ENDPOINT_UPDATE, { id: detail.id, ...patch })}
+                  onDelete={() =>
+                    mutate(INBOX_ENDPOINT_DELETE, { id: detail.id }, { dropSelection: true })
+                  }
+                  onRestore={() =>
+                    mutate(INBOX_ENDPOINT_RESTORE, { id: detail.id }, { dropSelection: true })
+                  }
+                  onZoom={setZoom}
+                />
               </div>
-              <EntryPane
-                detail={detail}
-                busy={busy}
-                onUpdate={(patch) => mutate(INBOX_ENDPOINT_UPDATE, { id: detail.id, ...patch })}
-                onDelete={() =>
-                  mutate(INBOX_ENDPOINT_DELETE, { id: detail.id }, { dropSelection: true })
-                }
-                onRestore={() =>
-                  mutate(INBOX_ENDPOINT_RESTORE, { id: detail.id }, { dropSelection: true })
-                }
-                onZoom={setZoom}
-              />
             </div>
           )
         ) : (
@@ -1943,6 +2124,40 @@ function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
     missing instead (measured 2026-10-01, the bug this fixes).
   */
   const stranded = status !== undefined && !status.unlocked && !status.configured && status.sealedRecords > 0
+  /*
+    Two more states the keyring created: unlocked, but with records still closed.
+
+    A credential sealed on the other machine needs *that* machine's password, and
+    both passwords can be held at once — so "已解锁" is not the end of the
+    sentence, and the count of what is still unreadable is the part worth saying
+    (2026-10-02: each password opens its own records). Which password to type
+    depends on whether the other machine's parameters ever arrived.
+  */
+  const waiting = status?.unreadable ?? 0
+  const others = status?.otherMachines ?? 0
+
+  /*
+    One line, about the state you are in.
+
+    The card used to show the same three-clause warning in every state ("the key
+    is never written down, a restart locks it, a forgotten password is gone"),
+    which is a paragraph about *design* printed next to a button that is about
+    to be pressed. Each state now says only what it has to (asked 2026-10-02).
+  */
+  const body =
+    status === undefined
+      ? t('settings.secretsBody')
+      : stranded
+        ? t('settings.sealedNoParamsBody')
+        : status.unlocked
+          ? waiting > 0
+            ? others > 0
+              ? t('settings.otherPassword', { count: waiting })
+              : t('settings.otherPasswordNoParams', { count: waiting })
+            : t('settings.unlockedBody')
+          : status.configured
+            ? t('settings.lockedBody')
+            : t('settings.secretsBody')
 
   const send = React.useCallback(
     async (action: 'status' | 'set' | 'unlock' | 'lock'): Promise<void> => {
@@ -2000,9 +2215,7 @@ function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
                   : t('settings.noPassword')}
         </span>
       </div>
-      <p style={{ margin: '0 0 8px', opacity: 0.7, fontSize: 12 }}>
-        {stranded ? t('settings.sealedNoParamsBody') : t('settings.secretsBody')}
-      </p>
+      <p style={{ margin: '0 0 8px', opacity: 0.7, fontSize: 12 }}>{body}</p>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <input
           type="password"

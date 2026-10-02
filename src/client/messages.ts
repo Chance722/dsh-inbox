@@ -53,8 +53,8 @@ export const zh = {
   'app.settings': '设置',
   'app.manual': '使用手册',
   'app.counts': ' · 共 {total} 条 · 待看 {watch} 条 · 回收站 {deleted} 条',
-  'app.refresh': '刷新',
-  'app.refreshing': '刷新中…',
+  'app.refresh': '同步',
+  'app.refreshing': '同步中…',
   'app.loading': '读取中…',
   'app.saving': '处理中…',
   'app.filter': '筛选',
@@ -108,7 +108,7 @@ export const zh = {
   'detail.removeTag': '从这条记录上移除「{tag}」',
   'detail.updated': ' · 更新 {when}',
   'detail.sealedNote':
-    '这条账密的正文是密文，现在解不开。到「设置 → 账密加密」输入主密码解锁就能看到；本机还没有主密码参数时（密文是从别的机器同步来的），先点面板上的「刷新」拉取一次把它们取回来。',
+    '正文是密文，解不开。到「设置 → 账密加密」输主密码解锁；解不开的参数还没到本机时（密文是同步来的），先点一次「同步」。',
   'detail.play': '播放',
   'detail.zoom': '放大查看',
   'detail.playInBrowser': '在浏览器里播放',
@@ -120,7 +120,14 @@ export const zh = {
   // Settings: credentials and remote.
   'settings.secrets': '账密加密',
   'settings.secretsBody':
-    '账密正文以密文写盘；主密码和密钥都不落盘，重启后要重新解锁。密码忘了就解不开，没有找回。',
+    '账密正文加密保存。密钥不落盘：重启后要重新解锁，主密码忘了就解不开。',
+  'settings.lockedBody': '输一次主密码解锁；密钥不落盘，所以每次重启都要输。',
+  'settings.unlockedBody': '本次运行期间能读写账密；重启后要重新解锁。',
+  // 方向中立：先输的是哪一边的密码都成立（先输自己的、先输对方的，都可能是
+  // 这种状态），所以不写"那台机器"，只说"另一个主密码"。
+  'settings.otherPassword': '还有 {count} 条解不开：它们是另一个主密码加的密，输那个密码就能解开。',
+  'settings.otherPasswordNoParams':
+    '还有 {count} 条解不开：它们来自别的机器，先点一次「同步」把解锁参数拉回来。',
   'settings.masterPassword': '主密码',
   'settings.masterPasswordSet': '输入主密码',
   'settings.masterPasswordNew': '设一个主密码',
@@ -131,9 +138,8 @@ export const zh = {
   'settings.locked': '已锁定',
   'settings.lockedNote': '已锁定：账密正文不可读，直到再次解锁',
   'settings.noPassword': '还没设主密码',
-  'settings.sealedNoParams': '有 {count} 条密文，但本机没有主密码参数',
-  'settings.sealedNoParamsBody':
-    '这些密文是同步进来的，解开它们要用的参数还没到本机：主密码和密钥都不随同步走，只有盐值和 KDF 参数会。关掉这个设置窗口，点面板上的「刷新」拉取一次把它们取回来，再回到这里输入原来那台机器的主密码解锁。',
+  'settings.sealedNoParams': '有 {count} 条密文，解锁参数还没到本机',
+  'settings.sealedNoParamsBody': '先点一次「同步」把参数拉回来，再输原来那台机器的主密码。',
   'settings.passwordJustSet': '主密码已设置，账密从此加密落盘',
   'settings.passwordSealed': '主密码已设置，另有 {count} 条旧记录已从明文改为密文',
   'settings.ingest': '远端入库',
@@ -226,7 +232,6 @@ export const zh = {
   'sync.shortPulled': '拉取 {count} 条',
   'sync.shortIdle': '已是最新',
   'sync.pullFailures': ' · 失败 {count}：{reason}',
-  'sync.thisPage': ' · 本页 {count} 条',
   'settings.status': '{settings} · {webdav} · {s3}',
   'settings.statusOn': '设置服务在',
   'settings.statusOff': '没有设置服务',
@@ -297,11 +302,11 @@ export const zh = {
   'manual.5.auto.label': '自动',
   'manual.5.auto.body': '入库/改动后几秒自动推送一次（防抖，连着存五条只会推一次）。',
   'manual.5.manual.label': '手动',
-  'manual.5.manual.body': '右上角「刷新」= 一次完整同步：先推本机改动，再拉别人的，然后重读列表。',
+  'manual.5.manual.body': '右上角「同步」：先推本机改动，再拉别人的，然后重读列表。',
   // The one rule that decides whether two machines see each other at all.
   'manual.5.twoMachines.label': '两台机器',
   'manual.5.twoMachines.body':
-    '两边的「目录」要一样（留空、/、inbox 是同一个意思）。不一样时默认不互通：刷新会提示「另有 N 条记录在别的同步目录」——把它们改成同一个，或者打开设置里的「同时合并别的同步目录」，都能合过来。',
+    '两边的「目录」要一样（留空、/、inbox 是同一个意思）。不一样时默认不互通：同步会提示「另有 N 条记录在别的同步目录」——把它们改成同一个，或者打开设置里的「同时合并别的同步目录」，都能合过来。',
   'manual.5.delete.label': '删除',
   'manual.5.delete.body':
     '面板里的「删除」只是把它放进回收站（别的设备也会知道它被删了，不会又被拉回来）；「清空回收站」才是真删，云端那份也会一起删。',
@@ -357,8 +362,8 @@ export const en: Dictionary = {
   'app.settings': 'Settings',
   'app.manual': 'Manual',
   'app.counts': ' · {total} total · {watch} to read · {deleted} in the bin',
-  'app.refresh': 'Refresh',
-  'app.refreshing': 'Refreshing…',
+  'app.refresh': 'Sync',
+  'app.refreshing': 'Syncing…',
   'app.loading': 'Loading…',
   'app.saving': 'Saving…',
   'app.filter': 'Filter',
@@ -409,7 +414,7 @@ export const en: Dictionary = {
   'detail.removeTag': 'Remove “{tag}” from this record',
   'detail.updated': ' · updated {when}',
   'detail.sealedNote':
-    'This credential’s body is ciphertext and cannot be read right now. Unlock it under Settings → Credential encryption — if this machine has no master-password parameters yet (the records came from another machine), hit Refresh in the panel once to bring them over.',
+    'This body is ciphertext and cannot be read. Unlock it under Settings → Credential encryption; if the parameters that open it have not arrived yet (the record came over sync), hit Sync once.',
   'detail.play': 'Play',
   'detail.zoom': 'Zoom in',
   'detail.playInBrowser': 'Play in the browser',
@@ -421,7 +426,12 @@ export const en: Dictionary = {
 
   'settings.secrets': 'Credential encryption',
   'settings.secretsBody':
-    'Credential bodies are written to disk as ciphertext; neither the master password nor its key is ever written down, so every restart locks it again. A forgotten password cannot be recovered.',
+    'Credential bodies are stored encrypted. The key is never written down: every restart locks the vault again, and a forgotten password cannot be recovered.',
+  'settings.lockedBody': 'Enter the master password to unlock; the key is never written down, so every restart asks again.',
+  'settings.unlockedBody': 'Credentials can be read and written until this process restarts.',
+  'settings.otherPassword': '{count} more cannot be opened: they were sealed with another master password — enter that one.',
+  'settings.otherPasswordNoParams':
+    '{count} more cannot be opened: they came from another machine — hit Sync once to bring its parameters over.',
   'settings.masterPassword': 'Master password',
   'settings.masterPasswordSet': 'Enter the master password',
   'settings.masterPasswordNew': 'Set a master password',
@@ -432,9 +442,8 @@ export const en: Dictionary = {
   'settings.locked': 'Locked',
   'settings.lockedNote': 'Locked: credential bodies stay unreadable until you unlock again',
   'settings.noPassword': 'No master password yet',
-  'settings.sealedNoParams': '{count} sealed records, but no key parameters on this machine',
-  'settings.sealedNoParamsBody':
-    'These ciphertexts were synced in and the parameters that open them have not arrived: the master password and the key never travel, only the salt and the KDF work factors. Close this sheet and hit Refresh in the panel to pull once, then come back and unlock with the master password from the machine that sealed them.',
+  'settings.sealedNoParams': '{count} sealed records, unlocking parameters not here yet',
+  'settings.sealedNoParamsBody': 'Hit Sync once to pull them over, then enter the master password from the machine that sealed them.',
   'settings.passwordJustSet': 'Master password set — credentials are now encrypted at rest',
   'settings.passwordSealed': 'Master password set, and {count} old records went from plain text to ciphertext',
   'settings.ingest': 'Drop folder',
@@ -517,7 +526,6 @@ export const en: Dictionary = {
   'sync.shortPulled': 'pulled {count}',
   'sync.shortIdle': 'up to date',
   'sync.pullFailures': ' · {count} failed: {reason}',
-  'sync.thisPage': ' · {count} on this page',
   'settings.status': '{settings} · {webdav} · {s3}',
   'settings.statusOn': 'settings service present',
   'settings.statusOff': 'no settings service',

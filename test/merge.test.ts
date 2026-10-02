@@ -347,7 +347,7 @@ describe('mergeOnce', () => {
     // Silence here is what made the user's stuck state look like a normal pull
     // (2026-10-01).
     expect(outcome.masterAdopted).toBe(false)
-    expect(outcome.masterNote).toContain('主密码参数')
+    expect(outcome.masterNote).toContain('解锁参数')
   })
 
   it('takes the remote key parameters, so a pulled credential opens with the password that sealed it', async () => {
@@ -376,7 +376,7 @@ describe('mergeOnce', () => {
       expect(outcome).toMatchObject({
         merged: 1,
         masterAdopted: true,
-        masterNote: expect.stringContaining('已取回主密码参数'),
+        masterNote: expect.stringContaining('已取回解锁参数'),
       })
       expect(second.vault.lockState).toMatchObject({
         configured: true,
