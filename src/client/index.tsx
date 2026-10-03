@@ -10,6 +10,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import React from 'react'
 import {
   Bookmark,
+  BookmarkCheck,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -25,6 +26,7 @@ import {
   Layers,
   LayoutGrid,
   Lightbulb,
+  Paperclip,
   Play,
   RefreshCw,
   RotateCcw,
@@ -81,6 +83,7 @@ import {
 } from '../shared/panel-wire.js'
 import { PANEL_ID, PACKAGE_NAME } from '../shared/constants.js'
 import { registerToolCards } from './card.js'
+import { closeButtonStyle } from './controls.js'
 import { registerInboxDock } from './dock.js'
 import { headingOf, headingTooltipOf, isSecret } from './heading.js'
 import { ManualDialog } from './manual.jsx'
@@ -208,6 +211,77 @@ const panelStyle: React.CSSProperties = {
 }
 
 /**
+ * The panel's design tokens, as CSS variables on its own root (2026-10-02).
+ *
+ * Every surface and line is mixed from the *host's* ink (`currentColor`) over the
+ * host's canvas (`Canvas`) — the two things `docs/help/panel-theme.md` says the
+ * panel may trust — so one palette serves both themes and nothing hardcodes a
+ * scheme. The two exceptions are the accent (「这一条是你标的」) and the danger red
+ * (「这个会删东西」): grey cannot say either, so they are chosen against the scheme
+ * we already computed, not against the OS.
+ *
+ * The scale is small on purpose: three surfaces, two lines, three radii, two
+ * shadows. Anything more and "which grey is this" becomes a question again.
+ */
+function themeVars(scheme: 'light' | 'dark'): React.CSSProperties {
+  return {
+    '--ib-surface': 'color-mix(in srgb, currentColor 4%, Canvas)',
+    '--ib-surface-2': 'color-mix(in srgb, currentColor 8%, Canvas)',
+    '--ib-surface-3': 'color-mix(in srgb, currentColor 13%, Canvas)',
+    '--ib-line': 'color-mix(in srgb, currentColor 14%, transparent)',
+    '--ib-line-strong': 'color-mix(in srgb, currentColor 26%, transparent)',
+    '--ib-dim': 'color-mix(in srgb, currentColor 62%, transparent)',
+    '--ib-accent': scheme === 'light' ? '#2f6feb' : '#6e9ef7',
+    '--ib-accent-soft': 'color-mix(in srgb, var(--ib-accent) 18%, transparent)',
+    /*
+      A *solid* accent, and the ink that goes on it. One value for both themes on
+      purpose: white on #2f6feb is 4.9:1, while the lighter dark-theme accent
+      (#6e9ef7) with white ink is 2.4:1 — a filled button needs the darker blue in
+      either theme, and the lighter one stays for lines, rings and tinted text.
+    */
+    '--ib-accent-solid': '#2f6feb',
+    '--ib-accent-solid-hover': '#2560cf',
+    '--ib-accent-ink': '#ffffff',
+    '--ib-danger-solid': '#d92d20',
+    '--ib-danger-solid-hover': '#b42318',
+    /* Filled controls (ant's "default" button, an input at rest). */
+    /*
+      10% rather than 7%: a control sits on a card that is already tinted 4%, and
+      at 7% the difference was invisible (seen in the design mirror) — which is
+      the "still looks unfilled" half of what the user reported.
+    */
+    '--ib-control-bg': 'color-mix(in srgb, currentColor 10%, Canvas)',
+    '--ib-control-bg-hover': 'color-mix(in srgb, currentColor 15%, Canvas)',
+    '--ib-control-bg-active': 'color-mix(in srgb, currentColor 20%, Canvas)',
+    /*
+      What a control is *actually filled with*, indirection so the stylesheet can
+      change the fill on hover: an inline `background` beats a CSS rule, but a
+      custom property the inline value points at does not.
+    */
+    '--ib-control-fill': 'var(--ib-control-bg)',
+    '--ib-control-fill-hover': 'var(--ib-control-bg-hover)',
+    '--ib-primary-fill': 'var(--ib-accent-solid)',
+    '--ib-primary-fill-hover': 'var(--ib-accent-solid-hover)',
+    '--ib-danger-fill': 'var(--ib-danger-solid)',
+    '--ib-danger-fill-hover': 'var(--ib-danger-solid-hover)',
+    '--ib-danger': scheme === 'light' ? '#c62828' : '#ff7b72',
+    '--ib-primary-bg': 'color-mix(in srgb, var(--ib-accent) 15%, transparent)',
+    '--ib-primary-bg-hover': 'color-mix(in srgb, var(--ib-accent) 24%, transparent)',
+    '--ib-danger-bg': 'color-mix(in srgb, var(--ib-danger) 13%, transparent)',
+    '--ib-danger-bg-hover': 'color-mix(in srgb, var(--ib-danger) 22%, transparent)',
+    '--ib-r-sm': '6px',
+    '--ib-r': '9px',
+    '--ib-r-lg': '12px',
+    '--ib-r-pill': '999px',
+    '--ib-r-panel': '16px',
+    '--ib-shadow-1': '0 1px 2px rgb(0 0 0 / 0.16)',
+    '--ib-shadow-2': '0 14px 32px rgb(0 0 0 / 0.28)',
+    '--ib-shadow-3': '0 6px 18px rgb(0 0 0 / 0.18)',
+    '--ib-ease': '120ms cubic-bezier(0.2, 0.6, 0.2, 1)',
+  } as React.CSSProperties
+}
+
+/**
  * The main area's geometry, in one place.
  *
  * The grid template and the width thresholds are built from these numbers, so
@@ -231,7 +305,17 @@ const MIN_ITEM_WIDTH = 480
  * 8px, and 10 covers that with a hair to spare.
  */
 const SCROLLBAR = 10
-const LIST_CHROME = 26 + SCROLLBAR
+/**
+ * The breathing room the list's scrollport gives itself, on each side.
+ *
+ * There for the focus rings and hover shadows (see the interaction layer), and
+ * it comes *out of* the cards' width — so it belongs in `LIST_CHROME` with the
+ * padding and the scrollbar. Leaving it out made the floor land at 476 instead
+ * of 480 at the very widths the gate is derived from (spotted 2026-10-03 while
+ * aligning the count line with the same inset).
+ */
+const LIST_INSET = 4
+const LIST_CHROME = 26 + SCROLLBAR + LIST_INSET * 2
 /** The gap between two cards in the grid list. */
 const LIST_GAP = 12
 /**
@@ -266,35 +350,41 @@ const actionStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 6,
-  padding: '6px 12px',
-  borderRadius: 8,
-  border: '1px solid color-mix(in srgb, currentColor 22%, transparent)',
-  background: 'color-mix(in srgb, currentColor 9%, transparent)',
+  padding: '6px 14px',
+  borderRadius: 'var(--ib-r-pill)',
+  border: '1px solid var(--ib-line)',
+  background: 'var(--ib-control-fill)',
   color: 'inherit',
   cursor: 'pointer',
   fontWeight: 500,
+  whiteSpace: 'nowrap',
 }
 
 /** The one thing a pane most wants you to do. */
 const primaryStyle: React.CSSProperties = {
   ...actionStyle,
-  // Deliberately *not* an inverted fill. `background: currentColor; color:
-  // Canvas` looked right until it rendered white-on-white: `Canvas` is the
-  // canvas colour, which is white in a document that never declared a dark
-  // scheme. Text stays the inherited colour, on a fill strong enough to read as
-  // the primary action.
-  background: 'color-mix(in srgb, currentColor 20%, transparent)',
-  borderColor: 'color-mix(in srgb, currentColor 55%, transparent)',
+  /*
+    A **filled** button now (asked 2026-10-03: "按钮做成实体胶囊按钮"), which only
+    works because the fill is a fixed colour rather than `currentColor`: an
+    inverted `currentColor` fill renders white-on-white in a document that never
+    declared a dark scheme — the bug this comment used to guard against. The ink
+    is `--ib-accent-ink`, chosen against the solid, not against the host's canvas.
+  */
+  background: 'var(--ib-primary-fill)',
+  color: 'var(--ib-accent-ink)',
+  borderColor: 'transparent',
   fontWeight: 600,
+  boxShadow: 'var(--ib-shadow-1)',
 }
 
 /** Destructive actions say so. */
 const dangerStyle: React.CSSProperties = {
   ...actionStyle,
-  borderColor: 'color-mix(in srgb, salmon 60%, transparent)',
-  background: 'color-mix(in srgb, salmon 18%, transparent)',
-  color: 'salmon',
+  borderColor: 'transparent',
+  background: 'var(--ib-danger-fill)',
+  color: '#fff',
   fontWeight: 600,
+  boxShadow: 'var(--ib-shadow-1)',
 }
 
 /**
@@ -305,7 +395,7 @@ const dangerStyle: React.CSSProperties = {
  * `docs/prototype/2026-09-19-inbox-ui-v2.prototype.html`) is the design source,
  * so the 待看 capsule borrows it the way 删除 borrows `salmon`.
  */
-const WATCH_COLOR = '#6e9ef7'
+const WATCH_COLOR = 'var(--ib-accent)'
 
 /**
  * The one accent the panel is allowed to paint with, for "this is yours / this
@@ -314,7 +404,7 @@ const WATCH_COLOR = '#6e9ef7'
  * Taken from the v2 prototype's `--accent`, which is also the blue dsh itself
  * uses — a selected card in grey read as "slightly darker", not as selection.
  */
-const ACCENT_COLOR = '#6e9ef7'
+const ACCENT_COLOR = 'var(--ib-accent)'
 
 /**
  * The colour of a 「模型判定」 badge.
@@ -349,20 +439,6 @@ const CONTROL_HEIGHT = 'calc(1.6em + 12px)'
  */
 const paneRowStyle: React.CSSProperties = { flex: 'none' }
 
-/** A `<select>` that matches the buttons, popup included. */
-const selectStyle: React.CSSProperties = {
-  ...actionStyle,
-  // Opaque on purpose: a translucent background is why the popup's options
-  // stayed white-on-white. `appearance: none` lets us draw the caret instead of
-  // letting the browser park it against the border.
-  appearance: 'none',
-  paddingRight: 26,
-  background: 'Canvas',
-  color: 'CanvasText',
-  // Inherited from the panel root, which declares the app's own scheme.
-  colorScheme: 'inherit',
-}
-
 /**
  * A labelled `<select>` with our own caret, so it looks like the buttons and
  * the popup is legible in a dark app.
@@ -387,6 +463,82 @@ function SelectBox({
   label?: string
   onChange: (next: string) => void
 }): React.ReactElement {
+  /*
+    A dropdown of our own, not a `<select>`.
+
+    The native popup is drawn by the OS and cannot be rounded, tinted or
+    animated — which is exactly why the panel's one dropdown looked untouched by
+    the design pass (asked 2026-10-03: "下拉框这些也是下拉面板是带圆角的面板").
+    This is the same list of options, drawn as a floating panel with hover rows
+    and a tick on the current one, with the keyboard it should have had anyway:
+    ↑/↓ to move, Enter/Space to pick, Esc to close.
+  */
+  const [open, setOpen] = React.useState(false)
+  const [cursor, setCursor] = React.useState(() => Math.max(0, options.findIndex(([id]) => id === value)))
+  /*
+    Where the panel goes, in viewport coordinates, and which way it opens.
+
+    `position: fixed` rather than `absolute`: the dropdown lives inside the pane's
+    scrolling column, where an absolutely positioned box both *extends the
+    scrollHeight* (opening it made the dialog sprout a scrollbar — reported
+    2026-10-03) and gets clipped at the scrollport's edge. A fixed box belongs to
+    the viewport, so it does neither. Flip upward when there is not enough room
+    below, and close on any scroll or resize instead of chasing the trigger.
+  */
+  const trigger = React.useRef<HTMLButtonElement>(null)
+  const [spot, setSpot] = React.useState<{ left: number; top: number; width: number; up: boolean }>()
+  const current = options.find(([id]) => id === value)?.[1] ?? ''
+
+  const show = (): void => {
+    const rect = trigger.current?.getBoundingClientRect()
+    if (rect === undefined) return
+    const room = Math.min(options.length * 34 + 12, 320)
+    const below = window.innerHeight - rect.bottom
+    const up = below < room && rect.top > below
+    setSpot({ left: rect.left, top: up ? rect.top - 6 : rect.bottom + 6, width: rect.width, up })
+    setOpen(true)
+  }
+
+  React.useEffect(() => {
+    if (!open) return
+    const close = (): void => setOpen(false)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [open])
+
+  const choose = (next: string): void => {
+    onChange(next)
+    setOpen(false)
+  }
+
+  const onKeyDown = (event: React.KeyboardEvent): void => {
+    if (event.key === 'Escape') {
+      setOpen(false)
+      return
+    }
+    if (!open && (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown')) {
+      event.preventDefault()
+      show()
+      return
+    }
+    if (!open) return
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const step = event.key === 'ArrowDown' ? 1 : -1
+      setCursor((index) => (index + step + options.length) % options.length)
+      return
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      const picked = options[cursor]
+      if (picked !== undefined) choose(picked[0])
+    }
+  }
+
   return (
     <span
       style={{
@@ -399,41 +551,130 @@ function SelectBox({
         ...(block === true ? { width: '100%' } : {}),
       }}
     >
-      <select
-        value={value}
+      <button
+        type="button"
+        ref={trigger}
         disabled={disabled}
         aria-label={label}
-        onChange={(event) => onChange(event.target.value)}
-        style={{ ...selectStyle, ...(block === true ? { flex: 1, minWidth: 0 } : {}) }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => {
+          if (open) setOpen(false)
+          else show()
+        }}
+        onKeyDown={onKeyDown}
+        style={{
+          ...selectStyle,
+          ...(block === true
+            ? { flex: 1, minWidth: 0, justifyContent: 'space-between' }
+            : {}),
+          ...(open ? { borderColor: 'color-mix(in srgb, var(--ib-accent) 70%, transparent)' } : {}),
+        }}
       >
-        {options.map(([id, label]) => (
-          <option key={id} value={id}>
-            {label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown
-        size={13}
-        style={{ position: 'absolute', right: 9, pointerEvents: 'none', opacity: 0.7 }}
-      />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {current}
+        </span>
+        <ChevronDown
+          size={13}
+          style={{
+            pointerEvents: 'none',
+            opacity: 0.7,
+            transition: 'transform var(--ib-ease)',
+            transform: open ? 'rotate(180deg)' : undefined,
+          }}
+        />
+      </button>
+      {open && spot !== undefined && (
+        <>
+          <div
+            role="presentation"
+            onClick={() => setOpen(false)}
+            style={{ position: 'fixed', inset: 0, zIndex: 60 }}
+          />
+          <div
+            role="listbox"
+            aria-label={label}
+            className={spot.up ? 'ib-pop ib-pop-up' : 'ib-pop'}
+            style={{
+              position: 'fixed',
+              left: spot.left,
+              top: spot.top,
+              minWidth: spot.width,
+              zIndex: 61,
+              // `top` is the edge we anchored to, so an upward panel grows the
+              // other way instead of covering its own trigger.
+              ...(spot.up ? { transform: 'translateY(-100%)' } : {}),
+              maxHeight: 320,
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+              padding: 6,
+              // The rounded panel the user asked for, on the host's own surface.
+              background: 'Canvas',
+              border: '1px solid var(--ib-line)',
+              borderRadius: 'var(--ib-r-panel)',
+              boxShadow: 'var(--ib-shadow-2)',
+            }}
+          >
+            {options.map(([id, optionLabel], index) => {
+              const selected = id === value
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onMouseEnter={() => setCursor(index)}
+                  onClick={() => choose(id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    width: '100%',
+                    textAlign: 'left',
+                    font: 'inherit',
+                    color: selected ? 'var(--ib-accent)' : 'inherit',
+                    fontWeight: selected ? 600 : 400,
+                    background:
+                      selected || index === cursor ? 'var(--ib-accent-soft)' : 'transparent',
+                    border: 'none',
+                    borderRadius: 'var(--ib-r-lg)',
+                    padding: '6px 10px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <span style={{ flex: 1 }}>{optionLabel}</span>
+                  {selected && <Check size={13} />}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
     </span>
   )
 }
 
 const cardStyle: React.CSSProperties = {
-  border: '1px solid color-mix(in srgb, currentColor 18%, transparent)',
-  borderRadius: 10,
+  border: '1px solid var(--ib-line)',
+  borderRadius: 'var(--ib-r-lg)',
+  background: 'var(--ib-surface)',
   padding: 12,
 }
 
 const buttonStyle: React.CSSProperties = {
   font: 'inherit',
-  padding: '5px 12px',
-  borderRadius: 8,
-  border: '1px solid color-mix(in srgb, currentColor 25%, transparent)',
-  background: 'transparent',
+  padding: '5px 14px',
+  // A pill, and filled: the panel's default control is the "solid" look, and a
+  // hairline outline was what made every button read as a picture of one.
+  borderRadius: 'var(--ib-r-pill)',
+  border: '1px solid transparent',
+  background: 'var(--ib-control-bg)',
   color: 'inherit',
   cursor: 'pointer',
+  fontWeight: 500,
   /*
     A flex row rather than an inline box.
 
@@ -447,6 +688,14 @@ const buttonStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   gap: 6,
+}
+
+/** The trigger of a dropdown: a filled pill that matches every other control. */
+const selectStyle: React.CSSProperties = {
+  ...buttonStyle,
+  paddingRight: 12,
+  gap: 8,
+  fontWeight: 500,
 }
 
 /**
@@ -464,20 +713,27 @@ const pagerButtonStyle: React.CSSProperties = {
 
 const chipStyle = (active: boolean): React.CSSProperties => ({
   ...buttonStyle,
-  padding: '2px 10px',
-  borderRadius: 999,
-  opacity: active ? 1 : 0.7,
-  fontWeight: active ? 600 : 400,
-  borderColor: active ? 'currentColor' : 'color-mix(in srgb, currentColor 20%, transparent)',
+  padding: '3px 12px',
+  borderRadius: 'var(--ib-r-pill)',
+  opacity: active ? 1 : 0.72,
+  fontWeight: active ? 600 : 500,
+  borderColor: 'transparent',
+  background: active ? 'var(--ib-accent-soft)' : 'var(--ib-control-bg)',
+  color: active ? 'var(--ib-accent)' : 'inherit',
 })
 
 const inputStyle: React.CSSProperties = {
   font: 'inherit',
   color: 'inherit',
-  background: 'transparent',
-  border: '1px solid color-mix(in srgb, currentColor 20%, transparent)',
-  borderRadius: 8,
-  padding: '5px 8px',
+  /*
+    Filled rather than outlined (ant's bordered variant, not the default): on a
+    tinted card a transparent field reads as a hole, and a hairline box reads as a
+    table cell. The ring on focus is what says "you are typing here".
+  */
+  background: 'var(--ib-control-bg)',
+  border: '1px solid transparent',
+  borderRadius: 'var(--ib-r-lg)',
+  padding: '5px 12px',
 }
 
 /** The panel body: capture, then filter, list and detail. */
@@ -1091,7 +1347,7 @@ function InboxPanel(): React.ReactElement {
   }, [])
 
   return (
-    <div ref={panelRef} style={{ ...panelStyle, colorScheme: scheme }}>
+    <div ref={panelRef} className="ib-root" style={{ ...panelStyle, ...themeVars(scheme), colorScheme: scheme }}>
       {/*
         Scrollbars, the one thing inline styles cannot express.
 
@@ -1122,6 +1378,86 @@ function InboxPanel(): React.ReactElement {
           background: color-mix(in srgb, currentColor 34%, transparent);
         }
         .dsh-inbox-scroll::-webkit-scrollbar-corner { background: transparent; }
+
+        /*
+          The interaction layer (2026-10-02).
+
+          Inline styles can express how a control *looks*, never how it answers a
+          pointer — and that was most of "rough": nothing in the panel had a
+          hover, an active or a focus state, so every button read as a picture of
+          one. One rule each, scoped to our own root, and every control in the
+          panel gets them without touching forty call sites.
+        */
+        .ib-root button, .ib-root input, .ib-root select, .ib-root textarea {
+          transition:
+            background-color var(--ib-ease), border-color var(--ib-ease),
+            box-shadow var(--ib-ease), color var(--ib-ease), opacity var(--ib-ease);
+        }
+        /* Every variant reads its fill from a variable, so one hover rule lights
+           up plain, primary and danger buttons alike — and :active adds a
+           half-pixel press on top of it. (No backticks in here: this whole block
+           is a JS template literal, and one would end the string.) */
+        .ib-root button:not(:disabled):hover {
+          --ib-control-fill: var(--ib-control-fill-hover);
+          --ib-primary-fill: var(--ib-primary-fill-hover);
+          --ib-danger-fill: var(--ib-danger-fill-hover);
+        }
+        .ib-root button:not(:disabled):active { transform: translateY(0.5px); }
+        /* The read-later button keeps its accent fill on hover instead of
+           turning grey: it is a state, not a default. (English only in here: this
+           block is a JS template literal, and the i18n test reads all of it.) */
+        .ib-root button[data-watch='true']:not(:disabled):hover {
+          --ib-watch-fill: color-mix(in srgb, var(--ib-accent) 28%, transparent);
+        }
+        .ib-root button:disabled { opacity: 0.45; cursor: not-allowed; }
+        /* The pop the user asked for: rounded panels arrive instead of appearing. */
+        @keyframes ib-pop {
+          from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+        }
+        /* A panel that opened upward grows the other way — the keyframes have to
+           say so, because an animation overrides the inline transform. */
+        @keyframes ib-pop-up {
+          from { opacity: 0; transform: translateY(calc(-100% + 4px)) scale(0.98); }
+        }
+        @keyframes ib-fade { from { opacity: 0; } }
+        .ib-root .ib-pop { animation: ib-pop 140ms cubic-bezier(0.2, 0.6, 0.2, 1); }
+        .ib-root .ib-pop-up { animation-name: ib-pop-up; }
+        .ib-root [role='dialog'] { animation: ib-pop 160ms cubic-bezier(0.2, 0.6, 0.2, 1); }
+        .ib-root [role='presentation'] { animation: ib-fade 140ms ease-out; }
+        .ib-root :focus-visible { outline: 2px solid var(--ib-accent); outline-offset: 1px; }
+        .ib-root input:focus, .ib-root textarea:focus, .ib-root select:focus {
+          outline: none;
+          border-color: color-mix(in srgb, var(--ib-accent) 70%, transparent);
+          box-shadow: 0 0 0 3px var(--ib-accent-soft);
+        }
+        /* The rail's rows: hover shows they are rows, pressed shows which one. */
+        .ib-root .ib-row:not([aria-pressed='true']):hover { background: var(--ib-surface-2); }
+        /* A list card: a pointer hint, and a selection you can see across the panel. */
+        .ib-root .ib-card {
+          transition: border-color var(--ib-ease), box-shadow var(--ib-ease),
+            transform var(--ib-ease);
+        }
+        .ib-root .ib-card:hover {
+          --ib-card-bg: var(--ib-surface-2);
+          border-color: var(--ib-line-strong);
+          box-shadow: var(--ib-shadow-3);
+        }
+        /* A compact row is a row, not a card: it gets the tint and none of the
+           lift — the shadow was doing nothing in the dark theme (a black shadow
+           on a near-black panel) and reading as a stray smudge in the light one
+           (asked 2026-10-03). */
+        .ib-root .ib-card-compact:hover { box-shadow: none; border-color: transparent; }
+        /*
+          The paste box's card stays neutral when the textarea inside it is
+          focused: the highlight belongs to the thing you are typing in, not to
+          the frame around it (asked 2026-10-03). The textarea gets the same
+          accent border + soft ring every other field has, and its own radius —
+          see its inline style.
+        */
+        .ib-root .ib-card[aria-pressed='true'] {
+          border-color: color-mix(in srgb, var(--ib-accent) 65%, transparent);
+          box-shadow: inset 0 0 0 1px var(--ib-accent-soft);
+        }
       `}</style>
       <header>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -1179,8 +1515,33 @@ function InboxPanel(): React.ReactElement {
           }}
         >
           <div style={{ ...cardStyle, width: 'min(560px, 100%)', background: 'Canvas' }}>
+            {/*
+              A title and the same round ✕ every other dialog header has (asked
+              2026-10-03: "设置弹窗的标题可以用设置两个字 … 都只有 icon 不要文本").
+            */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginBottom: 12,
+                paddingBottom: 10,
+                borderBottom: '1px solid var(--ib-line)',
+              }}
+            >
+              <strong style={{ flex: 1, fontSize: 15 }}>{t('app.settings')}</strong>
+              <button
+                type="button"
+                aria-label={t('app.close')}
+                title={t('app.close')}
+                style={closeButtonStyle}
+                onClick={() => setSettingsOpen(false)}
+              >
+                <X size={14} />
+              </button>
+            </div>
             <EncryptionSettings call={call} />
-            <WebdavSettings call={call} onClose={() => setSettingsOpen(false)} />
+            <WebdavSettings call={call} />
           </div>
         </div>
       )}
@@ -1290,10 +1651,18 @@ function InboxPanel(): React.ReactElement {
       )}
 
       <div
+        className="ib-field"
         style={{
           ...cardStyle,
-          borderStyle: dragging ? 'dashed' : 'solid',
-          borderColor: dragging ? 'currentColor' : cardStyle.borderColor,
+          /*
+            The same line every other card draws (`--ib-line`), instead of the
+            `currentColor` full-strength colour this used to fall back to when the
+            shorthand lost its colour (reported 2026-10-03: "描边…颜色太深了").
+            Dragging is the one state that gets to shout, and it shouts in the
+            accent rather than in ink.
+          */
+          border: `1px solid ${dragging ? 'var(--ib-accent)' : 'var(--ib-line)'}`,
+          ...(dragging ? { borderStyle: 'dashed' } : {}),
         }}
         onDragOver={(event) => {
           event.preventDefault()
@@ -1316,8 +1685,19 @@ function InboxPanel(): React.ReactElement {
             font: 'inherit',
             color: 'inherit',
             background: 'transparent',
-            border: 'none',
+            /*
+              A transparent 1px border so the focus ring cannot shift the layout,
+              and a radius of its own: the highlight is drawn *here*, on the thing
+              being typed in — not on the card around it (asked 2026-10-03).
+              `outline: none` is deliberate; the ring below is the indicator.
+            */
+            border: '1px solid transparent',
+            borderRadius: 'var(--ib-r)',
             outline: 'none',
+            // Room between the text and the frame (asked 2026-10-03: the first
+            // line used to sit against the border).
+            padding: '8px 10px',
+            margin: '0 2px',
           }}
         />
 
@@ -1437,7 +1817,7 @@ function InboxPanel(): React.ReactElement {
               ...buttonStyle,
               height: CONTROL_HEIGHT,
               boxSizing: 'border-box',
-              ...(railOpen ? { borderColor: 'currentColor' } : {}),
+              ...(railOpen ? { borderColor: 'var(--ib-accent)' } : {}),
             }}
             aria-expanded={railOpen}
             onClick={() => setRailOpen((open) => !open)}
@@ -1465,9 +1845,16 @@ function InboxPanel(): React.ReactElement {
           aria-label={t('modes.label')}
           style={{
             display: 'inline-flex',
-            border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
-            borderRadius: 8,
-            overflow: 'hidden',
+            /*
+              A segmented control, not two bordered buttons: the track is one
+              filled pill and the active segment is a raised plate inside it
+              (2026-10-03, the ant-style pass).
+            */
+            background: 'var(--ib-control-bg)',
+            border: 'none',
+            borderRadius: 'var(--ib-r-pill)',
+            padding: 2,
+            gap: 2,
             height: CONTROL_HEIGHT,
             boxSizing: 'border-box',
           }}
@@ -1491,8 +1878,12 @@ function InboxPanel(): React.ReactElement {
                 padding: 0,
                 boxSizing: 'border-box',
                 border: 'none',
-                borderRadius: 0,
-                opacity: listMode === mode.id ? 1 : 0.5,
+                // The active segment is the raised plate inside the track.
+                borderRadius: 'var(--ib-r-pill)',
+                background: listMode === mode.id ? 'Canvas' : 'transparent',
+                boxShadow: listMode === mode.id ? 'var(--ib-shadow-1)' : 'none',
+                color: listMode === mode.id ? 'var(--ib-accent)' : 'inherit',
+                opacity: listMode === mode.id ? 1 : 0.62,
               }}
             >
               {mode.icon}
@@ -1749,10 +2140,25 @@ function InboxPanel(): React.ReactElement {
             )}
           </div>
 
-          {/* …and the count moves to the top-right of the list itself. A zero
-              count says nothing worth a line. */}
+          {/*
+            …and the count moves to the top-right of the list itself. A zero
+            count says nothing worth a line.
+
+            `paddingInline: 4` is the same inset the scrolling list has (there for
+            focus rings and shadows), so the number lines up with the right edge
+            of the cards below it. Without it the count sat 4px outboard of them,
+            which reads as "not right-aligned" (reported 2026-10-03).
+          */}
           {(list === undefined || list.matched > 0) && (
-            <div style={{ textAlign: 'right', fontSize: 12, opacity: 0.6, marginBottom: 6 }}>
+            <div
+              style={{
+                textAlign: 'right',
+                paddingInline: LIST_INSET,
+                fontSize: 12,
+                opacity: 0.6,
+                marginBottom: 6,
+              }}
+            >
               {list === undefined ? t('app.loading') : t('app.matches', { count: list.matched })}
             </div>
           )}
@@ -1771,10 +2177,17 @@ function InboxPanel(): React.ReactElement {
                 ? {
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 0,
+                    // A gap, so a compact row's highlight is a rounded pill with
+                    // air around it instead of a band that touches its
+                    // neighbours (asked 2026-10-03).
+                    gap: 4,
                     flex: 1,
                     minHeight: 0,
                     overflowY: 'auto',
+                    // Room for a ring or a shadow to be drawn: the other axis
+                    // clips as soon as this one is `auto`. Same number the count
+                    // line and the width gates read (`LIST_INSET`).
+                    padding: LIST_INSET,
                   }
                 : {
                     display: 'grid',
@@ -1797,6 +2210,9 @@ function InboxPanel(): React.ReactElement {
                     flex: 1,
                     minHeight: 0,
                     overflowY: 'auto',
+                    // Same reason as the compact branch: room inside the
+                    // scrollport, so hover rings and shadows are not shaved.
+                    padding: LIST_INSET,
                   }
             }
           >
@@ -1883,32 +2299,26 @@ function InboxPanel(): React.ReactElement {
                 aria-label={t('app.detail')}
                 style={{
                   width: 'min(560px, 100%)',
-                  // The same shape as the wide column: a bounded box, a
-                  // scrolling content column inside it, and a pinned stamp — so
-                  // the dialog scrolls the record rather than the whole overlay.
-                  maxHeight: '88vh',
+                  /*
+                    A definite height, and taller than the old 88vh cap: with only
+                    a `max-height` the box shrank to its content, so opening the
+                    category dropdown pushed the pane into a scrollbar (reported
+                    2026-10-03). `min(92vh, 900px)` gives the form the room it
+                    needs on a normal screen without becoming a full-screen sheet
+                    on a tall one; `100%` keeps a narrow panel safe.
+                  */
+                  height: 'min(92vh, 900px)',
+                  maxHeight: '100%',
                   display: 'flex',
                   flexDirection: 'column',
                   minHeight: 0,
                   background: 'Canvas',
                   border: `1px solid ${hairline}`,
-                  borderRadius: 12,
+                  borderRadius: 'var(--ib-r-panel)',
                   padding: 12,
                   boxShadow: '0 18px 40px #0007',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
-                  <button
-                    type="button"
-                    style={buttonStyle}
-                    onClick={() => {
-                      setSelectedId(undefined)
-                      setDetail(undefined)
-                    }}
-                  >
-                    <X size={13} /> {t('app.close')}
-                  </button>
-                </div>
                 <EntryPane
                   detail={detail}
                   busy={busy}
@@ -1920,6 +2330,10 @@ function InboxPanel(): React.ReactElement {
                     mutate(INBOX_ENDPOINT_RESTORE, { id: detail.id }, { dropSelection: true })
                   }
                   onZoom={setZoom}
+                  onClose={() => {
+                    setSelectedId(undefined)
+                    setDetail(undefined)
+                  }}
                 />
               </div>
             </div>
@@ -2269,13 +2683,7 @@ function EncryptionSettings({ call }: { call: CallHost }): React.ReactElement {
  * The password field starts empty on purpose — the host only ever reports
  * whether one is stored, never the value, so this form cannot show it back.
  */
-function WebdavSettings({
-  call,
-  onClose,
-}: {
-  call: CallHost
-  onClose: () => void
-}): React.ReactElement {
+function WebdavSettings({ call }: { call: CallHost }): React.ReactElement {
   const [status, setStatus] = React.useState<WebdavStatus>()
   const [baseUrl, setBaseUrl] = React.useState('')
   const [directory, setDirectory] = React.useState('/inbox')
@@ -2402,9 +2810,6 @@ function WebdavSettings({
                 s3: status.secretSet ? t('settings.statusS3Set') : t('settings.statusS3Unset'),
               })}
         </span>
-        <button type="button" style={{ ...buttonStyle, marginLeft: 'auto' }} onClick={onClose}>
-          {t('app.close')}
-        </button>
       </div>
 
       {status !== undefined && !status.settingsAvailable && (
@@ -2704,6 +3109,8 @@ function categoryGlyph(category: Category, size: number): React.ReactElement {
       return <Film size={size} />
     case 'image':
       return <ImageIcon size={size} />
+    case 'file':
+      return <Paperclip size={size} />
     case 'document':
       return <IdCard size={size} />
     case 'secret':
@@ -2811,6 +3218,7 @@ function RailRow({
   return (
     <button
       type="button"
+      className="ib-row"
       aria-pressed={active}
       onClick={onClick}
       style={{
@@ -2820,18 +3228,24 @@ function RailRow({
         width: '100%',
         textAlign: 'left',
         font: 'inherit',
-        color: 'inherit',
-        background: active ? 'color-mix(in srgb, currentColor 12%, transparent)' : 'transparent',
+        // The stylesheet owns hover (see the interaction layer); inline keeps
+        // only what a CSS rule cannot know. The selected row is the accent tint
+        // with accent text — ant's selected menu item, not a grey shadow.
+        background: active ? 'var(--ib-accent-soft)' : 'transparent',
+        color: active ? 'var(--ib-accent)' : 'inherit',
         border: 'none',
-        borderRadius: 8,
-        padding: '6px 9px',
+        borderRadius: 'var(--ib-r-pill)',
+        padding: '6px 12px',
         cursor: 'pointer',
-        opacity: active ? 1 : 0.72,
+        opacity: active ? 1 : 0.82,
+        fontWeight: active ? 600 : 400,
       }}
     >
       {icon}
       <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{label}</span>
-      {count === undefined ? null : <span style={{ opacity: 0.6, fontSize: 12 }}>{count}</span>}
+      {count === undefined ? null : (
+        <span style={{ color: 'var(--ib-dim)', fontSize: 12 }}>{count}</span>
+      )}
     </button>
   )
 }
@@ -2876,10 +3290,10 @@ function EntryCard({
   const headingText = headingOf(entry)
   const headingTitle = headingTooltipOf(entry)
   const compact = mode === 'compact'
-  const hairline = 'color-mix(in srgb, currentColor 10%, transparent)'
+  const hairline = 'var(--ib-line)'
   // Selection is the accent, not a darker grey: the user asked for dsh's own
   // light blue, and a grey "highlight" was indistinguishable from hover.
-  const accent = `color-mix(in srgb, ${ACCENT_COLOR} 55%, transparent)`
+  const accent = `color-mix(in srgb, ${ACCENT_COLOR} 65%, transparent)`
 
   /**
    * The glyph keeps its own square slot, and shows the *category*.
@@ -2979,6 +3393,7 @@ function EntryCard({
      */
     <div
       role="button"
+      className={compact ? 'ib-card ib-card-compact' : 'ib-card'}
       tabIndex={0}
       aria-pressed={selected}
       onClick={onOpen}
@@ -3005,20 +3420,30 @@ function EntryCard({
         textAlign: 'left',
         font: 'inherit',
         color: 'inherit',
+        /*
+          Through a variable, so the stylesheet can lift it on hover: an inline
+          background beats a CSS rule, and a hover state needs the rule to win.
+        */
+        ['--ib-card-bg' as string]: compact ? 'transparent' : 'var(--ib-surface)',
         background: selected
-          ? `color-mix(in srgb, ${ACCENT_COLOR} 16%, transparent)`
-          : compact
-            ? 'transparent'
-            : 'color-mix(in srgb, currentColor 4%, transparent)',
+          ? 'var(--ib-accent-soft)'
+          : 'var(--ib-card-bg)',
         ...(compact
-          ? { border: 'none', borderBottom: `1px solid ${hairline}`, borderRadius: 0 }
+          ? {
+              // A rounded row rather than a full-width band: the highlight has to
+              // have corners too (asked 2026-10-03), and the container's gap is
+              // what separates one row from the next now.
+              border: `1px solid ${selected ? accent : 'transparent'}`,
+              borderRadius: 'var(--ib-r)',
+            }
           : {
               border: `1px solid ${selected ? accent : hairline}`,
-              borderRadius: 10,
+              borderRadius: 'var(--ib-r)',
             }),
         padding: compact ? '5px 10px' : '9px 10px',
         cursor: 'pointer',
         opacity: 1,
+        boxShadow: compact ? undefined : 'var(--ib-shadow-1)',
       }}
     >
       {glyph}
@@ -3149,6 +3574,7 @@ function EntryPane({
   onDelete,
   onRestore,
   onZoom,
+  onClose,
 }: {
   detail: EntryDetail
   busy: boolean
@@ -3157,6 +3583,12 @@ function EntryPane({
   onRestore: () => Promise<boolean>
   /** Open one attachment full size (or playing), out of the panel's own layout. */
   onZoom: (target: Lightbox) => void
+  /**
+   * Present only in the dialog: the inline column has no close button, the
+   * dialog needs one, and both want the record's name at the top (asked
+   * 2026-10-03).
+   */
+  onClose?: () => void
 }): React.ReactElement {
   const [note, setNote] = React.useState(detail.note ?? '')
   const [title, setTitle] = React.useState(detail.title ?? '')
@@ -3180,24 +3612,76 @@ function EntryPane({
       last control clear of the band they occupy.
     */
     <>
+      {/*
+        The header: the record's name on the left, the dialog's close button on
+        the right, and a hairline under both. It sits *outside* the scrolling
+        column, so the name stays put while a long record is read — the same rule
+        the timestamps follow at the other end.
+      */}
+      <div
+        style={{
+          ...paneRowStyle,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          paddingBottom: 10,
+          marginBottom: 12,
+          borderBottom: '1px solid var(--ib-line)',
+        }}
+      >
+        <strong
+          title={headingOf(detail)}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {headingOf(detail)}
+        </strong>
+        {onClose !== undefined && (
+          /*
+            A round ✕ instead of a word (asked 2026-10-03). The accessible name
+            stays — `aria-label` — because a glyph alone is not a name.
+          */
+          <button
+            type="button"
+            aria-label={t('app.close')}
+            title={t('app.close')}
+            onClick={onClose}
+            style={closeButtonStyle}
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
       <div
         className="dsh-inbox-scroll"
         style={{
           flex: 1,
           minHeight: 0,
           overflowY: 'auto',
-          // The band the stamps sit in is reserved structurally rather than as
-          // padding: a scroll container's padding-bottom is *inside* the scroll
-          // area, so the last control would still slide under the stamps while
-          // scrolling. A margin takes the room out of the scrollport instead.
-          marginBottom: 40,
+          /*
+            Room for a ring to be drawn in. `overflow-y: auto` makes the other
+            axis clip too (CSS computes the visible one as auto), which is why
+            the focus ring was shaved on the left and right (reported
+            2026-10-03). The padding is inside the scrollport, so 4px is exactly
+            what a 3px ring plus its offset needs.
+          */
+          paddingInline: 4,
+          // No reserved band at the bottom any more: the stamps moved into the
+          // footer, so the scrollport ends where the footer begins.
+          paddingBottom: 2,
           // Reserve the scrollbar's lane whether or not this record needs one,
           // so the controls do not change width as you click from record to
           // record (354px wide when they fit, 339px once a scrollbar appears).
           scrollbarGutter: 'stable',
           display: 'flex',
           flexDirection: 'column',
-          gap: 10,
+          // Airier than 10: the form read as a dense block of controls.
+          gap: 14,
         }}
       >
       <div
@@ -3463,14 +3947,59 @@ function EntryPane({
       />
 
       {/*
-        Three actions, three equal thirds of the pane: no ragged tail of empty
-        space, and one tap target per column of the form above. Labels stay on
-        one line (a verb does not break into two), so the row never wraps.
+        Three actions, sized by their own labels and pushed to the right (asked
+        2026-10-03: "有点长了…整体三个按钮右对齐就好"). They used to be three equal
+        thirds of the pane, which in a wide window meant three very long pills.
+
+        A **footer of its own**, below the scrolling column — not something that
+        sticks inside it. `position: sticky` looked right in the screenshot and was
+        wrong in use: sticky only pins once the content is taller than the
+        scrollport, so with a short record the buttons just sat in the middle of
+        the pane (reported 2026-10-03: "三个按钮还是没有沉底"). As a sibling with
+        `flex: none`, they are at the foot of the pane at every content height,
+        with the hairline above as the separation and the stamps below them.
       */}
-      <div style={{ ...paneRowStyle, display: 'flex', gap: 6 }}>
+      </div>
+      <div
+        style={{
+          ...paneRowStyle,
+          marginTop: 12,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}
+      >
+      {/*
+        The timestamps first, right-aligned, *above* the rule (asked 2026-10-03:
+        "放在底部分割线上面吧 然后也是右对齐，不要放在按钮下面了"). Reading order
+        becomes: what this record is → when it arrived → the rule → what you can
+        do with it, which is also the order the footer is used in.
+      */}
+      <div
+        style={{
+          fontSize: 12,
+          color: 'var(--ib-dim)',
+          textAlign: 'right',
+          overflowWrap: 'anywhere',
+        }}
+      >
+        {t('app.store')} {new Date(detail.createdAt).toLocaleString()}
+        {detail.updatedAt === detail.createdAt
+          ? ''
+          : t('detail.updated', { when: new Date(detail.updatedAt).toLocaleString() })}
+      </div>
+      <div
+        style={{
+          paddingTop: 10,
+          borderTop: '1px solid var(--ib-line)',
+          display: 'flex',
+          gap: 8,
+          justifyContent: 'flex-end',
+        }}
+      >
         <button
           type="button"
-          style={{ ...primaryStyle, flex: 1, justifyContent: 'center', whiteSpace: 'nowrap' }}
+          style={{ ...primaryStyle, whiteSpace: 'nowrap' }}
           disabled={busy}
           onClick={() =>
             void onUpdate({
@@ -3488,17 +4017,39 @@ function EntryPane({
         </button>
         <button
           type="button"
-          style={{ ...actionStyle, flex: 1, justifyContent: 'center', whiteSpace: 'nowrap' }}
+          /*
+            The watched state has to be visible at a glance now that the label is
+            just 「待看」: accent fill + accent text + a ticked bookmark, against a
+            plain neutral button when it is off. The fill goes through a variable
+            so the hover rule can still deepen it.
+          */
+          data-watch={detail.watchLater === true ? 'true' : undefined}
+          aria-pressed={detail.watchLater === true}
+          title={detail.watchLater === true ? t('detail.unwatch') : t('detail.watch')}
+          style={{
+            ...actionStyle,
+            whiteSpace: 'nowrap',
+            background: 'var(--ib-watch-fill)',
+            ['--ib-watch-fill' as string]: detail.watchLater === true
+              ? 'var(--ib-accent-soft)'
+              : 'var(--ib-control-fill)',
+            ...(detail.watchLater === true
+              ? {
+                  color: 'var(--ib-accent)',
+                  borderColor: 'color-mix(in srgb, var(--ib-accent) 45%, transparent)',
+                }
+              : {}),
+          }}
           disabled={busy || inBin}
           onClick={() => void onUpdate({ watchLater: detail.watchLater !== true })}
         >
-          <Bookmark size={14} />
-          {detail.watchLater === true ? t('detail.unwatch') : t('detail.watch')}
+          {detail.watchLater === true ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
+          {t('detail.watchLabel')}
         </button>
         {inBin ? (
           <button
             type="button"
-            style={{ ...actionStyle, flex: 1, justifyContent: 'center', whiteSpace: 'nowrap' }}
+            style={{ ...actionStyle, whiteSpace: 'nowrap' }}
             disabled={busy}
             onClick={() => void onRestore()}
           >
@@ -3507,7 +4058,7 @@ function EntryPane({
         ) : (
           <button
             type="button"
-            style={{ ...dangerStyle, flex: 1, justifyContent: 'center', whiteSpace: 'nowrap' }}
+            style={{ ...dangerStyle, whiteSpace: 'nowrap' }}
             disabled={busy}
             onClick={() => void onDelete()}
           >
@@ -3515,27 +4066,6 @@ function EntryPane({
           </button>
         )}
       </div>
-      </div>
-      {/*
-        The timestamps. Outside the scrolling column on purpose, so they stay
-        put while a long record is read — the old place was the header row, where
-        a long category wrapped them onto a line of their own.
-      */}
-      <div
-        style={{
-          position: 'absolute',
-          left: 12,
-          right: 12,
-          bottom: 16,
-          fontSize: 12,
-          opacity: 0.6,
-          overflowWrap: 'anywhere',
-        }}
-      >
-        {t('app.store')} {new Date(detail.createdAt).toLocaleString()}
-        {detail.updatedAt === detail.createdAt
-          ? ''
-          : t('detail.updated', { when: new Date(detail.updatedAt).toLocaleString() })}
       </div>
     </>
   )

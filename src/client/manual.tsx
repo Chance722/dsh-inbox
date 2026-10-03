@@ -12,8 +12,10 @@
  */
 
 import React from 'react'
+import { X } from 'lucide-react'
 
 import { CATEGORIES, CATEGORY_SOURCES } from '../shared/vocabulary.js'
+import { closeButtonStyle } from './controls.js'
 import { categoryLabel, sourceLabel, t, useLocaleRevision } from './i18n.js'
 
 /** A titled block: one sentence of what, a few bullets of how. */
@@ -114,18 +116,12 @@ export function ManualDialog({ onClose }: { onClose: () => void }): React.ReactE
           <button
             type="button"
             onClick={onClose}
-            style={{
-              marginLeft: 'auto',
-              font: 'inherit',
-              padding: '4px 10px',
-              borderRadius: 8,
-              border: '1px solid color-mix(in srgb, currentColor 25%, transparent)',
-              background: 'transparent',
-              color: 'inherit',
-              cursor: 'pointer',
-            }}
+            aria-label={t('app.close')}
+            title={t('app.close')}
+            // The same round ✕ the panel's own dialogs use (asked 2026-10-03).
+            style={{ ...closeButtonStyle, marginLeft: 'auto' }}
           >
-            {t('app.close')}
+            <X size={14} />
           </button>
         </div>
 

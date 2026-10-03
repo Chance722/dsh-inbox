@@ -263,8 +263,21 @@ export const vaultSpec = defineDomain({
    * (zod strips what it does not know), and the worst an older build can do is
    * write the slot back without it, which the next pull restores.
    */
-  version: 8,
-  compatibleVersions: [1, 2, 3, 4, 5, 6, 7],
+  /**
+   * Version 9 adds the `file` category (2026-10-03).
+   *
+   * Not a shape change on the surface — `category` stays a string in the same
+   * field — but the field is a **closed enum** (`z.enum(CATEGORIES)`), and that
+   * makes this the one kind of addition that has to move the number: a build
+   * that does not know `file` fails to parse any record carrying it, and a bad
+   * record stops the whole vault from opening. Raising the version instead makes
+   * the mismatch say so at open time (`version-mismatch`), which is the difference
+   * between "this build is too old" and "your vault is broken".
+   *
+   * `compatibleVersions` lists 8 so an older vault still opens here.
+   */
+  version: 9,
+  compatibleVersions: [1, 2, 3, 4, 5, 6, 7, 8],
   layout: 'per-record',
   global: {
     schema: vaultGlobalSchema,

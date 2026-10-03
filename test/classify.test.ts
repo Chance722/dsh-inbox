@@ -135,6 +135,27 @@ describe('image heuristics', () => {
     expect(classifyImage({})).toMatchObject({ category: 'image', confidence: 'unsure' })
     expect(classifyImage({ width: 0, height: 100 })).toMatchObject({ confidence: 'unsure' })
   })
+
+  it('files a dropped attachment by its real media type, not as a photo', () => {
+    /*
+      2026-10-03: everything dropped used to be filed as `image` — the rule only
+      ever saw width and height, and "no dimensions" was read as "a picture we
+      cannot measure". A PDF is neither, and `file` is the bucket it now gets.
+    */
+    expect(classifyImage({ mime: 'application/pdf' })).toMatchObject({
+      category: 'file',
+      confidence: 'decided',
+    })
+    expect(classifyImage({ mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+      .toMatchObject({ category: 'file' })
+    expect(classifyImage({ mime: 'video/mp4' })).toMatchObject({ category: 'media' })
+    expect(classifyImage({ mime: 'audio/mpeg' })).toMatchObject({ category: 'media' })
+    // A real image keeps the old behaviour, dimensions and suspected-document
+    // tag included.
+    expect(classifyImage({ mime: 'image/jpeg', width: 1200, height: 800 })).toMatchObject({
+      category: 'image',
+    })
+  })
 })
 
 describe('redact', () => {

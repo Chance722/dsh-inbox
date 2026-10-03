@@ -52,7 +52,9 @@ export declare function classifyText(text: string): Classification;
  * @param dimensions - stored width/height, when known.
  * @returns the verdict.
  */
-export declare function classifyImage(dimensions: {
+export declare function classifyImage(input: {
     width?: number;
     height?: number;
+    /** The media type, when the caller knows it — a dropped file is not a photo. */
+    mime?: string;
 }): Classification;

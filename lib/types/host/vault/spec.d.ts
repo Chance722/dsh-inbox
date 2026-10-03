@@ -22,6 +22,7 @@ export declare const itemSchema: z.ZodObject<{
     }>;
     category: z.ZodEnum<{
         image: "image";
+        file: "file";
         idea: "idea";
         article: "article";
         media: "media";
@@ -208,6 +209,19 @@ export declare const vaultSpec: {
      * (zod strips what it does not know), and the worst an older build can do is
      * write the slot back without it, which the next pull restores.
      */
+    /**
+     * Version 9 adds the `file` category (2026-10-03).
+     *
+     * Not a shape change on the surface — `category` stays a string in the same
+     * field — but the field is a **closed enum** (`z.enum(CATEGORIES)`), and that
+     * makes this the one kind of addition that has to move the number: a build
+     * that does not know `file` fails to parse any record carrying it, and a bad
+     * record stops the whole vault from opening. Raising the version instead makes
+     * the mismatch say so at open time (`version-mismatch`), which is the difference
+     * between "this build is too old" and "your vault is broken".
+     *
+     * `compatibleVersions` lists 8 so an older vault still opens here.
+     */
     version: number;
     compatibleVersions: number[];
     layout: "per-record";
@@ -253,7 +267,7 @@ export declare const vaultSpec: {
         items: import("@deepseek-ai/dsh-storage-domain").DomainTableSpec<string, {
             id: string;
             kind: "link" | "text" | "image" | "file";
-            category: "image" | "idea" | "article" | "media" | "document" | "secret" | "other";
+            category: "image" | "file" | "idea" | "article" | "media" | "document" | "secret" | "other";
             source: "panel" | "chat" | "webdav" | "import";
             createdAt: string;
             updatedAt: string;

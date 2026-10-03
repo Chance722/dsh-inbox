@@ -53,7 +53,7 @@ docs/
 9. **文档语言**：代码与标识符英文，代码注释中文；文档中英双份（`README.md` + `README.zh.md`），`AGENTS.md`/`docs/` 用中文。
 10. **持久化只走 `ctx.storageDomain`**：不自己开文件、SQLite 或别的存储；域 spec 的 schema 演进见 `docs/help/vault-data-model.md`。**设置值不走这条线**（面板偏好、同步端点在 dsh 的设置服务里），而那服务的两代形状不兼容、写错会带走整个宿主——写这类代码前先读 `docs/help/dsh-plugin-platform.md` 的「设置服务换了形状」一节。
 11. **客户端半边不许引入宿主依赖**：`src/client/**` 只能 import React、平台静态模块表里的包，以及 `src/shared/` 下的纯常量（不许 zod、不许 `node:*`、不许 `@deepseek-ai/dsh-*`），否则浏览器产物会在加载期炸。
-12. **面板跟随宿主主题，别写死**：配色方案从宿主读（`<html>` 的 `color-scheme`，读不到再按继承来的文字色亮度判），实现在 `src/client/scheme.ts`，判定与三个坑见 `docs/help/panel-theme.md`。**禁止**再出现硬编码的 `color-scheme`，也别读面板自己的（那是自我回声）。
+12. **面板跟随宿主主题，别写死**：配色方案从宿主读（`<html>` 的 `color-scheme`，读不到再按继承来的文字色亮度判），实现在 `src/client/scheme.ts`，判定与三个坑见 `docs/help/panel-theme.md`。**禁止**再出现硬编码的 `color-scheme`，也别读面板自己的（那是自我回声）。**颜色、圆角、阴影一律走 `.ib-root` 上的 `--ib-*` token**（2026-10-02 加）：面/线/次要文字是从 `currentColor` 与 `Canvas` 现算的，所以一套值同时服务深浅两色；只有强调色与危险色按已判定的 scheme 取值。别再在组件里现写 `color-mix(...)`，hover/active/focus 这类"行内样式表达不了"的状态统一写在注入的作用域样式表里（那张表里的注释必须英文——i18n 测试会把字符串里的中文当成组件文案）。
 13. **客户端文案必须走词典，别写死在组件里**：面板 / dock / 对话卡片的文案一律进 `src/client/messages.ts`（`zh` 与 `en` 同键集），经 `t()` 渲染；面板要跟随 dsh 的语言（接官方 `ctx.locale`，服务缺席时退到 `<html lang>`），**别自造语言开关**。宿主发给模型的文字是另一层（`src/shared/vocabulary.ts` 等保持中文），两者别混。`test/i18n.test.ts` 会拦下客户端里的中文字面量；机制、边界与"为什么句内碎片要整句成 key"见 `docs/help/panel-i18n.md`。
 
 14. **`lib/` 必须留在 git 里，且不许加 `prepare`**：GitHub 地址那条装的是源码快照，而 pnpm **只在 manifest 有非空 `prepare` 时才构建**它——构建就意味着要每个用户、每个 commit 手动放行 `allowBuilds`（只写包名的键实测无效），那不是安装路。所以产物提交进仓库、`prepare` 不许回来（`prepublishOnly` 不在 pnpm 那张名单里，npm 发布仍会重建）。改了 `src` 必须 `pnpm build` 并连 `lib/` 一起提交：`test/lib-artifacts.test.ts` 拿新构建与提交的产物逐字节比对，忘了重建直接红。机制与实测见 `docs/help/dsh-plugin-platform.md`。

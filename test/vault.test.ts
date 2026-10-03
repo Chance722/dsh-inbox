@@ -107,6 +107,29 @@ describe('vault over the real storage domain', () => {
     expect(vault.purgedAt(id)).toBeUndefined()
   })
 
+  it('accepts the new `file` bucket, and still refuses a remote record with an undeclared one', async () => {
+    /*
+      `file` joined the closed category enum on 2026-10-03, which is the one kind
+      of addition that moves the domain version: a build that does not know the
+      word cannot parse a record carrying it.
+
+      The guard that matters is `import`: `create` takes its category from the
+      rule layer (typed, in-process), while `import` is the path a *remote*
+      record arrives on — and a record the schema rejects is what stops a vault
+      from opening, so that is the door that has to be shut.
+    */
+    const item = await vault.create({
+      kind: 'file',
+      category: 'file',
+      source: 'panel',
+      attachmentIds: [],
+    })
+    expect(vault.get(item.id)?.category).toBe('file')
+    await expect(
+      vault.import({ ...item, category: 'spreadsheet' as never }),
+    ).rejects.toThrow()
+  })
+
   it('patches classification and the 待看 flag without dropping the other fields', async () => {
     const created = await vault.create({
       kind: 'image',

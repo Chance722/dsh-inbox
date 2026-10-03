@@ -32,6 +32,7 @@ export declare const zh: {
     'category.article': string;
     'category.media': string;
     'category.image': string;
+    'category.file': string;
     'category.document': string;
     'category.secret': string;
     'category.other': string;
@@ -88,6 +89,7 @@ export declare const zh: {
     'detail.save': string;
     'detail.watch': string;
     'detail.unwatch': string;
+    'detail.watchLabel': string;
     'detail.restore': string;
     'detail.delete': string;
     'detail.removeTag': string;
@@ -302,6 +304,7 @@ export declare const MESSAGES: {
         'category.article': string;
         'category.media': string;
         'category.image': string;
+        'category.file': string;
         'category.document': string;
         'category.secret': string;
         'category.other': string;
@@ -358,6 +361,7 @@ export declare const MESSAGES: {
         'detail.save': string;
         'detail.watch': string;
         'detail.unwatch': string;
+        'detail.watchLabel': string;
         'detail.restore': string;
         'detail.delete': string;
         'detail.removeTag': string;

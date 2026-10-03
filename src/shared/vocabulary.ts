@@ -10,12 +10,21 @@
 export const KINDS = ['text', 'link', 'image', 'file'] as const
 export type Kind = (typeof KINDS)[number]
 
-/** How the vault classifies it. Seven top-level buckets, tags carry the rest. */
+/**
+ * How the vault classifies it. Eight top-level buckets, tags carry the rest.
+ *
+ * `file` was added on 2026-10-03 after the user asked "有没有可以补充的": a PDF, a
+ * contract or a spreadsheet had nowhere to land (a dropped attachment was filed
+ * as `image` whatever it was — see `classifyImage`). Everything longer-tailed
+ * than that still belongs in a tag, which is why the list stayed at one new
+ * bucket rather than an editable taxonomy.
+ */
 export const CATEGORIES = [
   'idea',
   'article',
   'media',
   'image',
+  'file',
   'document',
   'secret',
   'other',
@@ -39,6 +48,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   article: '文章',
   media: '视频/音频',
   image: '图片',
+  file: '文件',
   document: '证件',
   secret: '密钥/账密',
   other: '其它',

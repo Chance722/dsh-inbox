@@ -8,8 +8,16 @@
 /** What the pasted thing physically is. */
 export declare const KINDS: readonly ["text", "link", "image", "file"];
 export type Kind = (typeof KINDS)[number];
-/** How the vault classifies it. Seven top-level buckets, tags carry the rest. */
-export declare const CATEGORIES: readonly ["idea", "article", "media", "image", "document", "secret", "other"];
+/**
+ * How the vault classifies it. Eight top-level buckets, tags carry the rest.
+ *
+ * `file` was added on 2026-10-03 after the user asked "有没有可以补充的": a PDF, a
+ * contract or a spreadsheet had nowhere to land (a dropped attachment was filed
+ * as `image` whatever it was — see `classifyImage`). Everything longer-tailed
+ * than that still belongs in a tag, which is why the list stayed at one new
+ * bucket rather than an editable taxonomy.
+ */
+export declare const CATEGORIES: readonly ["idea", "article", "media", "image", "file", "document", "secret", "other"];
 export type Category = (typeof CATEGORIES)[number];
 /** Where the record entered the vault. */
 export declare const SOURCES: readonly ["panel", "chat", "webdav", "import"];

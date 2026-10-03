@@ -262,8 +262,27 @@ const DOCUMENT_RATIOS: readonly (readonly [number, string])[] = [
  * @param dimensions - stored width/height, when known.
  * @returns the verdict.
  */
-export function classifyImage(dimensions: { width?: number; height?: number }): Classification {
-  const { width, height } = dimensions
+export function classifyImage(input: {
+  width?: number
+  height?: number
+  /** The media type, when the caller knows it — a dropped file is not a photo. */
+  mime?: string
+}): Classification {
+  const { width, height } = input
+  /*
+    Everything a person drops used to be filed as `image`, PDFs included: the
+    rule only ever saw width and height, and "no dimensions" was read as "a
+    picture we cannot measure". The media type is the honest signal, so it is
+    asked for first — a video is `media`, anything else that is not an image is
+    the new `file` bucket (2026-10-03).
+  */
+  const mime = input.mime ?? ''
+  if (mime.startsWith('video/') || mime.startsWith('audio/')) {
+    return { category: 'media', confidence: 'decided', reason: '附件本身就是视频或音频' }
+  }
+  if (mime.length > 0 && !mime.startsWith('image/')) {
+    return { category: 'file', confidence: 'decided', reason: '不是图片的附件' }
+  }
   if (width === undefined || height === undefined || width <= 0 || height <= 0) {
     return { category: 'image', confidence: 'unsure', reason: '没有尺寸信息，只能先当图片' }
   }
