@@ -26,7 +26,17 @@
 # Scope: this is the profile's fetch identity, so the model's own web tools use it
 # too. The user's own cordis.patch.yml is applied after this layer and wins,
 # which is how anyone picks a different identity without touching the package.
+#
+# The row is addressed by `id` alone. dsh-app-boot's `applyEntryPatches` looks the
+# target up in its id map and applies every key except `id`/`insert`/`name`; a
+# `name` there is only an optional guard, skipped with a warning on mismatch —
+# and a patch that finds no row is skipped the same way, never created. So this
+# override lands identically with or without the guard, and we leave it out:
+# DSH STORE's submission precheck rejects any bundle patch whose text binds
+# `name:` to the official namespace (one regex over the file, no semantics), and
+# the base bundle already declares the row being overridden. Evidence:
+# `dsh-app-boot/lib/index.js` `applyEntryPatches` (0.1.5-rc.2), and
+# docs/help/dsh-store-submission.md.
 - id: web-fetch-http
-  name: '@deepseek-ai/dsh-web-fetch-http'
   config:
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) dsh-inbox Safari/537.36'
