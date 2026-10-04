@@ -70,6 +70,11 @@ dsh --profile inbox --no-open --port 3102
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) dsh-inbox Safari/537.36'
   ```
 
+  `name:` 那一行在**用户层**是可选的护栏：它只在和目标行对不上时告警跳过，`id` 才是匹配依据。
+  **本包自己的 `cordis.patch.yml` 不能写它**——DSH STORE 的上架预检把 patch 文本里任何
+  `name:` 绑官方命名空间的行当成"冒用官方组件"，一条正则就拒；机制与复检节奏见
+  `dsh-store-submission.md`。
+
   `--dump-config | Select-String web-fetch-http -Context 0,4` 可以确认生效。注意这是**整个 profile 的抓取身份**，模型自己的 web 工具也一起变。哪种形状进哪个桶、拒绝页长什么样、怎么一条命令复查，见 `docs/help/link-title-fetch.md`。
 
 ## 验证模型能调到工具（headless 路线）

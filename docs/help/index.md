@@ -17,6 +17,7 @@
 | 面板主题（深色/浅色）与设计 token | `panel-theme.md` | 怎么问出宿主的配色方案、三个反色坑、镜像页的五个场景；**设计 token 层**（`--ib-*`：面/线/圆角/阴影全从 `currentColor`+`Canvas` 现算，只有强调色与危险色按 scheme 取值）、交互态样式表与两套主题的对比度实测 |
 | 面板的中英双语 | `panel-i18n.md` | 接官方 `ctx.locale`（不是自造开关）、服务缺席时的 `<html lang>` 退路、哪一层文本归谁、为什么"句内碎片"要整句成 key |
 | README 图片资产（封面与截图） | `readme-assets.md` | 封面没有源文件：量出来的字体/字距/几何，改名时怎么只改徽章那一小块 |
+| 上架 DSH STORE（门禁、兼容矩阵、复检） | `dsh-store-submission.md` | 商店预检的两条门禁（patch 里绑官方命名空间的 `name:` 一条正则就拒；滚动三版窗口里要有一个精确 `compatible`）、为什么只按 `id:` 覆盖是等价的（`applyEntryPatches` 源码）、通知一辈子只发一次、pruned 不自动恢复、每次 dsh 发版后的维护清单 |
 
 ## 维护记录
 
