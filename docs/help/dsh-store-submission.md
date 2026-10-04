@@ -62,6 +62,11 @@ for (const [key, value] of Object.entries(overrides)) target[key] = value
 失败结果与跳过是同一个：`name` 不匹配、id 找不到，都是 warning + skip。所以在删掉那一行前后，
 **运行时行为逐字相同**（`docs/help/link-title-fetch.md` 里那套实测矩阵仍然成立）。
 
+**这条证据的边界**：上面读的是本机 profile store 里的 **0.1.5-rc.2** 包；0.2.0-rc.2（桌面端 `D:\deepseek`）
+**不在本机**，那一版没有直接读源码复核。旁证是：dsh 自己在 0.2.0 上写 profile patch 用的就是同一套
+`id` + `name` + `config` 形状（`dsh-plugin-platform.md` 的 0.2.0-rc.2 实测节）。要更强的证据，就在有桌面端的
+机器上按同一条路径读一次 `dsh-app-boot/lib/index.js` 的 `applyEntryPatches()`。
+
 ## 门禁二：滚动三版窗口 + 精确 `dshReleases`
 
 窗口的算法写在契约里：官方 npm `@deepseek-ai/dsh` 的 **`latest` 标签 + 它之前最近两个未弃用发行版**
