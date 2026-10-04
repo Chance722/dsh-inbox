@@ -67,13 +67,13 @@ npx @chance722/dsh-inbox init --profile web --install-pnpm
 # 全新机器（还没跑过 dsh、没有这个 profile）多带一个 --create-profile
 npx @chance722/dsh-inbox init --profile web --create-profile --install-pnpm
 
-# 更新（刚发布 24 小时内把 @latest 换成确切版本，如 @0.2.12）
+# 更新（刚发布 24 小时内把 @latest 换成确切版本，如 @0.2.13）
 dsh plugin --profile web add @chance722/dsh-inbox@latest
 ```
 
 **桌面端（DeepSeek Harness 桌面版）**
 
-侧栏打开**插件** → 安装 → 填 `@chance722/dsh-inbox@latest`（刚发布 24 小时内填 `@0.2.12`）→ 按提示重启。
+侧栏打开**插件** → 安装 → 填 `@chance722/dsh-inbox@latest`（刚发布 24 小时内填 `@0.2.13`）→ 按提示重启。
 
 输入框也收 GitHub 地址（`https://github.com/Chance722/dsh-inbox`）：仓库里带着构建产物，装起来和包名一样直接、不需要任何额外步骤；升级时重装即可，日常仍建议用包名。
 

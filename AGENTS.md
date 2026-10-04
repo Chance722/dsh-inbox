@@ -6,7 +6,7 @@
 
 - **一句话**：dsh-inbox 是 DeepSeek Harness（dsh）的插件，把日常复制粘贴的链接、图片、文本、账密收进一个本地仓库，自动分类、可在侧栏浏览、可在 dsh 对话里检索取回。
 - **面向谁**：公开 npm 包 `@chance722/dsh-inbox`，任何人都能像装社区插件一样安装。
-- **当前阶段**：**M0–M8 已验收**（阶段、验收标准与记录见 `docs/feature/dev-bus.md`）；此后按模块继续（面板中英双语等）。当前版本 `0.2.12`（`package.json` 是版本的单一源，这里只是回显）。
+- **当前阶段**：**M0–M8 已验收**（阶段、验收标准与记录见 `docs/feature/dev-bus.md`）；此后按模块继续（面板中英双语等）。当前版本 `0.2.13`（`package.json` 是版本的单一源，这里只是回显）。
 - **平台**：代码跨平台；**v1 只在 Windows 实测验收**，macOS/Linux 未验证（README 需如实写明）。
 - **包名**：`@chance722/dsh-inbox`。
 
@@ -175,6 +175,7 @@ docs/
 - **同源路由只发白名单类型**：附件路由与面板同源，因此可服务的媒体类型是白名单（`INBOX_IMAGE_TYPES` 或 `video/`、`audio/`）+ `nosniff`；**绝不按客户端声明的类型发任意 content-type**（`image/svg+xml`、`text/html` 这类同源可执行）
 - **对外请求只走官方 seam**：抓链接标题（`src/host/link-title.ts`）是唯一的"插件自己发起的对外请求"，它一次只 GET 一个 URL，必须走 `ctx.web`（`@deepseek-ai/dsh-web`：解析并固定公网地址、拒私网、只跟同源跳转、限时限量、不带 cookie）；**只在本机捕获的 `kind=link` 上触发**，远端同步拉进来的链接不抓。改这里前先读第 4 条和第 3 条：一次外发请求等于告诉对方"这台机器打开过这个链接"
 - **抓不到 ≠ 站点不给，也可能是"抓到的是拒绝页"**（2026-09-20 微信、2026-09-21 bilibili）：站点按 UA **形状**认客户端，而 UA **不是每次请求的参数**（`WebFetchRequest` 只有 `url`）——身份只属于 profile 里 `web-fetch-http` 的配置，**本包自带的 `cordis.patch.yml` 已把它设成浏览器形状 + 自报家门**（`… (KHTML, like Gecko) dsh-inbox Safari/537.36`；用户自己的 profile patch 仍然优先）。bilibili 的拒绝页是 HTTP 200 且**带真标题**（「验证码_哔哩哔哩」），所以 `link-title.ts` 的 `looksLikeRefusal` 判到拒绝页就不取名、只记 `linkTitleError: refused-page`，名字位退回显示链接本身。下一次遇到"抓不到"，先看我们发了什么头、那个页面到底是什么，再下结论；实测矩阵见 `docs/help/link-title-fetch.md`
+- **bundle patch 只写插件自有 ID，不许把 `name:` 绑到官方命名空间**（2026-10-04 DSH STORE 预检实测：一条正则就拒，注释里也算；我们覆盖 `web-fetch-http` 的 UA 因此只写 `id` + `config`，与原来逐字等价）。上架契约、滚动三版兼容窗口与复检节奏见 `docs/help/dsh-store-submission.md`
 - **日志只记 host**：抓取类诊断日志打 `new URL(url).host`，**不打整条 URL**——query 里可能带着 token；失败原因要能被用户看见就写进记录（`linkTitleError` 这类字段），别指望日志（`ctx.logger.info` 默认不落 stdout，实测过）
 - 权限/越权/资金/对外接口相关改动，提交前按层 2 重点审查
 

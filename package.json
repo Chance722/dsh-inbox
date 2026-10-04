@@ -1,6 +1,6 @@
 {
   "name": "@chance722/dsh-inbox",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "private": false,
   "description": "Personal paste inbox for DeepSeek Harness (dsh): capture, classify, browse and retrieve.",
   "keywords": [
@@ -24,6 +24,9 @@
   },
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
   "main": "lib/index.js",
   "types": "lib/types/host/index.d.ts",
   "exports": {
@@ -58,6 +61,18 @@
         "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-sidebar"
       ]
+    },
+    "compatibility": {
+      "dsh": "^0.1.5-rc.2 || ^0.2.0-rc.2",
+      "dshReleases": {
+        "0.1.5-rc.2": "unknown",
+        "0.1.6-alpha.1": "unknown",
+        "0.1.6-alpha.2": "unknown",
+        "0.1.7-rc.2": "unknown",
+        "0.2.0-rc.1": "unknown",
+        "0.2.0-rc.2": "compatible",
+        "0.2.1-alpha.1": "unknown"
+      }
     }
   },
   "scripts": {
