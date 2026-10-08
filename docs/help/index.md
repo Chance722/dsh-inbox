@@ -18,6 +18,7 @@
 | 面板的中英双语 | `panel-i18n.md` | 接官方 `ctx.locale`（不是自造开关）、服务缺席时的 `<html lang>` 退路、哪一层文本归谁、为什么"句内碎片"要整句成 key |
 | README 图片资产（封面与截图） | `readme-assets.md` | 封面没有源文件：量出来的字体/字距/几何，改名时怎么只改徽章那一小块 |
 | 上架 DSH STORE（门禁、兼容矩阵、复检） | `dsh-store-submission.md` | 商店预检的两条门禁（patch 里绑官方命名空间的 `name:` 一条正则就拒；滚动三版窗口里要有一个精确 `compatible`）、为什么只按 `id:` 覆盖是等价的（`applyEntryPatches` 源码）、通知一辈子只发一次、pruned 不自动恢复、每次 dsh 发版后的维护清单 |
+| 把 dsh 部署到服务器常驻 | `dsh-server-deploy.md` | 在线性的来源是**宿主进程**而不是页面：Node 装独立前缀（不动系统 node）、shipped `web` 模板建 profile、systemd 单元（内存上限 / `NoNewPrivileges` / 别忘 `[Install]`）、为什么 `--host 0.0.0.0` 被 CLI 拒绝、token → 30 天 cookie（**重启后仍有效**，实测）、SSH 隧道访问（含"页面不写死端口、围栏按回环放行"的实测）、移动端三条路（未实测）、Windows PowerShell 5.1 按 GBK 读 `.ps1` 的坑 |
 
 ## 维护记录
 
