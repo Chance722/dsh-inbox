@@ -219,6 +219,94 @@ describe('pushOnce', () => {
     expect(written.every((path) => !path.includes(second.item.id))).toBe(true)
   })
 
+  it('comes back for a record that failed, instead of walking past it', async () => {
+    /*
+      The 2026-10-08 report: five records that only ever existed on one machine,
+      while the panel said 「最新」. The push advanced its cursor to `now` because
+      *something* had succeeded, and the record that failed sat behind it.
+    */
+    await captureText(vault, '第一条', 'panel')
+    const stubborn = await captureText(vault, 'https://example.com/b', 'panel')
+    const refuse = async (path: string): Promise<void> => {
+      if (path.includes(stubborn.item.id)) throw new Error('HTTP 403 · AccessDenied')
+    }
+
+    const partial = await pushOnce(vault, fakeAttachments(new Map()), refuse, 'inbox/sync')
+    expect(partial.status).toBe('partial')
+    expect(Date.parse(vault.global.sync.lastPushAt ?? '')).toBeLessThan(
+      Date.parse(stubborn.item.updatedAt),
+    )
+
+    const second = recorder()
+    const retried = await pushOnce(vault, fakeAttachments(new Map()), second.write, 'inbox/sync')
+
+    expect(retried.status).toBe('ok')
+    expect(second.written.has(`inbox/sync/items/${stubborn.item.id}.json`)).toBe(true)
+    // Only once the record is through does the cursor move past it.
+    expect(Date.parse(vault.global.sync.lastPushAt ?? '')).toBeGreaterThan(
+      Date.parse(stubborn.item.updatedAt),
+    )
+  })
+
+  it('re-offers the record when its attachment did not make it', async () => {
+    /*
+      The quiet half of the same bug: the record's JSON goes up, the bytes do
+      not, and the cursor used to move on — leaving a remote record that points
+      at an object nobody ever uploaded.
+    */
+    const attachment = await vault.addAttachment({
+      storeId: 'sha256:present',
+      mime: 'image/png',
+      bytes: 4,
+      width: 1,
+      height: 1,
+    })
+    await vault.create({
+      kind: 'image',
+      category: 'image',
+      source: 'panel',
+      attachmentIds: [attachment.id],
+    })
+    const filed = vault.list()[0]
+    const filedAt = filed?.updatedAt ?? ''
+
+    const first = recorder()
+    const partial = await pushOnce(vault, fakeAttachments(new Map()), first.write, 'inbox/sync')
+
+    expect(partial.status).toBe('partial')
+    expect(first.written.has(`inbox/sync/items/${filed?.id ?? ''}.json`)).toBe(true)
+    expect(Date.parse(vault.global.sync.lastPushAt ?? '')).toBeLessThan(Date.parse(filedAt))
+
+    // Once this host can hand the bytes over, the next push carries both again.
+    const files = new Map([['sha256:present', new Uint8Array([1, 2, 3, 4])]])
+    const second = recorder()
+    const retried = await pushOnce(vault, fakeAttachments(files), second.write, 'inbox/sync')
+
+    expect(retried.status).toBe('ok')
+    expect(retried.attachments).toBe(1)
+    expect(second.written.has(`inbox/sync/items/${filed?.id ?? ''}.json`)).toBe(true)
+  })
+
+  it('does not pin the cursor for a failed readable view', async () => {
+    /*
+      The deliberate exception, locked down so nobody "fixes" it later: the JSON
+      is the truth and the `.txt` is regenerated on every push, so a remote that
+      dislikes `text/plain` must not pull the whole delta back every time.
+    */
+    const filed = await captureText(vault, '只坏了文本视图', 'panel')
+    const write = async (path: string): Promise<void> => {
+      if (path.endsWith('.txt')) throw new Error('HTTP 415 · UnsupportedMediaType')
+    }
+
+    const result = await pushOnce(vault, fakeAttachments(new Map()), write, 'inbox/sync')
+
+    expect(result.status).toBe('partial')
+    expect(result.reason).toContain('文本视图')
+    expect(Date.parse(vault.global.sync.lastPushAt ?? '')).toBeGreaterThan(
+      Date.parse(filed.item.updatedAt),
+    )
+  })
+
   it('still syncs a record whose bytes this host cannot read', async () => {
     const attachment = await vault.addAttachment({
       storeId: 'sha256:missing',

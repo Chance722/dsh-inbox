@@ -287,6 +287,18 @@ export async function pushOnce(
   let attachmentCount = 0
   let skipped = 0
   const failures: string[] = []
+  /*
+    The oldest record whose data did not fully reach the remote.
+
+    `lastPushAt` may only ever name a point everything below it has *already*
+    reached. A record that failed its JSON write, or that got its JSON up while
+    an attachment did not make it, belongs after that point — so the next push
+    has to offer it again instead of walking past it forever.
+  */
+  let retryFrom: string | undefined
+  const pinFrom = (updatedAt: string): void => {
+    if (retryFrom === undefined || updatedAt < retryFrom) retryFrom = updatedAt
+  }
 
   // Attachments are pushed once per push, however many records reference them:
   // the store is content-addressed, so the same bytes are the same object.
@@ -328,6 +340,7 @@ export async function pushOnce(
       pushed += 1
     } catch (error) {
       failures.push(`记录 ${item.id}：${reasonOf(error)}`)
+      pinFrom(item.updatedAt)
       continue
     }
 
@@ -347,6 +360,7 @@ export async function pushOnce(
       const bytes = await bytesOf(attachments, record)
       if (bytes === undefined) {
         failures.push(`附件 ${attachmentId}：本机拿不到字节`)
+        pinFrom(item.updatedAt)
         continue
       }
       try {
@@ -376,6 +390,7 @@ export async function pushOnce(
         attachmentCount += 1
       } catch (error) {
         failures.push(`附件 ${attachmentId}：${reasonOf(error)}`)
+        pinFrom(item.updatedAt)
       }
     }
 
@@ -398,7 +413,28 @@ export async function pushOnce(
   }
 
   const now = new Date().toISOString()
-  if (pushed > 0 || attachmentCount > 0) await vault.setSync({ ...vault.global.sync, lastPushAt: now })
+  /*
+    Where the cursor lands once the run is over.
+
+    Advance to `now` only when every record's data reached the remote. When
+    something did not, stop one millisecond *before* the oldest record that
+    failed: everything below that point is confirmed, and the next push picks
+    the failures (plus anything newer) up again. Jumping to `now` regardless was
+    the bug behind the 2026-10-08 report — a push in which anything succeeded
+    moved the cursor past records that had just failed, and nothing ever came
+    back for them: the panel said 「最新」 while five records lived on one machine
+    only.
+
+    A failure in the readable `.txt` view deliberately does *not* pin the cursor.
+    The JSON beside it is the truth and the view is rewritten on every push, so
+    pinning would mean a remote that dislikes `text/plain` re-uploads the whole
+    delta forever in exchange for a cosmetic object.
+  */
+  const before = retryFrom === undefined ? undefined : Date.parse(retryFrom) - 1
+  const cursor = before === undefined || Number.isNaN(before) ? now : new Date(before).toISOString()
+  if (retryFrom !== undefined || pushed + attachmentCount > 0) {
+    await vault.setSync({ ...vault.global.sync, lastPushAt: cursor })
+  }
 
   return {
     status: failures.length === 0 ? 'ok' : pushed + attachmentCount === 0 ? 'failed' : 'partial',
@@ -406,7 +442,7 @@ export async function pushOnce(
     attachments: attachmentCount,
     skipped,
     listed: items.length,
-    lastPushAt: now,
+    lastPushAt: cursor,
     ...(failures.length === 0 ? {} : { reason: failures.slice(0, 3).join('；') }),
   }
 }
