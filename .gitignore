@@ -31,3 +31,4 @@ Thumbs.db
 # ships only `lib/` and `cordis.patch.yml`.
 scripts/duoyu-dsh-ui.ps1
 scripts/duoyu-dsh-ui.cmd
+scripts/duoyu-dsh-ops.md
