@@ -403,18 +403,26 @@ export function registerInboxTools(ctx: Context, vault: () => Vault | undefined)
     by rule (or by one redacted model pass) exactly as a paste would be, a
     credential is sealed before it reaches the domain, and no path here can set
     a `title` — naming a record stays the user's own act in the panel.
+
+    The description carries *when* as carefully as *what*: it names the
+    phrasings that mean 留着 and, just as deliberately, the questions that mean
+    only 看看. An eager model filing the link the user asked about would fill the
+    vault with things nobody asked to keep, which is the one failure mode this
+    feature can actually introduce.
   */
   ctx.tools.register(
     defineTool({
       name: 'inbox_put',
       description:
         "File something into the user's dsh-inbox — their 收件箱, which they also call 仓库 / 个人仓库 / inbox: the " +
-        'local store where they keep links, text and credentials. Use it when they hand you something and ask you to ' +
-        'keep it: a link, a paragraph, a snippet, something they dictate. A bare URL is filed as a link (the store ' +
-        'fetches the page’s own headline for it); anything else is filed as text. Filing the same thing twice merges ' +
-        'into the record already there rather than storing a second copy. It never names a record, and it refuses a ' +
-        'credential while the vault is locked. Report what the result says in its own words; do not write the content ' +
-        'back into your reply.',
+        'local store where they keep links, text and credentials. Use it only when they hand you something *and* ask ' +
+        'you to keep it — 帮我存进收件箱 / 这个收一下 / 帮我收着 / 存到仓库里 — a link, a paragraph, a snippet, ' +
+        'something they dictate. Do not file what they only asked you to look at, read, summarise or discuss: 「这个' +
+        '链接讲了什么」「帮我看下这条」「总结一下」are questions to answer, not things to keep. A bare URL is filed ' +
+        'as a link (the store fetches the page’s own headline for it); anything else is filed as text. Filing the ' +
+        'same thing twice merges into the record already there rather than storing a second copy. It never names a ' +
+        'record, and it refuses a credential while the vault is locked. Report what the result says in its own ' +
+        'words; do not write the content back into your reply.',
       parameters: {
         text: {
           type: 'string',

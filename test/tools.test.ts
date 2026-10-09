@@ -33,6 +33,7 @@ const capture = (target: Vault, payload: { text: string }, source: Source) =>
 /** A registered tool definition, as much of it as these tests touch. */
 interface RegisteredTool {
   name: string
+  description?: string
   execute: (args: Record<string, unknown>, exec?: unknown) => Promise<string>
   output?: {
     /** The content parts a settled call renders; only `inbox_get` varies them. */
@@ -268,6 +269,15 @@ describe('inbox_get', () => {
 })
 
 describe('inbox_put', () => {
+  it('carries the trigger as well as the shape: 留着 files, 看看 only answers', async () => {
+    // The one failure mode this tool can introduce is filing what the user only
+    // asked about, so the description is the guard and it is pinned here.
+    const description = tools.get('inbox_put')?.description ?? ''
+    expect(description).toContain('存进收件箱')
+    expect(description).toContain('Do not file')
+    expect(description).toContain('总结一下')
+  })
+
   it('files what it was handed, in the same words the panel uses', async () => {
     expect(await call('inbox_put', { text: '记得给 dsh-inbox 写文档' })).toBe('已存入 1 条')
     expect(vault?.list()[0]?.text).toBe('记得给 dsh-inbox 写文档')
