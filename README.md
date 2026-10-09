@@ -16,12 +16,12 @@ Everything lands on your machine, and the model only sees a record when you ask 
 
 | Feature | What it does |
 |---|---|
-| **Two ways in** | `/inbox <text or link>` in the composer (attach images to carry them along), or paste / drop / pick a file in the panel |
+| **Three ways in** | `/inbox <text or link>` in the composer (attach images to carry them along), paste / drop / pick a file in the panel, or ask the assistant to keep something |
 | **Automatic classification** | Links by platform and media type (60-odd sites: Bilibili, YouTube, WeChat, 掘金, Zhihu…), text by credential shape, images get a 疑似证件 tag at card proportions; the rest goes to the model, with a daily cap |
 | **Panel** | Filter by watch-later / category / tag, search title, text, link and note, two list densities; the detail pane edits name, category, note and tags, flags watch-later, deletes and restores — and it follows dsh's theme **and language** |
 | **Every record has a name** | A link takes the page's own headline (no model tokens), a photo or file its file name, and the name you type always wins. A page that will not be read — an anti-bot page, a dead link — leaves the address as the name rather than a guess |
 | **Who judged the category** | A coloured badge: 规则判定 (local rules) / 模型判定 (the capped model pass) / 手动判定 (yours — nothing overwrites it later) |
-| **Ask in conversation** | Ask for 收件箱 / 仓库 / inbox and the assistant searches by words, category, tag, watch-later flag or kind (ten at a time plus a count, thumbnails inline) and opens one by id (text up to 1000 characters, link, note, tags, attachments). 「打开 ↗」 under an answer jumps to that record in the 仓库 tab |
+| **Ask in conversation** | Ask for 收件箱 / 仓库 / inbox and the assistant searches by words, category, tag, watch-later flag or kind (ten at a time plus a count, thumbnails inline) and opens one by id (text up to 1000 characters, link, note, tags, attachments). 「打开 ↗」 under an answer jumps to that record in the 仓库 tab. Hand it something to keep and it files that too — no name, and no credential while the vault is locked |
 | **Looking at a picture** | Image bytes stay out of the conversation; ask the assistant to look at one and that single image is sent — explicitly, per call |
 | **Credentials are safe** | The body is encrypted at rest, with a key derived from your master password — neither is ever written down. The list shows only the name you gave it, and plain text never reaches a conversation or a model |
 | **Two-way sync** | Point it at a WebDAV folder or an S3 bucket: changes push a few seconds later, 「同步」 runs a full push-then-pull merged per record by `id` + timestamp, and emptying the recycle bin deletes the cloud copies too. Two machines see each other when they share one 「目录」 |
@@ -37,6 +37,8 @@ Everything lands on your machine, and the model only sees a record when you ask 
 **① File something from the conversation**
 
 `/inbox` in the composer, followed by text or a link, with images attached right there — **this never reaches the model**, it only goes into the vault. That is the way to file credentials and throwaway links.
+
+Or just say so — "keep this in my inbox", with the link or the paragraph right there — and the assistant files it for you. That path **does** put the content in front of the model on the way through, so `/inbox` stays the way to file credentials.
 
 **② Ask for it later**
 
@@ -154,9 +156,9 @@ With a remote configured and `/inbox` as the directory:
 - **That covers the body only**: notes, categories, tags, timestamps and attachment **bytes** are not encrypted — a key inside a pasted file is still a key inside a file.
 - **Masked where it matters**: a credential is listed by the name you gave it, and its plain text never reaches a conversation or a model.
 - **Pictures**: classification does send an image to the model, and the conversation gets an `[attachment:id]` marker — that one image is sent only when you explicitly ask the assistant to look at it.
-- **The model cannot see your vault** unless you ask it to look, and classification requests are redacted first.
+- **The model cannot see your vault** unless you ask it to look, and classification requests are redacted first. It can also file what you hand it (see "Two ways to use it"), and a record written that way lands exactly like a paste: no name, credentials still refused while the vault is locked.
 - **Your remote needs access control**: only credential bodies are ciphertext up there — text, links, notes and attachment bytes are in the clear, and the master password and key never sync. One extra file, `sync/master.json`, holds the **non-secret** derivation parameters (salt, work factors, a check value) so the **same master password opens synced credentials on any machine** — on a second machine, enter the password you set on the first.
-- **One thing the install changes outside the panel**: reading a pasted link's headline is the plugin's only outbound request (one GET, only for links captured on this machine, never for links that came through sync). It goes out with a **browser-shaped** identity, an override of `web-fetch-http.userAgent` shipped in this package's `cordis.patch.yml`. That identity is the whole profile's, the model's own web tools included; **your own `cordis.patch.yml` overrides it**. Details: [docs/help/link-title-fetch.md](docs/help/link-title-fetch.md).
+- **One thing the install changes outside the panel**: reading a link's headline is the plugin's only outbound request (one GET, only for links captured on this machine — pasted, dropped, or handed to the assistant — never for links that came through sync). It goes out with a **browser-shaped** identity, an override of `web-fetch-http.userAgent` shipped in this package's `cordis.patch.yml`. That identity is the whole profile's, the model's own web tools included; **your own `cordis.patch.yml` overrides it**. Details: [docs/help/link-title-fetch.md](docs/help/link-title-fetch.md).
 
 ## Development
 

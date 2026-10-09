@@ -85,6 +85,8 @@ dsh plugin --profile inbox-check add <仓库路径>
 dsh --profile inbox-check "调用 inbox_status 工具，把它的原始结果原样贴给我。"
 # 期望：dsh-inbox v0.2.9: vault open, N record(s).
 # 顺带验命中：dsh --profile inbox-check "我的个人仓库里有哪些还没看的链接？"（应调用 inbox_search）
+# 顺带验写入：dsh --profile inbox-check "把这个存进收件箱：https://example.com/a"（应调用 inbox_put，回「已存入 1 条」）
+#   再用 inbox_search 复查那条确实在；账密类在仓库没解锁时会被拒收——那是设计，不是故障
 ```
 
 跑完把临时 profile 删掉（`%DSH_HOME%\profiles\inbox-check`）。**注意** `pnpm build` 之后才会带上最新代码：headless 启动时装载 `lib/`。
