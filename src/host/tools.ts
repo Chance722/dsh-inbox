@@ -14,6 +14,10 @@
  *    `inbox_get` with `withImage: true` — the user asking "look at the picture
  *    and tell me what it is" is a request the model cannot honour otherwise,
  *    and it is opt-in per call, by name, never the default.
+ *
+ * `inbox_put` is the one tool here that *writes*, and the same two rules shape
+ * it: what it files is the vault's business, and what it answers with is a
+ * count, never the content it was handed back.
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -23,6 +27,7 @@ import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import {
   INBOX_IMAGE_TYPES,
   MAX_FILTER_CHARS,
+  MAX_TEXT_CHARS,
   PREVIEW_CHARS,
   type AttachmentSummary,
   type EntrySummary,
@@ -33,8 +38,10 @@ import {
   type Category,
   type Kind,
 } from '../shared/vocabulary.js'
+import { capture, describe } from './capture.js'
+import { makeAutoPush, scheduleAutoPush } from './remote/auto-push.js'
 import type { Attachment, Item } from './vault/spec.js'
-import type { Vault } from './vault/vault.js'
+import { VaultLockedError, type Vault } from './vault/vault.js'
 
 /** How many records one search answers with before saying "there are more". */
 export const SEARCH_PAGE = 10
@@ -275,6 +282,19 @@ function narrow<T extends string>(values: readonly T[], raw: string | undefined)
  * @param vault - reads the currently open vault, which may not be open yet.
  */
 export function registerInboxTools(ctx: Context, vault: () => Vault | undefined): void {
+  /*
+    Storing through a tool is the same news for the other machines as storing
+    through the panel, so it earns the same debounced push — otherwise a record
+    the user filed from 微信 would sit on this machine until someone opened the
+    panel. Wired lazily and exactly like `/inbox`: the attachment store arrives
+    with the same injection the panel's routes use, and a composition without it
+    simply has nothing to push with.
+  */
+  let autoPush: (() => Promise<unknown>) | undefined
+  ctx.inject(['attachments'], (scoped) => {
+    autoPush = makeAutoPush(scoped, vault, () => scoped.attachments)
+  })
+
   ctx.tools.register(
     defineTool({
       name: 'inbox_search',
@@ -370,6 +390,72 @@ export function registerInboxTools(ctx: Context, vault: () => Vault | undefined)
         if (item === undefined) return `没找到 id 为 ${args.id} 的记录；它可能已经被删掉了。`
 
         return formatDetail(open, item)
+      },
+    }),
+  )
+
+  /*
+    The way *in*: a conversation that hands the vault something to keep.
+
+    Everything else here reads. This is the only tool a model can use to file
+    something, and it goes through the same `capture` the panel and `/inbox`
+    use, which is what keeps the red lines honest for free: the record is filed
+    by rule (or by one redacted model pass) exactly as a paste would be, a
+    credential is sealed before it reaches the domain, and no path here can set
+    a `title` — naming a record stays the user's own act in the panel.
+  */
+  ctx.tools.register(
+    defineTool({
+      name: 'inbox_put',
+      description:
+        "File something into the user's dsh-inbox — their 收件箱, which they also call 仓库 / 个人仓库 / inbox: the " +
+        'local store where they keep links, text and credentials. Use it when they hand you something and ask you to ' +
+        'keep it: a link, a paragraph, a snippet, something they dictate. A bare URL is filed as a link (the store ' +
+        'fetches the page’s own headline for it); anything else is filed as text. Filing the same thing twice merges ' +
+        'into the record already there rather than storing a second copy. It never names a record, and it refuses a ' +
+        'credential while the vault is locked. Report what the result says in its own words; do not write the content ' +
+        'back into your reply.',
+      parameters: {
+        text: {
+          type: 'string',
+          required: true,
+          description:
+            'Exactly what to keep: a URL, a paragraph, a snippet. The store decides which kind it is.',
+        },
+      },
+      output: {
+        schema: { type: 'string' },
+        render: (_args, value) => [{ type: 'text', text: value }],
+      },
+      async execute(args) {
+        const open = vault()
+        if (open === undefined) return '仓库没有打开（或打开失败），暂时存不进去。'
+
+        const text = args.text.trim()
+        if (text.length === 0) return '没东西可存：把要留的文字或链接给我。'
+        if (text.length > MAX_TEXT_CHARS) {
+          return (
+            `一次最多存 ${String(MAX_TEXT_CHARS)} 字，这条有 ${String(text.length)} 字：` +
+            '拆成几段再存，或者让用户直接在面板里粘。'
+          )
+        }
+
+        try {
+          // Same entry point as a paste, so a rule verdict, a model pass and the
+          // merge into a repeat all behave here exactly as they do in the panel.
+          const summary = await capture(open, { text }, 'chat', { ctx })
+          if (autoPush !== undefined && summary.stored > 0) scheduleAutoPush(autoPush)
+          return describe(summary)
+        } catch (error) {
+          if (error instanceof VaultLockedError) {
+            // The error already names the fix. What the model needs on top of it
+            // is that nothing was stored and that repeating the body back is not
+            // the way to help — the plaintext never reaches the disk, and it does
+            // not need to reach the conversation a second time either.
+            return `${error.message}。这条没有入库，明文也不会退回保存：请让用户先在面板里解锁，再说一次。`
+          }
+          return `存不进去：${error instanceof Error ? error.message : String(error)}`
+        }
       },
     }),
   )

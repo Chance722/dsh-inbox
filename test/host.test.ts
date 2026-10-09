@@ -42,7 +42,7 @@ describe('dsh-inbox host half', () => {
     const names = register.mock.calls.map(
       (call) => (call[0] as { name: string }).name,
     )
-    expect(names).toEqual(['inbox_search', 'inbox_get', 'inbox_status'])
+    expect(names).toEqual(['inbox_search', 'inbox_get', 'inbox_put', 'inbox_status'])
   })
 
   it('registers the /inbox command without recording its input', () => {

@@ -693,6 +693,14 @@ export interface TagRequest {
 /** How much stored text a list row shows before the panel truncates it. */
 export const PREVIEW_CHARS = 140
 
+/**
+ * Ceiling on one pasted string, so a runaway paste cannot bloat the domain.
+ *
+ * It guards every way in: the panel's own `capture` route, and a model handing
+ * something over through `inbox_put`.
+ */
+export const MAX_TEXT_CHARS = 200_000
+
 /** Most attachments one submission may carry; mirrors the composer's own ceiling. */
 export const MAX_ATTACHMENTS_PER_SUBMISSION = 20
 

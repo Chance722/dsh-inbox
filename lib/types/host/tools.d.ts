@@ -14,11 +14,15 @@
  *    `inbox_get` with `withImage: true` — the user asking "look at the picture
  *    and tell me what it is" is a request the model cannot honour otherwise,
  *    and it is opt-in per call, by name, never the default.
+ *
+ * `inbox_put` is the one tool here that *writes*, and the same two rules shape
+ * it: what it files is the vault's business, and what it answers with is a
+ * count, never the content it was handed back.
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { type AttachmentSummary, type EntrySummary } from '../shared/panel-wire.js';
 import type { Item } from './vault/spec.js';
-import type { Vault } from './vault/vault.js';
+import { type Vault } from './vault/vault.js';
 /** How many records one search answers with before saying "there are more". */
 export declare const SEARCH_PAGE = 10;
 /** How much of a stored text the model reads; the rest stays in the vault. */

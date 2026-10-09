@@ -16,8 +16,6 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { type Vault } from './vault/vault.js';
-/** Ceiling on one pasted string, so a runaway paste cannot bloat the domain. */
-export declare const MAX_TEXT_CHARS = 200000;
 /**
  * Register the panel's endpoints.
  *

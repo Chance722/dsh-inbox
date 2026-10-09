@@ -48,6 +48,16 @@ let tools: Map<string, RegisteredTool>
 /** Capture the definitions the plugin registers, without a tool registry. */
 function mount(): void {
   const fake = {
+    /*
+      What a bare composition looks like: no model runtime, no web seam, no
+      attachment store. `inject` answers with an empty scope, so the debounced
+      push `inbox_put` wires stays defined but has nothing to push with —
+      the same shape `command.test.ts` runs `/inbox` under.
+    */
+    get: () => undefined,
+    inject: (_deps: readonly string[], run: (scoped: unknown) => void) => {
+      run({})
+    },
     tools: {
       register: (definition: RegisteredTool) => {
         tools.set(definition.name, definition)
@@ -254,5 +264,60 @@ describe('inbox_get', () => {
 
   it('says when the id is unknown', async () => {
     expect(await call('inbox_get', { id: 'nope' })).toContain('没找到')
+  })
+})
+
+describe('inbox_put', () => {
+  it('files what it was handed, in the same words the panel uses', async () => {
+    expect(await call('inbox_put', { text: '记得给 dsh-inbox 写文档' })).toBe('已存入 1 条')
+    expect(vault?.list()[0]?.text).toBe('记得给 dsh-inbox 写文档')
+  })
+
+  it('files a bare link as a link, with the platform the host implies', async () => {
+    expect(await call('inbox_put', { text: 'https://mp.weixin.qq.com/s/abc' })).toBe('已存入 1 条')
+    expect(vault?.list()[0]).toMatchObject({ kind: 'link', platform: 'wechat' })
+  })
+
+  it('merges a repeat instead of storing a second copy', async () => {
+    await call('inbox_put', { text: '同一句话' })
+    expect(await call('inbox_put', { text: '同一句话' })).toBe('合并 1 条重复项')
+    expect(vault?.size).toBe(1)
+  })
+
+  it('never names a record: the title stays the user’s own field', async () => {
+    await call('inbox_put', { text: '一段没有名字的灵感' })
+    expect(vault?.list()[0]?.title).toBeUndefined()
+  })
+
+  it('answers with a count, never with the content it filed', async () => {
+    const answer = await call('inbox_put', { text: '这句话只该出现在仓库里' })
+    expect(answer).not.toContain('这句话只该出现在仓库里')
+  })
+
+  it('refuses a credential while the vault is locked, and says how to unlock', async () => {
+    const answer = await call('inbox_put', { text: 'password=hunter2' })
+    expect(answer).toContain('解锁')
+    expect(answer).not.toContain('hunter2')
+    // Nothing landed at all: no key means no plaintext on disk, ever.
+    expect(vault?.size).toBe(0)
+  })
+
+  it('files that same credential once the vault is unlocked', async () => {
+    await vault!.setMasterPassword('测试用主密码')
+    expect(await call('inbox_put', { text: 'password=hunter2' })).toBe('已存入 1 条')
+    expect(vault?.list()[0]?.category).toBe('secret')
+    // Sealed, not plain: the body is never the stored text.
+    expect(vault?.list()[0]?.text).toBeUndefined()
+  })
+
+  it('refuses an empty hand-over', async () => {
+    expect(await call('inbox_put', { text: '   ' })).toContain('没东西可存')
+    expect(vault?.size).toBe(0)
+  })
+
+  it('says when the vault is closed', async () => {
+    await vault?.close()
+    vault = undefined
+    expect(await call('inbox_put', { text: '随便什么' })).toContain('仓库没有打开')
   })
 })

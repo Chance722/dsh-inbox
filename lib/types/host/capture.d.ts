@@ -104,6 +104,19 @@ export interface CaptureOptions {
     ctx?: Context;
 }
 /**
+ * One line saying what a submission did, in the panel's own words.
+ *
+ * Shared by every way in — the panel, `/inbox` and a model calling `inbox_put`
+ * — so the user reads the same sentence wherever the capture came from. It
+ * deliberately says nothing about *what* was filed: the record is the place
+ * that holds the content, and a summary that repeated it would be one more copy
+ * of a credential in a log.
+ *
+ * @param summary - the roll-up `capture` returned.
+ * @returns e.g. 「已存入 1 条，合并 1 条重复项」.
+ */
+export declare function describe(summary: CaptureSummary): string;
+/**
  * File one submission from any entry point.
  *
  * Order is attachments first, then text, so a note that arrived with the

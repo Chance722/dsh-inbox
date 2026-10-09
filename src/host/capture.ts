@@ -303,6 +303,29 @@ export interface CaptureOptions {
 }
 
 /**
+ * One line saying what a submission did, in the panel's own words.
+ *
+ * Shared by every way in — the panel, `/inbox` and a model calling `inbox_put`
+ * — so the user reads the same sentence wherever the capture came from. It
+ * deliberately says nothing about *what* was filed: the record is the place
+ * that holds the content, and a summary that repeated it would be one more copy
+ * of a credential in a log.
+ *
+ * @param summary - the roll-up `capture` returned.
+ * @returns e.g. 「已存入 1 条，合并 1 条重复项」.
+ */
+export function describe(summary: CaptureSummary): string {
+  const parts: string[] = []
+  if (summary.stored > 0) parts.push(`已存入 ${String(summary.stored)} 条`)
+  // A record taken back out of the recycle bin is not "a repeat that did
+  // nothing": it is back in the list, and saying so is the whole point.
+  const repeats = summary.merged - summary.restored
+  if (repeats > 0) parts.push(`合并 ${String(repeats)} 条重复项`)
+  if (summary.restored > 0) parts.push(`从回收站取回 ${String(summary.restored)} 条`)
+  return parts.join('，')
+}
+
+/**
  * File one submission from any entry point.
  *
  * Order is attachments first, then text, so a note that arrived with the

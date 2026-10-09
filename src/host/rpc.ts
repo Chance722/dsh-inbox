@@ -52,6 +52,7 @@ import {
   MAX_NOTE_CHARS,
   MAX_TAGS,
   MAX_TAG_CHARS,
+  MAX_TEXT_CHARS,
   MAX_TITLE_CHARS,
   PREVIEW_CHARS,
   type AttachmentSummary,
@@ -91,9 +92,6 @@ import { readUiPrefs, saveUiPrefs } from './ui/config.js'
 import type { PullResult } from '../shared/panel-wire.js'
 import type { Attachment, Item } from './vault/spec.js'
 import { VaultLockedError, type Vault } from './vault/vault.js'
-
-/** Ceiling on one pasted string, so a runaway paste cannot bloat the domain. */
-export const MAX_TEXT_CHARS = 200_000
 
 const imageSchema = z.object({
   mediaType: z.enum(INBOX_IMAGE_TYPES),
